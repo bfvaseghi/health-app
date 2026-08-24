@@ -62,12 +62,17 @@ export type GoalSettings = {
 };
 
 export type HealthState = {
-  version: 1;
+  version: 2;
   updatedAt: string;
   dailyEntries: DailyEntry[];
   sleepEntries: SleepEntry[];
   labResults: LabResult[];
   goals: GoalSettings;
+  /** Things to raise at the next session. */
+  therapyTopics: TherapyTopic[];
+  therapySessions: TherapySession[];
+  journalEntries: JournalEntry[];
+  thoughtRecords: ThoughtRecord[];
 };
 
 export type HealthSyncPacket = {
@@ -99,7 +104,6 @@ export type Insight = {
   destination: "overview" | "sleep" | "trends" | "records" | "settings";
 };
 
-const DAY_MS = 86_400_000;
 const SOURCE_PRIORITY: Record<SleepSource, number> = {
   oura: 5,
   apple: 4,
@@ -125,12 +129,16 @@ export const defaultGoals: GoalSettings = {
 
 export function emptyHealthState(now = new Date()): HealthState {
   return {
-    version: 1,
+    version: 2,
     updatedAt: now.toISOString(),
     dailyEntries: [],
     sleepEntries: [],
     labResults: [],
     goals: { ...defaultGoals },
+    therapyTopics: [],
+    therapySessions: [],
+    journalEntries: [],
+    thoughtRecords: [],
   };
 }
 
@@ -173,52 +181,30 @@ export function emptySleepEntry(date: string): SleepEntry {
   };
 }
 
-export function todayLocal(date = new Date()): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
-export function validIsoDate(value: unknown): value is string {
-  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const [year, month, day] = value.split("-").map(Number);
-  const parsed = new Date(Date.UTC(year, month - 1, day));
-  return (
-    parsed.getUTCFullYear() === year &&
-    parsed.getUTCMonth() === month - 1 &&
-    parsed.getUTCDate() === day
-  );
-}
-
-export function addDays(value: string, amount: number): string {
-  const safe = validIsoDate(value) ? value : todayLocal();
-  const [year, month, day] = safe.split("-").map(Number);
-  const safeAmount = Number.isFinite(amount) ? Math.trunc(amount) : 0;
-  const date = new Date(Date.UTC(year, month - 1, day + safeAmount));
-  return date.toISOString().slice(0, 10);
-}
-
-export function daysBetween(a: string, b: string): number {
-  if (!validIsoDate(a) || !validIsoDate(b)) return 0;
-  const toUtc = (value: string) => {
-    const [year, month, day] = value.split("-").map(Number);
-    return Date.UTC(year, month - 1, day);
-  };
-  return Math.round((toUtc(b) - toUtc(a)) / DAY_MS);
-}
-
-export function dateLabel(value: string, options?: Intl.DateTimeFormatOptions): string {
-  if (!validIsoDate(value)) return "Unknown date";
-  const [year, month, day] = value.split("-").map(Number);
-  const formatOptions = options ?? { month: "short", day: "numeric" };
-  return new Intl.DateTimeFormat("en-US", {
-    ...formatOptions,
-    timeZone: formatOptions.timeZone ?? "UTC",
-  }).format(
-    new Date(Date.UTC(year, month - 1, day)),
-  );
-}
+export {
+  addDays,
+  dateLabel,
+  daysBetween,
+  todayLocal,
+  validIsoDate,
+} from "./health-dates.ts";
+import { addDays, daysBetween, todayLocal, validIsoDate } from "./health-dates.ts";
+// Types and runtime values are imported separately: Node's type stripping
+// leaves a plain `import { SomeType }` as a real runtime binding that does not
+// exist, so type-only names must travel through `import type`.
+import type {
+  BriefVitals,
+  JournalEntry,
+  TherapySession,
+  TherapyTopic,
+  ThoughtRecord,
+} from "./therapy-model.ts";
+import {
+  normalizeJournalEntry,
+  normalizeTherapySession,
+  normalizeTherapyTopic,
+  normalizeThoughtRecord,
+} from "./therapy-model.ts";
 
 function recordValue(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -372,13 +358,27 @@ export function normalizeHealthState(value: unknown): HealthState {
     ? state.labResults.map(normalizeLabResult).filter((result): result is LabResult => Boolean(result))
     : [];
 
+  // A version 1 record predates therapy and journal storage; the missing
+  // sections simply normalise to empty rather than failing to load.
+  const list = <T>(value: unknown, normalize: (item: unknown) => T | null): T[] =>
+    Array.isArray(value) ? value.map(normalize).filter((item): item is T => Boolean(item)) : [];
+
+  const topics = list(state.therapyTopics, normalizeTherapyTopic);
+  const sessions = list(state.therapySessions, normalizeTherapySession);
+  const journal = list(state.journalEntries, normalizeJournalEntry);
+  const thoughts = list(state.thoughtRecords, normalizeThoughtRecord);
+
   return {
-    version: 1,
+    version: 2,
     updatedAt: newestIsoTimestamp(state.updatedAt),
     dailyEntries: dedupeByKey(daily, (entry) => entry.date).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 730),
     sleepEntries: dedupeByKey(sleep, (entry) => `${entry.date}:${entry.source}`).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 1_460),
     labResults: dedupeByKey(labs, (result) => result.id).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 500),
     goals: normalizeGoals(state.goals),
+    therapyTopics: dedupeByKey(topics, (topic) => topic.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 500),
+    therapySessions: dedupeByKey(sessions, (session) => session.id).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 500),
+    journalEntries: dedupeByKey(journal, (entry) => entry.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 2_000),
+    thoughtRecords: dedupeByKey(thoughts, (entry) => entry.id).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, 2_000),
   };
 }
 
@@ -442,6 +442,86 @@ export function mergeHealthSyncPacket(state: HealthState, value: unknown): Healt
     for (const result of packet.labResults) next = upsertLabResult(next, result);
   }
   return normalizeHealthState({ ...next, updatedAt: new Date().toISOString() });
+}
+
+/* --------------------------------------------- therapy and journal ---- */
+
+function replaceById<T extends { id: string }>(items: T[], next: T): T[] {
+  const index = items.findIndex((item) => item.id === next.id);
+  if (index === -1) return [next, ...items];
+  const copy = [...items];
+  copy[index] = next;
+  return copy;
+}
+
+export function upsertTherapyTopic(state: HealthState, value: unknown): HealthState {
+  const topic = normalizeTherapyTopic(value);
+  if (!topic) return state;
+  return normalizeHealthState({ ...state, updatedAt: new Date().toISOString(), therapyTopics: replaceById(state.therapyTopics, topic) });
+}
+
+export function upsertTherapySession(state: HealthState, value: unknown): HealthState {
+  const session = normalizeTherapySession(value);
+  if (!session) return state;
+  return normalizeHealthState({ ...state, updatedAt: new Date().toISOString(), therapySessions: replaceById(state.therapySessions, session) });
+}
+
+export function upsertJournalEntry(state: HealthState, value: unknown): HealthState {
+  const entry = normalizeJournalEntry(value);
+  if (!entry) return state;
+  return normalizeHealthState({ ...state, updatedAt: new Date().toISOString(), journalEntries: replaceById(state.journalEntries, entry) });
+}
+
+export function upsertThoughtRecord(state: HealthState, value: unknown): HealthState {
+  const entry = normalizeThoughtRecord(value);
+  if (!entry) return state;
+  return normalizeHealthState({ ...state, updatedAt: new Date().toISOString(), thoughtRecords: replaceById(state.thoughtRecords, entry) });
+}
+
+type TherapyCollection = "therapyTopics" | "therapySessions" | "journalEntries" | "thoughtRecords";
+
+export function removeTherapyItem(state: HealthState, collection: TherapyCollection, id: string): HealthState {
+  return normalizeHealthState({
+    ...state,
+    updatedAt: new Date().toISOString(),
+    [collection]: state[collection].filter((item: { id: string }) => item.id !== id),
+  });
+}
+
+/** The lines written on the daily check-in, which the summary reads back. */
+export function dayNotesInWindow(state: HealthState, from: string, to: string): { date: string; note: string }[] {
+  return state.dailyEntries
+    .filter((entry) => entry.date >= from && entry.date <= to && entry.note.trim() !== "")
+    .map((entry) => ({ date: entry.date, note: entry.note }))
+    .sort((a, b) => b.date.localeCompare(a.date));
+}
+
+/**
+ * Summarises the dashboard's own numbers for the session. This is what makes
+ * keeping therapy notes inside the health app worth more than keeping them
+ * beside it: the sleep and medication figures are already here.
+ */
+export function buildBriefVitals(state: HealthState, from: string, to: string): BriefVitals {
+  const days = Math.max(0, daysBetween(from, to)) + 1;
+  const daily = state.dailyEntries.filter((entry) => entry.date >= from && entry.date <= to);
+  const sleep = preferredSleepEntries(state.sleepEntries.filter((entry) => entry.date >= from && entry.date <= to));
+
+  const sleepHours = sleep.map((entry) => entry.durationHours).filter((value): value is number => value !== null);
+  const medicationLogged = daily.filter((entry) => entry.medicationTaken !== null);
+  const moods = daily.map((entry) => entry.mood).filter((value): value is ScaleValue => value !== null);
+  const anxieties = daily.map((entry) => entry.anxiety).filter((value): value is ScaleValue => value !== null);
+  const mean = (values: number[]) => (values.length === 0 ? null : Math.round((values.reduce((sum, value) => sum + value, 0) / values.length) * 10) / 10);
+
+  return {
+    sleepAverage: mean(sleepHours),
+    shortNights: sleepHours.filter((value) => value < 6).length,
+    medicationTaken: medicationLogged.filter((entry) => entry.medicationTaken === true).length,
+    medicationLogged: medicationLogged.length,
+    moodAverage: mean(moods),
+    anxietyAverage: mean(anxieties),
+    daysLogged: daily.length,
+    days,
+  };
 }
 
 export function preferredSleepEntries(entries: SleepEntry[]): SleepEntry[] {

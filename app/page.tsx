@@ -34,11 +34,33 @@ import {
   todayLocal,
   upsertDailyEntry,
   upsertLabResult,
+  upsertJournalEntry,
   upsertSleepEntry,
+  upsertTherapySession,
+  upsertTherapyTopic,
+  upsertThoughtRecord,
+  buildBriefVitals,
+  dayNotesInWindow,
+  removeTherapyItem,
 } from "./health-model";
+import {
+  COGNITIVE_DISTORTIONS,
+  JournalEntry,
+  TherapySession,
+  TherapyTopic,
+  ThoughtRecord,
+  buildTherapyBrief,
+  defaultBriefWindow,
+  distortionName,
+  emptyJournalEntry,
+  emptySession,
+  emptyThoughtRecord,
+  makeId,
+  therapyBriefText,
+} from "./therapy-model";
 
-type View = "overview" | "sleep" | "trends" | "records" | "settings";
-type Modal = "checkin" | "sleep" | "sync" | "lab" | null;
+type View = "overview" | "sleep" | "therapy" | "trends" | "records" | "settings";
+type Modal = "checkin" | "sleep" | "sync" | "lab" | "journal" | "thought" | "session" | null;
 type Period = 14 | 30 | 90;
 type TrendMetric = "sleep" | "steps" | "mood" | "anxiety" | "energy" | "weight";
 type SaveStatus = "loading" | "saved" | "saving" | "local" | "error";
@@ -46,6 +68,7 @@ type SaveStatus = "loading" | "saved" | "saving" | "local" | "error";
 const viewLabels: Record<View, string> = {
   overview: "Today",
   sleep: "Sleep",
+  therapy: "Therapy",
   trends: "Trends",
   records: "Records",
   settings: "Goals & data",
@@ -115,6 +138,7 @@ export default function Home() {
   const [state, setState] = useState<HealthState>(initialState);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("loading");
   const [notice, setNotice] = useState("");
+  const [editing, setEditing] = useState<string | null>(null);
   const hydrated = useRef(false);
   const today = todayLocal();
 
@@ -182,6 +206,12 @@ export default function Home() {
   const updateDaily = (entry: DailyEntry) => setState((current) => upsertDailyEntry(current, entry));
   const updateSleep = (entry: SleepEntry) => setState((current) => upsertSleepEntry(current, entry));
   const updateLab = (result: LabResult) => setState((current) => upsertLabResult(current, result));
+  const updateTopic = (topic: TherapyTopic) => setState((current) => upsertTherapyTopic(current, topic));
+  const updateJournal = (entry: JournalEntry) => setState((current) => upsertJournalEntry(current, entry));
+  const updateThought = (entry: ThoughtRecord) => setState((current) => upsertThoughtRecord(current, entry));
+  const updateSession = (entry: TherapySession) => setState((current) => upsertTherapySession(current, entry));
+  const removeItem = (collection: Parameters<typeof removeTherapyItem>[1], id: string) =>
+    setState((current) => removeTherapyItem(current, collection, id));
 
   const go = (next: View) => {
     setView(next);
@@ -219,6 +249,15 @@ export default function Home() {
           <Overview state={state} today={today} go={go} open={setModal} updateDaily={updateDaily} />
         )}
         {view === "sleep" && <SleepView state={state} today={today} open={setModal} />}
+        {view === "therapy" && (
+          <TherapyView
+            state={state}
+            today={today}
+            notify={setNotice}
+            handlers={{ onTopic: updateTopic, onRemove: removeItem, onJournal: updateJournal, onThought: updateThought, onSession: updateSession }}
+            edit={(kind, id) => { setEditing(id); setModal(kind); }}
+          />
+        )}
         {view === "trends" && <TrendsView state={state} today={today} />}
         {view === "records" && <RecordsView state={state} open={setModal} />}
         {view === "settings" && (
@@ -244,7 +283,7 @@ export default function Home() {
       </main>
 
       <nav className="bottom-nav" aria-label="Mobile navigation">
-        {(["overview", "sleep", "trends", "records"] as View[]).map((item) => (
+        {(["overview", "sleep", "therapy", "trends", "records"] as View[]).map((item) => (
           <button key={item} className={view === item ? "active" : ""} onClick={() => go(item)}>
             <Icon name={item} /><span>{viewLabels[item]}</span>
           </button>
@@ -255,6 +294,27 @@ export default function Home() {
       {modal === "sleep" && <SleepModal date={today} state={state} onClose={() => setModal(null)} onSave={(entry) => { updateSleep(entry); setModal(null); setNotice("Sleep is saved."); }} />}
       {modal === "sync" && <SyncModal state={state} onClose={() => setModal(null)} onImport={(value) => { try { setState((current) => mergeHealthSyncPacket(current, value)); setModal(null); setNotice("Health data imported."); } catch (error) { setNotice(error instanceof Error ? error.message : "Import failed."); } }} />}
       {modal === "lab" && <LabModal onClose={() => setModal(null)} onSave={(lab) => { updateLab(lab); setModal(null); setNotice("Result saved."); }} />}
+      {modal === "journal" && (
+        <JournalModal
+          entry={state.journalEntries.find((entry) => entry.id === editing) ?? emptyJournalEntry(today)}
+          onClose={() => { setModal(null); setEditing(null); }}
+          onSave={(entry) => { updateJournal(entry); setModal(null); setEditing(null); setNotice("Entry saved."); }}
+        />
+      )}
+      {modal === "thought" && (
+        <ThoughtModal
+          entry={state.thoughtRecords.find((entry) => entry.id === editing) ?? emptyThoughtRecord(today)}
+          onClose={() => { setModal(null); setEditing(null); }}
+          onSave={(entry) => { updateThought(entry); setModal(null); setEditing(null); setNotice("Thought record saved."); }}
+        />
+      )}
+      {modal === "session" && (
+        <SessionModal
+          entry={state.therapySessions.find((entry) => entry.id === editing) ?? emptySession(today)}
+          onClose={() => { setModal(null); setEditing(null); }}
+          onSave={(entry) => { updateSession(entry); setModal(null); setEditing(null); setNotice("Session saved."); }}
+        />
+      )}
       {notice && <div className="toast" role="status">{notice}</div>}
     </div>
   );
@@ -373,6 +433,276 @@ function SleepView({ state, today, open }: { state: HealthState; today: string; 
   );
 }
 
+/* ------------------------------------------------------------ therapy ---- */
+
+type TherapyHandlers = {
+  onTopic: (topic: TherapyTopic) => void;
+  onRemove: (collection: "therapyTopics" | "therapySessions" | "journalEntries" | "thoughtRecords", id: string) => void;
+  onJournal: (entry: JournalEntry) => void;
+  onThought: (entry: ThoughtRecord) => void;
+  onSession: (entry: TherapySession) => void;
+};
+
+/**
+ * Everything you want in front of you when the session starts. The point of it
+ * living here rather than in a separate app is the summary below: sleep and
+ * medication come from the same record the rest of the dashboard uses, so the
+ * week's numbers arrive without being typed twice.
+ */
+function TherapyView({
+  state,
+  today,
+  handlers,
+  notify,
+  edit,
+}: {
+  state: HealthState;
+  today: string;
+  handlers: TherapyHandlers;
+  notify: (message: string) => void;
+  edit: (kind: "journal" | "thought" | "session", id: string | null) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const window_ = defaultBriefWindow(today);
+  const vitals = buildBriefVitals(state, window_.from, window_.to);
+  const brief = buildTherapyBrief(
+    {
+      topics: state.therapyTopics,
+      sessions: state.therapySessions,
+      journal: state.journalEntries,
+      thoughts: state.thoughtRecords,
+      dayNotes: dayNotesInWindow(state, window_.from, window_.to),
+      vitals,
+    },
+    window_.from,
+    window_.to,
+  );
+  const briefText = therapyBriefText(brief, vitals);
+  const covered = state.therapyTopics.filter((topic) => topic.status === "discussed");
+
+  function addTopic(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const text = draft.trim();
+    if (!text) return;
+    handlers.onTopic({
+      id: makeId("topic"),
+      createdAt: new Date().toISOString(),
+      date: today,
+      text,
+      priority: 0,
+      status: "open",
+      discussedAt: null,
+      source: "manual",
+      sourceId: null,
+    });
+    setDraft("");
+  }
+
+  async function copyBrief() {
+    try {
+      await navigator.clipboard.writeText(briefText);
+      notify("Summary copied.");
+    } catch {
+      notify("Copying was blocked. Select the text instead.");
+    }
+  }
+
+  return (
+    <>
+      <PageHeading
+        eyebrow={`${dateLabel(window_.from)} – ${dateLabel(window_.to)}`}
+        title="Therapy"
+        body="What to raise this week, the thoughts you worked through, and a summary drawn from your own record."
+        action={<button className="button primary" onClick={() => edit("thought", null)}><Icon name="plus" />Thought record</button>}
+      />
+
+      <section className="panel wide-panel">
+        <h2>To talk about</h2>
+        <p className="panel-note">Add things during the week, not in the waiting room.</p>
+        <form className="topic-form" onSubmit={addTopic}>
+          <input value={draft} onChange={(event) => setDraft(event.target.value)} placeholder="Something to raise with your therapist…" aria-label="New topic" />
+          <button className="button secondary" type="submit">Add</button>
+        </form>
+        {brief.topics.length === 0 ? (
+          <p className="empty-note">Nothing on the list yet.</p>
+        ) : (
+          <ul className="topic-list">
+            {brief.topics.map((topic) => (
+              <li key={topic.id} className={topic.priority === 2 ? "starred" : ""}>
+                <button
+                  className="star"
+                  aria-label={topic.priority === 2 ? "Remove priority" : "Mark as the important one"}
+                  aria-pressed={topic.priority === 2}
+                  onClick={() => handlers.onTopic({ ...topic, priority: topic.priority === 2 ? 0 : 2 })}
+                >
+                  {topic.priority === 2 ? "★" : "☆"}
+                </button>
+                <span>{topic.text}</span>
+                {topic.source !== "manual" && <em className="tag">{topic.source}</em>}
+                <button className="button ghost small" onClick={() => handlers.onTopic({ ...topic, status: "discussed", discussedAt: new Date().toISOString() })}>Covered</button>
+                <button className="button ghost small danger" onClick={() => handlers.onRemove("therapyTopics", topic.id)}>Remove</button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {covered.length > 0 && (
+          <details className="covered-list">
+            <summary>{covered.length} already covered</summary>
+            <ul className="topic-list">
+              {covered.slice(0, 20).map((topic) => (
+                <li key={topic.id} className="done">
+                  <span>{topic.text}</span>
+                  <button className="button ghost small" onClick={() => handlers.onTopic({ ...topic, status: "open", discussedAt: null })}>Reopen</button>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </section>
+
+      {brief.observations.length > 0 && (
+        <section className="panel wide-panel">
+          <h2>What your record says</h2>
+          <ul className="observation-list">
+            {brief.observations.map((observation, index) => (
+              <li key={index} className={observation.tone}>
+                <span>{observation.text}</span>
+                <button
+                  className="button ghost small"
+                  onClick={() => {
+                    handlers.onTopic({
+                      id: makeId("topic"), createdAt: new Date().toISOString(), date: today,
+                      text: observation.text, priority: 0, status: "open", discussedAt: null, source: "manual", sourceId: null,
+                    });
+                    notify("Added to the list.");
+                  }}
+                >
+                  Add to list
+                </button>
+              </li>
+            ))}
+          </ul>
+          <p className="panel-note">These describe what you logged, nothing more. They are worth raising because they are the things you would not have remembered.</p>
+        </section>
+      )}
+
+      <section className="panel wide-panel">
+        <h2>Take this into the session</h2>
+        <pre className="brief-text">{briefText}</pre>
+        <div className="panel-actions">
+          <button className="button primary" onClick={copyBrief}><Icon name="copy" />Copy</button>
+          <button className="button secondary" onClick={() => downloadJson(`therapy-notes-${today}.txt`, briefText)}><Icon name="download" />Download</button>
+          <button className="button ghost" onClick={() => window.print()}>Print</button>
+        </div>
+      </section>
+
+      <section className="panel wide-panel">
+        <div className="panel-head">
+          <h2>Thought records</h2>
+          <button className="button secondary" onClick={() => edit("thought", null)}><Icon name="plus" />New</button>
+        </div>
+        <p className="panel-note">One thought, seven questions. The work is in the gap between how certain it felt and what it rests on.</p>
+        {state.thoughtRecords.length === 0 ? (
+          <p className="empty-note">Nothing recorded yet.</p>
+        ) : (
+          <ul className="record-list">
+            {state.thoughtRecords.slice(0, 25).map((entry) => (
+              <li key={entry.id}>
+                <div className="record-head">
+                  <div>
+                    <small>{dateLabel(entry.date)}</small>
+                    <strong>“{entry.thought}”</strong>
+                  </div>
+                  <span className={`belief ${entry.beliefBefore - entry.beliefAfter >= 20 ? "shifted" : ""}`}>{entry.beliefBefore}% → {entry.beliefAfter}%</span>
+                </div>
+                <p className="record-line"><b>Situation.</b> {entry.situation}</p>
+                {entry.distortions.length > 0 && <p className="record-line"><b>Patterns.</b> {entry.distortions.map(distortionName).join(", ")}</p>}
+                {entry.balancedThought && <p className="record-line"><b>Balanced view.</b> {entry.balancedThought}</p>}
+                <div className="record-actions">
+                  {entry.forTherapy && <em className="tag">for therapy</em>}
+                  <button className="button ghost small" onClick={() => edit("thought", entry.id)}>Edit</button>
+                  <button className="button ghost small danger" onClick={() => handlers.onRemove("thoughtRecords", entry.id)}>Delete</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="panel wide-panel">
+        <div className="panel-head">
+          <h2>Journal</h2>
+          <button className="button secondary" onClick={() => edit("journal", null)}><Icon name="plus" />New entry</button>
+        </div>
+        {state.journalEntries.length === 0 ? (
+          <p className="empty-note">Nothing written yet.</p>
+        ) : (
+          <ul className="record-list">
+            {state.journalEntries.slice(0, 25).map((entry) => (
+              <li key={entry.id}>
+                <div className="record-head">
+                  <div>
+                    <small>{dateLabel(entry.date)}</small>
+                    {entry.title && <strong>{entry.title}</strong>}
+                  </div>
+                </div>
+                <p className="record-body">{entry.body}</p>
+                <div className="record-actions">
+                  {entry.forTherapy && <em className="tag">for therapy</em>}
+                  <button className="button ghost small" onClick={() => edit("journal", entry.id)}>Edit</button>
+                  <button className="button ghost small danger" onClick={() => handlers.onRemove("journalEntries", entry.id)}>Delete</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="panel wide-panel">
+        <div className="panel-head">
+          <h2>Sessions</h2>
+          <button className="button secondary" onClick={() => edit("session", null)}><Icon name="plus" />Log a session</button>
+        </div>
+        {state.therapySessions.length === 0 ? (
+          <p className="empty-note">No sessions recorded yet.</p>
+        ) : (
+          <ul className="record-list">
+            {state.therapySessions.slice(0, 20).map((session) => (
+              <li key={session.id}>
+                <div className="record-head"><div><small>{dateLabel(session.date, { month: "short", day: "numeric", year: "numeric" })}</small></div></div>
+                {session.notes && <p className="record-body">{session.notes}</p>}
+                {session.homework.length > 0 && (
+                  <ul className="homework-list">
+                    {session.homework.map((item) => (
+                      <li key={item.id}>
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={item.done}
+                            onChange={() => handlers.onSession({
+                              ...session,
+                              homework: session.homework.map((task) => (task.id === item.id ? { ...task, done: !task.done } : task)),
+                            })}
+                          />
+                          <span className={item.done ? "done" : ""}>{item.text}</span>
+                        </label>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="record-actions">
+                  <button className="button ghost small" onClick={() => edit("session", session.id)}>Edit</button>
+                  <button className="button ghost small danger" onClick={() => handlers.onRemove("therapySessions", session.id)}>Delete</button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </>
+  );
+}
+
 function TrendsView({ state, today }: { state: HealthState; today: string }) {
   const [metric, setMetric] = useState<TrendMetric>("sleep");
   const [period, setPeriod] = useState<Period>(30);
@@ -481,6 +811,179 @@ function SyncModal({ state, onClose, onImport }: { state: HealthState; onClose: 
 function LabModal({ onClose, onSave }: { onClose: () => void; onSave: (result: LabResult) => void }) {
   function submit(event: FormEvent<HTMLFormElement>) { event.preventDefault(); const data = new FormData(event.currentTarget); const name = String(data.get("name") ?? "").trim(); const date = String(data.get("date")); onSave({ id: `${date}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}`, name, date, value: n(data.get("value")), unit: String(data.get("unit") ?? ""), referenceLow: n(data.get("low")), referenceHigh: n(data.get("high")), note: String(data.get("note") ?? "") }); }
   return <ModalFrame title="Add lab result" subtitle="Use the exact units and reference range printed by the lab." onClose={onClose}><form onSubmit={submit} className="form-stack"><label className="field"><span>Test name</span><input name="name" required placeholder="Example: Ferritin" /></label><label className="field"><span>Date</span><input type="date" name="date" defaultValue={todayLocal()} required /></label><div className="input-grid"><Field name="value" label="Result" step="any" /><label className="field"><span>Unit</span><input name="unit" placeholder="mg/dL" /></label><Field name="low" label="Reference low" step="any" /><Field name="high" label="Reference high" step="any" /></div><label className="field"><span>Optional note</span><textarea name="note" rows={3} /></label><div className="modal-actions"><button type="button" className="button secondary" onClick={onClose}>Cancel</button><button className="button primary">Save result</button></div></form></ModalFrame>;
+}
+
+function JournalModal({ entry, onClose, onSave }: { entry: JournalEntry; onClose: () => void; onSave: (entry: JournalEntry) => void }) {
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const body = String(data.get("body") ?? "").trim();
+    if (!body) return;
+    onSave({
+      ...entry,
+      date: String(data.get("date") ?? entry.date),
+      title: String(data.get("title") ?? "").trim(),
+      body,
+      forTherapy: data.get("forTherapy") === "on",
+    });
+  }
+
+  return (
+    <ModalFrame title={entry.body ? "Edit entry" : "Journal entry"} subtitle="It does not have to be tidy or fair. Nobody reads this but you." onClose={onClose}>
+      <form onSubmit={submit} className="form-stack">
+        <label className="field"><span>Date</span><input type="date" name="date" defaultValue={entry.date} required /></label>
+        <label className="field"><span>Title (optional)</span><input type="text" name="title" defaultValue={entry.title} placeholder="A handle for finding it later" /></label>
+        <label className="field"><span>Entry</span><textarea name="body" rows={10} defaultValue={entry.body} placeholder="Whatever is there." required /></label>
+        <label className="checkbox-row"><input type="checkbox" name="forTherapy" defaultChecked={entry.forTherapy} /><span>Bring this to therapy</span></label>
+        <div className="modal-actions">
+          <button type="button" className="button secondary" onClick={onClose}>Cancel</button>
+          <button className="button primary" type="submit">Save entry</button>
+        </div>
+      </form>
+    </ModalFrame>
+  );
+}
+
+/**
+ * The CBT thought record. Not positive thinking — writing the thought down,
+ * looking at what actually supports it, and seeing whether believing it 90%
+ * still holds up by the end.
+ */
+function ThoughtModal({ entry, onClose, onSave }: { entry: ThoughtRecord; onClose: () => void; onSave: (entry: ThoughtRecord) => void }) {
+  const [picked, setPicked] = useState<string[]>(entry.distortions);
+  const [before, setBefore] = useState(entry.beliefBefore);
+  const [after, setAfter] = useState(entry.beliefAfter);
+
+  function toggle(id: string) {
+    setPicked((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    const situation = String(data.get("situation") ?? "").trim();
+    const thought = String(data.get("thought") ?? "").trim();
+    if (!situation || !thought) return;
+    onSave({
+      ...entry,
+      date: String(data.get("date") ?? entry.date),
+      situation,
+      thought,
+      beliefBefore: before,
+      beliefAfter: after,
+      distortions: picked,
+      evidenceFor: String(data.get("evidenceFor") ?? "").trim(),
+      evidenceAgainst: String(data.get("evidenceAgainst") ?? "").trim(),
+      balancedThought: String(data.get("balancedThought") ?? "").trim(),
+      forTherapy: data.get("forTherapy") === "on",
+    });
+  }
+
+  const questions = COGNITIVE_DISTORTIONS.filter((item) => picked.includes(item.id));
+
+  return (
+    <ModalFrame title={entry.thought ? "Edit thought record" : "Thought record"} subtitle="Seven questions. Take one thought that is doing damage." onClose={onClose}>
+      <form onSubmit={submit} className="form-stack">
+        <label className="field"><span>Date</span><input type="date" name="date" defaultValue={entry.date} required /></label>
+        <label className="field"><span>1. What happened?</span><textarea name="situation" rows={2} defaultValue={entry.situation} placeholder="Just the facts — where, when, who, what was said." required /></label>
+        <label className="field"><span>2. What went through your mind?</span><textarea name="thought" rows={2} defaultValue={entry.thought} placeholder="The thought in its own words, not a tidied-up version." required /></label>
+
+        <label className="field">
+          <span>3. How much did you believe it at the time? <b>{before}%</b></span>
+          <input type="range" min={0} max={100} step={5} value={before} onChange={(event) => setBefore(Number(event.target.value))} />
+        </label>
+
+        <fieldset className="form-section">
+          <legend className="form-label">4. Does it fit a known pattern?</legend>
+          <div className="distortion-grid">
+            {COGNITIVE_DISTORTIONS.map((item) => (
+              <button key={item.id} type="button" className={picked.includes(item.id) ? "chip on" : "chip"} aria-pressed={picked.includes(item.id)} onClick={() => toggle(item.id)}>
+                {item.name}
+              </button>
+            ))}
+          </div>
+          {questions.length > 0 && (
+            <ul className="distortion-questions">
+              {questions.map((item) => <li key={item.id}><b>{item.name}:</b> {item.question}</li>)}
+            </ul>
+          )}
+          <small>None of them fitting is a perfectly good answer.</small>
+        </fieldset>
+
+        <div className="evidence-grid">
+          <label className="field"><span>5. Evidence for it</span><textarea name="evidenceFor" rows={4} defaultValue={entry.evidenceFor} placeholder="Facts a neutral observer would accept." /></label>
+          <label className="field"><span>6. Evidence against it</span><textarea name="evidenceAgainst" rows={4} defaultValue={entry.evidenceAgainst} placeholder="What are you leaving out? What would you tell a friend?" /></label>
+        </div>
+
+        <label className="field"><span>7. A fairer way to put it</span><textarea name="balancedThought" rows={3} defaultValue={entry.balancedThought} placeholder="Not a cheerful reframe — something you would sign your name to." /></label>
+        <label className="field">
+          <span>How much do you believe the original thought now? <b>{after}%</b></span>
+          <input type="range" min={0} max={100} step={5} value={after} onChange={(event) => setAfter(Number(event.target.value))} />
+        </label>
+
+        <label className="checkbox-row"><input type="checkbox" name="forTherapy" defaultChecked={entry.forTherapy} /><span>Bring this to therapy</span></label>
+        <div className="modal-actions">
+          <button type="button" className="button secondary" onClick={onClose}>Cancel</button>
+          <button className="button primary" type="submit">Save record</button>
+        </div>
+      </form>
+    </ModalFrame>
+  );
+}
+
+function SessionModal({ entry, onClose, onSave }: { entry: TherapySession; onClose: () => void; onSave: (entry: TherapySession) => void }) {
+  const [homework, setHomework] = useState(entry.homework);
+  const [draft, setDraft] = useState("");
+
+  function addTask() {
+    const text = draft.trim();
+    if (!text) return;
+    setHomework((current) => [...current, { id: makeId("hw"), text, done: false }]);
+    setDraft("");
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const data = new FormData(event.currentTarget);
+    onSave({ ...entry, date: String(data.get("date") ?? entry.date), notes: String(data.get("notes") ?? "").trim(), homework });
+  }
+
+  return (
+    <ModalFrame title={entry.notes || entry.homework.length > 0 ? "Edit session" : "Log a session"} subtitle="What came out of it, and what you agreed to do next." onClose={onClose}>
+      <form onSubmit={submit} className="form-stack">
+        <label className="field"><span>Date</span><input type="date" name="date" defaultValue={entry.date} required /></label>
+        <label className="field"><span>What came out of it</span><textarea name="notes" rows={4} defaultValue={entry.notes} placeholder="What you talked about, and what you want to keep." /></label>
+        <div className="form-section">
+          <span className="form-label">Homework</span>
+          {homework.length > 0 && (
+            <ul className="homework-list">
+              {homework.map((item) => (
+                <li key={item.id}>
+                  <span>{item.text}</span>
+                  <button type="button" className="button ghost small danger" onClick={() => setHomework((current) => current.filter((task) => task.id !== item.id))}>Remove</button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="topic-form">
+            <input
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addTask(); } }}
+              placeholder="e.g. two walks before Friday"
+              aria-label="Homework item"
+            />
+            <button type="button" className="button secondary" onClick={addTask}>Add</button>
+          </div>
+          <small>Unfinished homework shows up in next week&rsquo;s summary.</small>
+        </div>
+        <div className="modal-actions">
+          <button type="button" className="button secondary" onClick={onClose}>Cancel</button>
+          <button className="button primary" type="submit">Save session</button>
+        </div>
+      </form>
+    </ModalFrame>
+  );
 }
 
 function ModalFrame({ title, subtitle, onClose, children }: { title: string; subtitle: string; onClose: () => void; children: ReactNode }) {
