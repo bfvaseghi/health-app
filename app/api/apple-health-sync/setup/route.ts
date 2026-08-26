@@ -6,6 +6,7 @@ import {
   generateAppleHealthSyncToken,
   hashAppleHealthSyncToken,
 } from "../../../apple-health-sync";
+import { isBaselineOwner } from "../../../baseline-owner";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 
 const NO_STORE = { "Cache-Control": "no-store" };
@@ -29,7 +30,11 @@ export async function GET() {
   if (!userId) return Response.json({ error: "Sign in with ChatGPT." }, { status: 401, headers: NO_STORE });
 
   try {
-    const [row] = await getDb()
+    const db = getDb();
+    if (!(await isBaselineOwner(db, userId))) {
+      return Response.json({ error: "This is a private record." }, { status: 403, headers: NO_STORE });
+    }
+    const [row] = await db
       .select({ lastSyncedAt: appleHealthSyncs.lastSyncedAt })
       .from(appleHealthSyncs)
       .where(eq(appleHealthSyncs.userId, userId))
@@ -51,6 +56,9 @@ export async function POST() {
 
   try {
     const db = getDb();
+    if (!(await isBaselineOwner(db, userId))) {
+      return Response.json({ error: "This is a private record." }, { status: 403, headers: NO_STORE });
+    }
     const [existing] = await db
       .select({ userId: appleHealthSyncs.userId })
       .from(appleHealthSyncs)
@@ -90,7 +98,11 @@ export async function DELETE() {
   if (!userId) return Response.json({ error: "Sign in with ChatGPT." }, { status: 401, headers: NO_STORE });
 
   try {
-    await getDb().delete(appleHealthSyncs).where(eq(appleHealthSyncs.userId, userId));
+    const db = getDb();
+    if (!(await isBaselineOwner(db, userId))) {
+      return Response.json({ error: "This is a private record." }, { status: 403, headers: NO_STORE });
+    }
+    await db.delete(appleHealthSyncs).where(eq(appleHealthSyncs.userId, userId));
     return Response.json({ configured: false, lastSyncedAt: null }, { headers: NO_STORE });
   } catch (error) {
     return storageError(error);

@@ -2,6 +2,7 @@ import { and, desc, eq, notInArray } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { appleHealthSyncs, healthStateBackups, healthStates } from "../../../db/schema";
 import { normalizeAppleHealthSyncPayload } from "../../apple-health-sync";
+import { isBaselineOwner } from "../../baseline-owner";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { HealthState, findRetiredFields, mergeRecords, normalizeHealthState } from "../../health-model";
 
@@ -122,6 +123,9 @@ export async function GET() {
 
   try {
     const db = getDb();
+    if (!(await isBaselineOwner(db, userId))) {
+      return Response.json({ error: "This is a private record." }, { status: 403 });
+    }
     const [[row], [apple]] = await Promise.all([
       db
         .select({ payload: healthStates.payload, updatedAt: healthStates.updatedAt, revision: healthStates.revision })
@@ -211,6 +215,9 @@ export async function PUT(request: Request) {
 
   try {
     const db = getDb();
+    if (!(await isBaselineOwner(db, userId))) {
+      return Response.json({ error: "This is a private record." }, { status: 403 });
+    }
     const [current] = await db
       .select({ payload: healthStates.payload, updatedAt: healthStates.updatedAt, revision: healthStates.revision })
       .from(healthStates)

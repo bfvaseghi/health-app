@@ -114,6 +114,7 @@ export default function Home() {
   const [theme, setTheme] = useState<Theme>(() => demoMode ? "system" : storedTheme());
   const [saveAttempt, setSaveAttempt] = useState(0);
   const [hydrated, setHydrated] = useState(false);
+  const [accessDenied, setAccessDenied] = useState(false);
   const stateRef = useRef(initialState);
   const skipNextSave = useRef(false);
   const saveVersion = useRef(0);
@@ -158,6 +159,15 @@ export default function Home() {
 
       try {
         const response = await fetch("/api/health-state", { cache: "no-store" });
+        if (response.status === 401) {
+          const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+          window.location.replace(`/signin-with-chatgpt?return_to=${encodeURIComponent(returnTo)}`);
+          return;
+        }
+        if (response.status === 403) {
+          setAccessDenied(true);
+          return;
+        }
         if (!response.ok) throw new Error("Private sync unavailable");
         const data = (await response.json()) as {
           state?: unknown;
@@ -478,6 +488,21 @@ export default function Home() {
         </span>
         <strong>Baseline</strong>
         <small>Opening Baseline…</small>
+      </main>
+    );
+  }
+
+  if (accessDenied) {
+    return (
+      <main className="boot-screen" aria-label="Private Baseline record">
+        <span className="brand-mark">
+          <Icon name="lock" />
+        </span>
+        <strong>Baseline is private</strong>
+        <small>This ChatGPT account does not have access.</small>
+        <a className="button secondary small" href="/signout-with-chatgpt?return_to=/">
+          Use another account
+        </a>
       </main>
     );
   }

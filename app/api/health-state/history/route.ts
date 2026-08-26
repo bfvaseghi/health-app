@@ -1,6 +1,7 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "../../../../db";
 import { healthStateBackups } from "../../../../db/schema";
+import { isBaselineOwner } from "../../../baseline-owner";
 import { getChatGPTUser } from "../../../chatgpt-auth";
 import { normalizeHealthState } from "../../../health-model";
 
@@ -28,6 +29,9 @@ export async function GET(request: Request) {
 
   try {
     const db = getDb();
+    if (!(await isBaselineOwner(db, userId))) {
+      return Response.json({ error: "This is a private record." }, { status: 403 });
+    }
 
     if (requested !== null) {
       const id = Number(requested);
