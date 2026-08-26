@@ -33,7 +33,7 @@ import {
 } from "./health-model";
 import { demoHealthState } from "./demo-state";
 import { applyImport } from "./import";
-import { chooseInitialState } from "./state-sync";
+import { chooseInitialState, mergeConcurrentHealthState } from "./state-sync";
 import { Icon } from "./ui/icons";
 import { DataView } from "./ui/data-view";
 import { FitnessView } from "./ui/fitness-view";
@@ -118,6 +118,8 @@ export default function Home() {
   const skipNextSave = useRef(false);
   const saveVersion = useRef(0);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const serverRevision = useRef(0);
+  const serverBase = useRef<HealthState | null>(null);
   const today = todayLocal();
 
   /** Keeps event handlers on one live snapshot even when several fire before React paints. */
@@ -160,6 +162,7 @@ export default function Home() {
         const data = (await response.json()) as {
           state?: unknown;
           updatedAt?: string;
+          revision?: number;
           purged?: { fields: string[]; records: number; snapshots: number };
         };
         if (!active) return;
@@ -168,6 +171,8 @@ export default function Home() {
         const remote = readRemote && data.updatedAt
           ? normalizeHealthState({ ...readRemote, updatedAt: data.updatedAt })
           : readRemote;
+        serverRevision.current = Number.isSafeInteger(data.revision) ? data.revision ?? 0 : 0;
+        serverBase.current = remote;
         const choice = chooseInitialState(local, remote, initialState);
         const chosen = choice.state;
 
@@ -213,11 +218,38 @@ export default function Home() {
         try {
           const response = await fetch("/api/health-state", {
             method: "PUT",
-            headers: { "content-type": "application/json" },
+            headers: {
+              "content-type": "application/json",
+              "if-match": `"${serverRevision.current}"`,
+            },
             body: JSON.stringify(state),
           });
+          if (response.status === 409) {
+            const data = (await response.json()) as { state?: unknown; updatedAt?: string; revision?: number; error?: string };
+            if (!data.state || !Number.isSafeInteger(data.revision)) {
+              throw new Error(data.error ?? "A newer save could not be merged.");
+            }
+            const remote = normalizeHealthState({
+              ...(data.state as object),
+              updatedAt: data.updatedAt ?? new Date().toISOString(),
+            });
+            const merged = mergeConcurrentHealthState(serverBase.current, state, remote);
+            serverBase.current = remote;
+            serverRevision.current = data.revision ?? 0;
+            updateState(() => merged.state);
+            setToast({
+              message: merged.conflicts
+                ? `Kept this device's edits in ${merged.conflicts} save ${merged.conflicts === 1 ? "conflict" : "conflicts"}.`
+                : "Combined a newer save with this device's changes.",
+            });
+            return;
+          }
           if (!response.ok) throw new Error("Save failed");
-          const data = (await response.json()) as { updatedAt?: string };
+          const data = (await response.json()) as { state?: unknown; updatedAt?: string; revision?: number };
+          if (Number.isSafeInteger(data.revision)) serverRevision.current = data.revision ?? serverRevision.current;
+          serverBase.current = data.state
+            ? normalizeHealthState(data.state)
+            : normalizeHealthState({ ...state, updatedAt: data.updatedAt ?? new Date().toISOString() });
           if (version === saveVersion.current) {
             setSaveStatus("saved");
             setSavedAt(data.updatedAt ?? new Date().toISOString());
@@ -236,7 +268,7 @@ export default function Home() {
       saveQueue.current = saveQueue.current.then(save, save);
     }, 700);
     return () => window.clearTimeout(timer);
-  }, [demoMode, hydrated, state, saveAttempt]);
+  }, [demoMode, hydrated, state, saveAttempt, updateState]);
 
   useEffect(() => {
     if (!toast) return;

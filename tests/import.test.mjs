@@ -16,6 +16,11 @@ import {
 import { parseAppleHealthXml, parseAppleStamp } from "../app/import/apple-health.ts";
 import { readZipDirectory, readZipEntryText } from "../app/import/zip.ts";
 import { applyImport, combineRecords, inspectFile, itemRecords, previewRecords } from "../app/import/index.ts";
+import {
+  mergeAppleHealthSyncPayload,
+  normalizeAppleHealthSyncPayload,
+  parseAppleHealthSync,
+} from "../app/apple-health-sync.ts";
 
 /* Shapes taken from what each vendor's own export looks like. Values are synthetic. */
 
@@ -415,6 +420,110 @@ test("Health Auto Export JSON is read as Apple data", async () => {
   });
   assert.deepEqual(records.dailyEntries[0], { date: "2026-08-22", steps: 8231, weightLb: 176.4 });
   assert.match(records.warnings[0], /vo2_max/);
+});
+
+test("Apple sync accepts body fat and partial wellness days but isolates workouts and clinical metrics", () => {
+  const parsed = parseAppleHealthSync({
+    data: {
+      metrics: [
+        {
+          name: "step_count",
+          units: "count",
+          data: [{ date: "2026-08-25 18:00:00 -0400", qty: 7_250 }],
+        },
+        {
+          name: "body_fat_percentage",
+          units: "%",
+          data: [{ date: "2026-08-25 07:30:00 -0400", qty: 0.184 }],
+        },
+        {
+          name: "sleep_analysis",
+          units: "min",
+          data: [{
+            sleepStart: "2026-08-24 23:20:00 -0400",
+            sleepEnd: "2026-08-25 06:50:00 -0400",
+            asleep: 420,
+          }],
+        },
+        {
+          name: "workouts",
+          units: "count",
+          data: [{ date: "2026-08-25 12:00:00 -0400", qty: 1, exercise: "Synthetic Squat" }],
+        },
+        {
+          name: "blood_glucose",
+          units: "mg/dL",
+          data: [{ date: "2026-08-25 08:00:00 -0400", qty: 91 }],
+        },
+      ],
+    },
+    workoutSets: [{ date: "2026-08-25", exercise: "Synthetic Squat", reps: 8 }],
+    labResults: [{ date: "2026-08-25", name: "Synthetic lab", value: 91 }],
+  });
+
+  assert.ok(parsed);
+  assert.deepEqual(parsed.payload.dailyEntries, [{ date: "2026-08-25", steps: 7_250, bodyFatPercent: 18.4 }]);
+  assert.deepEqual(parsed.payload.sleepEntries, [{
+    date: "2026-08-25",
+    source: "apple",
+    bedtime: "23:20",
+    wakeTime: "06:50",
+    durationHours: 7,
+  }]);
+  assert.equal(parsed.ignoredMetricTypes, 2);
+  assert.equal("workoutSets" in parsed.payload, false);
+  assert.equal("labResults" in parsed.payload, false);
+});
+
+test("Apple sync replays are idempotent and a partial day cannot erase earlier fields", () => {
+  const existing = normalizeAppleHealthSyncPayload({
+    dailyEntries: [{
+      date: "2026-08-25",
+      steps: 6_000,
+      weightLb: 181.2,
+      bodyFatPercent: 18.6,
+      note: "must not enter sync storage",
+    }],
+    sleepEntries: [{
+      date: "2026-08-25",
+      source: "whoop",
+      durationHours: 6.8,
+      deepHours: 1.1,
+      note: "must not enter sync storage",
+    }],
+    workoutSets: [{ date: "2026-08-25", exercise: "Synthetic Row" }],
+  });
+  assert.deepEqual(existing, {
+    dailyEntries: [{ date: "2026-08-25", steps: 6_000, weightLb: 181.2, bodyFatPercent: 18.6 }],
+    sleepEntries: [{ date: "2026-08-25", source: "apple", durationHours: 6.8, deepHours: 1.1 }],
+  });
+
+  const first = mergeAppleHealthSyncPayload(existing, {
+    dailyEntries: [{ date: "2026-08-25", steps: 7_250 }],
+    sleepEntries: [{ date: "2026-08-25", source: "apple", durationHours: 7.1 }],
+  });
+  assert.deepEqual(first.payload.dailyEntries, [{
+    date: "2026-08-25",
+    steps: 7_250,
+    weightLb: 181.2,
+    bodyFatPercent: 18.6,
+  }]);
+  assert.deepEqual(first.payload.sleepEntries, [{
+    date: "2026-08-25",
+    source: "apple",
+    durationHours: 7.1,
+    deepHours: 1.1,
+  }]);
+  assert.equal(first.changedDays, 1);
+  assert.equal(first.changedNights, 1);
+
+  const replay = mergeAppleHealthSyncPayload(first.payload, {
+    dailyEntries: [{ date: "2026-08-25", steps: 7_250 }],
+    sleepEntries: [{ date: "2026-08-25", source: "apple", durationHours: 7.1 }],
+  });
+  assert.deepEqual(replay.payload, first.payload);
+  assert.equal(replay.changedDays, 0);
+  assert.equal(replay.changedNights, 0);
 });
 
 /* ---------------------------------------------------------------- lifting */

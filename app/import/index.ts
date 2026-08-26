@@ -91,14 +91,21 @@ function tableItem(fileName: string, entryName: string | undefined, text: string
 
 /* --------------------------------------------------------------- json shapes */
 
-type AutoDailyField = "steps" | "weightLb" | "restingHeartRate" | "hrvMs";
+type AutoDailyField = "steps" | "weightLb" | "bodyFatPercent" | "restingHeartRate" | "hrvMs";
 
 const AUTO_EXPORT_METRICS: Record<string, AutoDailyField> = {
   step_count: "steps",
   weight_body_mass: "weightLb",
+  body_fat: "bodyFatPercent",
+  body_fat_percent: "bodyFatPercent",
+  body_fat_percentage: "bodyFatPercent",
   resting_heart_rate: "restingHeartRate",
   heart_rate_variability: "hrvMs",
 };
+
+export function isSupportedAutoExportMetric(name: string): boolean {
+  return name === "sleep_analysis" || Object.hasOwn(AUTO_EXPORT_METRICS, name);
+}
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -115,7 +122,7 @@ function numberOf(value: unknown): number | null {
  * and is the least painful way to get Apple Health out of a phone on a schedule,
  * so it is worth reading directly.
  */
-function parseAutoExport(value: unknown): ParsedRecords | null {
+export function parseAutoExport(value: unknown): ParsedRecords | null {
   const metrics = asRecord(asRecord(value).data).metrics;
   if (!Array.isArray(metrics)) return null;
 
@@ -184,14 +191,18 @@ function parseAutoExport(value: unknown): ParsedRecords | null {
         continue;
       }
       const value =
-        field === "weightLb" && /kg/i.test(units) ? Math.round(quantity * 2.204_62 * 10) / 10 : Math.round(quantity * 100) / 100;
+        field === "weightLb" && /kg/i.test(units)
+          ? Math.round(quantity * 2.204_62 * 10) / 10
+          : field === "bodyFatPercent" && quantity > 0 && quantity <= 1
+            ? Math.round(quantity * 10_000) / 100
+            : Math.round(quantity * 100) / 100;
       const current = daily.get(date) ?? { date };
       if (field === "steps") {
         current.steps = (numberOf(current.steps) ?? 0) + value;
-      } else if (field === "weightLb") {
+      } else if (field === "weightLb" || field === "bodyFatPercent") {
         // Auto Export writes points in chronological order. The latest body
         // reading is the day's value, rather than an average of weigh-ins.
-        current.weightLb = value;
+        current[field] = value;
       } else {
         const day = samples.get(date) ?? { restingHeartRate: [], hrvMs: [] };
         day[field].push(value);

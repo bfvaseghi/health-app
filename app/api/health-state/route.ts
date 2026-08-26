@@ -1,8 +1,9 @@
 import { and, desc, eq, notInArray } from "drizzle-orm";
 import { getDb } from "../../../db";
-import { healthStateBackups, healthStates } from "../../../db/schema";
+import { appleHealthSyncs, healthStateBackups, healthStates } from "../../../db/schema";
+import { normalizeAppleHealthSyncPayload } from "../../apple-health-sync";
 import { getChatGPTUser } from "../../chatgpt-auth";
-import { HealthState, findRetiredFields, normalizeHealthState } from "../../health-model";
+import { HealthState, findRetiredFields, mergeRecords, normalizeHealthState } from "../../health-model";
 
 const MAX_PAYLOAD_BYTES = 1_500_000;
 const BACKUP_LIMIT = 30;
@@ -24,6 +25,47 @@ async function authenticatedUserId(): Promise<string | null> {
 }
 
 type Database = ReturnType<typeof getDb>;
+type StoredState = { payload: string; updatedAt: string; revision: number };
+type StoredAppleSync = { payload: string; updatedAt: string };
+
+function expectedRevision(request: Request): number | null {
+  const match = /^"(\d+)"$/.exec(request.headers.get("if-match") ?? "");
+  if (!match) return null;
+  const revision = Number(match[1]);
+  return Number.isSafeInteger(revision) ? revision : null;
+}
+
+function parseStoredState(row: StoredState | undefined): HealthState | null {
+  if (!row) return null;
+  try {
+    const normalized = normalizeHealthState(JSON.parse(row.payload));
+    return normalizeHealthState({ ...normalized, updatedAt: row.updatedAt });
+  } catch {
+    return null;
+  }
+}
+
+/** Apple owns its small wellness lane and never mutates the editable state row. */
+function composeAppleSync(state: HealthState, apple: StoredAppleSync | undefined): HealthState {
+  if (!apple) return state;
+  let payload: unknown;
+  try {
+    payload = JSON.parse(apple.payload);
+  } catch {
+    return state;
+  }
+  const records = normalizeAppleHealthSyncPayload(payload);
+  if (!records.dailyEntries.length && !records.sleepEntries.length) return state;
+  const merged = mergeRecords(state, records);
+  return normalizeHealthState({
+    ...merged,
+    updatedAt: state.updatedAt > apple.updatedAt ? state.updatedAt : apple.updatedAt,
+  });
+}
+
+function revisionHeaders(revision: number): HeadersInit {
+  return { "Cache-Control": "no-store", ETag: `"${revision}"` };
+}
 
 /**
  * Rewrites the saved record and every snapshot without the fields this version
@@ -80,13 +122,27 @@ export async function GET() {
 
   try {
     const db = getDb();
-    const [row] = await db
-      .select({ payload: healthStates.payload, updatedAt: healthStates.updatedAt })
-      .from(healthStates)
-      .where(eq(healthStates.userId, userId))
-      .limit(1);
+    const [[row], [apple]] = await Promise.all([
+      db
+        .select({ payload: healthStates.payload, updatedAt: healthStates.updatedAt, revision: healthStates.revision })
+        .from(healthStates)
+        .where(eq(healthStates.userId, userId))
+        .limit(1),
+      db
+        .select({ payload: appleHealthSyncs.payload, updatedAt: appleHealthSyncs.updatedAt })
+        .from(appleHealthSyncs)
+        .where(eq(appleHealthSyncs.userId, userId))
+        .limit(1),
+    ]);
 
-    if (!row) return Response.json({ state: null });
+    if (!row) {
+      if (!apple) return Response.json({ state: null, revision: 0 }, { headers: revisionHeaders(0) });
+      const state = composeAppleSync(normalizeHealthState({ updatedAt: apple.updatedAt }), apple);
+      return Response.json(
+        { state, updatedAt: state.updatedAt, revision: 0 },
+        { headers: revisionHeaders(0) },
+      );
+    }
 
     let parsed: unknown;
     try {
@@ -96,11 +152,20 @@ export async function GET() {
     }
 
     const retired = findRetiredFields(parsed);
-    if (!retired.fields.length) return Response.json({ state: parsed, updatedAt: row.updatedAt });
-
-    const state = normalizeHealthState(parsed);
-    const snapshots = await purgeRetiredData(db, userId, state);
-    return Response.json({ state, updatedAt: row.updatedAt, purged: { ...retired, snapshots } });
+    const normalized = normalizeHealthState(parsed);
+    const base = normalizeHealthState({ ...normalized, updatedAt: row.updatedAt });
+    const snapshots = retired.fields.length ? await purgeRetiredData(db, userId, base) : 0;
+    const state = composeAppleSync(base, apple);
+    const updatedAt = state.updatedAt;
+    return Response.json(
+      {
+        state,
+        updatedAt,
+        revision: row.revision,
+        ...(retired.fields.length ? { purged: { ...retired, snapshots } } : {}),
+      },
+      { headers: revisionHeaders(row.revision) },
+    );
   } catch (error) {
     return routeError(error);
   }
@@ -109,6 +174,14 @@ export async function GET() {
 export async function PUT(request: Request) {
   const userId = await authenticatedUserId();
   if (!userId) return Response.json({ error: "Sign in with ChatGPT." }, { status: 401 });
+
+  const expected = expectedRevision(request);
+  if (expected === null) {
+    return Response.json(
+      { error: "Reload Baseline before saving this change." },
+      { status: 428, headers: { "Cache-Control": "no-store" } },
+    );
+  }
 
   const contentLength = Number(request.headers.get("content-length") ?? 0);
   if (contentLength > MAX_PAYLOAD_BYTES) {
@@ -139,18 +212,54 @@ export async function PUT(request: Request) {
   try {
     const db = getDb();
     const [current] = await db
-      .select({ payload: healthStates.payload })
+      .select({ payload: healthStates.payload, updatedAt: healthStates.updatedAt, revision: healthStates.revision })
       .from(healthStates)
       .where(eq(healthStates.userId, userId))
       .limit(1);
 
-    await db
-      .insert(healthStates)
-      .values({ userId, payload, updatedAt: now })
-      .onConflictDoUpdate({
-        target: healthStates.userId,
-        set: { payload, updatedAt: now },
-      });
+    const conflict = async () => {
+      const [[latest], [apple]] = await Promise.all([
+        db
+          .select({ payload: healthStates.payload, updatedAt: healthStates.updatedAt, revision: healthStates.revision })
+          .from(healthStates)
+          .where(eq(healthStates.userId, userId))
+          .limit(1),
+        db
+          .select({ payload: appleHealthSyncs.payload, updatedAt: appleHealthSyncs.updatedAt })
+          .from(appleHealthSyncs)
+          .where(eq(appleHealthSyncs.userId, userId))
+          .limit(1),
+      ]);
+      const parsedLatest = parseStoredState(latest);
+      const latestState = parsedLatest ? composeAppleSync(parsedLatest, apple) : null;
+      const revision = latest?.revision ?? 0;
+      return Response.json(
+        {
+          error: "A newer save arrived first.",
+          state: latestState,
+          updatedAt: latestState?.updatedAt ?? latest?.updatedAt ?? null,
+          revision,
+        },
+        { status: 409, headers: revisionHeaders(revision) },
+      );
+    };
+
+    if (expected !== (current?.revision ?? 0)) return conflict();
+
+    const nextRevision = expected + 1;
+    const written = current
+      ? await db
+          .update(healthStates)
+          .set({ payload, updatedAt: now, revision: nextRevision })
+          .where(and(eq(healthStates.userId, userId), eq(healthStates.revision, expected)))
+          .returning({ revision: healthStates.revision })
+      : await db
+          .insert(healthStates)
+          .values({ userId, payload, updatedAt: now, revision: nextRevision })
+          .onConflictDoNothing({ target: healthStates.userId })
+          .returning({ revision: healthStates.revision });
+
+    if (!written.length) return conflict();
 
     if (current?.payload && current.payload !== payload) {
       // Snapshot the previous record in this version's shape, so a retired field
@@ -185,7 +294,10 @@ export async function PUT(request: Request) {
       }
     }
 
-    return Response.json({ state, updatedAt: now });
+    return Response.json(
+      { state, updatedAt: now, revision: nextRevision },
+      { headers: revisionHeaders(nextRevision) },
+    );
   } catch (error) {
     return routeError(error);
   }

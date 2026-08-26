@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useState } from "react";
+import { ChangeEvent, useEffect, useState } from "react";
 import {
   GoalSettings,
   HealthState,
@@ -96,6 +96,8 @@ export function DataView({
           </div>
         </div>
       </section>
+
+      <AppleHealthSyncPanel onNotice={onNotice} />
 
       {/* Keyed so a restored backup or a sync from another device replaces the draft outright. */}
       <GoalsPanel key={JSON.stringify(state.goals)} goals={state.goals} onGoals={onGoals} />
@@ -240,6 +242,165 @@ export function DataView({
         </p>
       </section>
     </div>
+  );
+}
+
+type AppleSyncStatus = {
+  loading: boolean;
+  configured: boolean;
+  lastSyncedAt: string | null;
+};
+
+/**
+ * The phone sends Apple Health straight to Baseline. ChatGPT Health is not a
+ * second writer for the same metrics, and Strong remains the only workout
+ * source, so an automatic refresh cannot duplicate a set or choose a winner by
+ * accident.
+ */
+function AppleHealthSyncPanel({ onNotice }: { onNotice: (message: string) => void }) {
+  const [status, setStatus] = useState<AppleSyncStatus>({ loading: true, configured: false, lastSyncedAt: null });
+  const [token, setToken] = useState("");
+  const [endpoint, setEndpoint] = useState(() =>
+    typeof window === "undefined"
+      ? "/api/apple-health-sync"
+      : new URL("/api/apple-health-sync", window.location.origin).toString(),
+  );
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    void fetch("/api/apple-health-sync/setup", { cache: "no-store" })
+      .then(async (response) => {
+        const data = (await response.json()) as { configured?: boolean; lastSyncedAt?: string | null; error?: string };
+        if (!response.ok) throw new Error(data.error ?? "Apple Health sync is unavailable.");
+        if (active) {
+          setStatus({
+            loading: false,
+            configured: data.configured === true,
+            lastSyncedAt: data.lastSyncedAt ?? null,
+          });
+        }
+      })
+      .catch((error) => {
+        if (!active) return;
+        setStatus((current) => ({ ...current, loading: false }));
+        onNotice(error instanceof Error ? error.message : "Apple Health sync is unavailable.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [onNotice]);
+
+  async function createToken() {
+    setBusy(true);
+    try {
+      const response = await fetch("/api/apple-health-sync/setup", { method: "POST" });
+      const data = (await response.json()) as { token?: string; endpoint?: string; error?: string };
+      if (!response.ok || !data.token) throw new Error(data.error ?? "A sync key could not be created.");
+      setToken(data.token);
+      if (data.endpoint) setEndpoint(new URL(data.endpoint, window.location.origin).toString());
+      setStatus((current) => ({ ...current, loading: false, configured: true }));
+      onNotice("Apple Health sync is ready to connect.");
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "A sync key could not be created.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function revokeToken() {
+    setBusy(true);
+    try {
+      const response = await fetch("/api/apple-health-sync/setup", { method: "DELETE" });
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(data.error ?? "Apple Health sync could not be turned off.");
+      setToken("");
+      setStatus({ loading: false, configured: false, lastSyncedAt: null });
+      onNotice("Apple Health sync is off.");
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "Apple Health sync could not be turned off.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function copy(value: string, label: string) {
+    try {
+      await navigator.clipboard.writeText(value);
+      onNotice(`${label} copied.`);
+    } catch {
+      onNotice(`Press and hold to copy the ${label.toLowerCase()}.`);
+    }
+  }
+
+  const bearer = token ? `Bearer ${token}` : "";
+  const summary = status.loading
+    ? "Checking connection…"
+    : status.configured
+      ? status.lastSyncedAt
+        ? `Last received ${formatTimestamp(status.lastSyncedAt)}`
+        : "Ready for its first sync"
+      : "Off";
+
+  return (
+    <section className="panel wide-panel apple-sync-panel">
+      <div className="panel-head wrap">
+        <div>
+          <p className="kicker">Automatic · every 2 days</p>
+          <h2>Apple Health sync</h2>
+          <p className="panel-body">{summary}</p>
+        </div>
+        {!status.configured ? (
+          <button type="button" className="button primary small" disabled={status.loading || busy} onClick={createToken}>
+            {busy ? "Creating…" : "Create connection"}
+          </button>
+        ) : (
+          <div className="heading-actions">
+            <button type="button" className="button secondary small" disabled={busy} onClick={createToken}>
+              New key
+            </button>
+            <ConfirmButton
+              label="Turn off"
+              confirmLabel="Turn off sync"
+              className="button secondary small"
+              onConfirm={revokeToken}
+            />
+          </div>
+        )}
+      </div>
+
+      {token ? (
+        <div className="sync-credentials" aria-label="Apple Health connection details">
+          <div>
+            <small>URL</small>
+            <code>{endpoint}</code>
+            <button type="button" className="text-button" onClick={() => copy(endpoint, "URL")}>Copy</button>
+          </div>
+          <div>
+            <small>Header</small>
+            <code>Authorization</code>
+          </div>
+          <div>
+            <small>Value</small>
+            <code>{bearer}</code>
+            <button type="button" className="text-button" onClick={() => copy(bearer, "Key")}>Copy</button>
+          </div>
+        </div>
+      ) : status.configured ? (
+        <p className="panel-body">The key is hidden. Create a new one only if you need to reconnect the phone.</p>
+      ) : null}
+
+      {status.configured ? (
+        <ol className="sync-steps">
+          <li>Health Auto Export → New Automation → REST API</li>
+          <li>JSON · daily totals · last 4 days · every 2 days</li>
+          <li>Steps, sleep, weight, body fat, resting HR and HRV</li>
+        </ol>
+      ) : (
+        <p className="panel-body">One feed owns wellness data. Strong stays the only source for sets, reps and loads.</p>
+      )}
+      <Note icon="lock">Medical records, labs, medications and workouts are refused by this connection.</Note>
+    </section>
   );
 }
 

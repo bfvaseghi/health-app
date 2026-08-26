@@ -49,7 +49,7 @@ import {
   removeMedication,
   medicationDosesCsv,
 } from "../app/health-model.ts";
-import { chooseInitialState } from "../app/state-sync.ts";
+import { chooseInitialState, mergeConcurrentHealthState } from "../app/state-sync.ts";
 
 const fixedNow = new Date("2030-01-15T12:00:00.000Z");
 
@@ -109,6 +109,29 @@ test("a newer offline copy wins initialization and is marked for sync", () => {
   assert.equal(newerRemote.needsSync, false);
 
   assert.equal(chooseInitialState(local, null, remote).needsSync, true, "a first local copy must seed an empty server");
+});
+
+test("a revision conflict keeps independent edits from both devices", () => {
+  const base = normalizeHealthState({
+    ...emptyHealthState(fixedNow),
+    dailyEntries: [{ date: "2030-01-15", steps: 1_000, proteinG: 100, weightLb: 180 }],
+  });
+  const local = normalizeHealthState({
+    ...base,
+    dailyEntries: [{ date: "2030-01-15", steps: 1_000, proteinG: 180, weightLb: 181 }],
+  });
+  const remote = normalizeHealthState({
+    ...base,
+    dailyEntries: [{ date: "2030-01-15", steps: 9_000, proteinG: 100, weightLb: 179 }],
+    sleepEntries: [{ date: "2030-01-15", source: "apple", durationHours: 8 }],
+  });
+
+  const merged = mergeConcurrentHealthState(base, local, remote);
+  assert.equal(merged.state.dailyEntries[0].steps, 9_000, "the untouched local step count accepts the remote edit");
+  assert.equal(merged.state.dailyEntries[0].proteinG, 180, "the local protein edit survives");
+  assert.equal(merged.state.dailyEntries[0].weightLb, 181, "the local side wins a same-field conflict");
+  assert.equal(merged.state.sleepEntries[0].durationHours, 8, "a new remote record survives");
+  assert.equal(merged.conflicts, 1);
 });
 
 test("normalization does not silently trim valid history", () => {
