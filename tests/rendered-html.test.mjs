@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-test("renders the Bardia Health app shell", async () => {
+test("renders the Baseline app shell", async () => {
   const workerUrl = new URL("../dist/server/index.js", import.meta.url);
   workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
   const { default: worker } = await import(workerUrl.href);
@@ -27,7 +27,17 @@ test("renders the Bardia Health app shell", async () => {
     /^text\/html\b/i,
   );
   const html = await response.text();
-  assert.match(html, /<title>Bardia Health<\/title>/i);
-  assert.match(html, /private dashboard for sleep, mental health/i);
+  assert.match(html, /<title>Baseline<\/title>/i);
+  assert.match(html, /private record of sleep, training/i);
   assert.doesNotMatch(html, /codex-preview/i);
+
+  // What makes it installable rather than a page someone bookmarks. These are
+  // easy to lose in a metadata refactor and impossible to notice by looking.
+  assert.match(html, /<link rel="manifest" href="[^"]*\/manifest\.webmanifest"/i);
+  assert.match(html, /<link rel="apple-touch-icon" href="[^"]*\/apple-touch-icon\.png"/i);
+  assert.match(html, /<meta name="mobile-web-app-capable" content="yes"/i);
+  // Safari still wants the apple-prefixed one to drop the browser chrome.
+  assert.match(html, /<meta name="apple-mobile-web-app-capable" content="yes"/i);
+  assert.match(html, /<meta name="apple-mobile-web-app-title" content="Baseline"/i);
+  assert.match(html, /<meta name="viewport" content="[^"]*viewport-fit=cover[^"]*"/i);
 });

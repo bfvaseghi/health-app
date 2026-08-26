@@ -41,3 +41,12 @@ next-env.d.ts
 /.sites-runtime/
 /outputs/
 /work/
+
+# Private health exports and backups belong on the device, never in source.
+/data/
+/exports/
+/*.csv
+/*.tsv
+/*.xml
+/*.zip
+/*backup*.json

@@ -1,5 +1,5 @@
 {
-  "name": "bardia-health",
+  "name": "baseline",
   "version": "0.1.0",
   "private": true,
   "engines": {
@@ -10,7 +10,7 @@
     "dev": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vite",
     "build": "bash scripts/build-verified.sh",
     "start": "WRANGLER_LOG_PATH=.wrangler/wrangler.log vinext start",
-    "test:model": "node --experimental-strip-types --test tests/health-model.test.mjs tests/therapy-model.test.mjs",
+    "test:model": "node --experimental-strip-types --import ./tests/register-ts-extension-loader.mjs --test tests/health-model.test.mjs tests/import.test.mjs tests/coach.test.mjs tests/progress.test.mjs tests/demo-state.test.mjs",
     "test": "npm run test:model && npm run build && npm run test:render",
     "test:render": "node --import ./tests/register-cloudflare-loader.mjs --test tests/rendered-html.test.mjs",
     "lint": "bash scripts/sites-env.sh -- eslint . --ignore-pattern dist --ignore-pattern .next",
@@ -41,5 +41,5 @@
     "wrangler": "4.92.0"
   },
   "type": "module",
-  "displayName": "Bardia Health"
+  "displayName": "Baseline"
 }
