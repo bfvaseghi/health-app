@@ -238,6 +238,32 @@ export function demoHealthState(today: string): HealthState {
       { id: "demo-note-1", date: addDays(today, -8), text: "Synthetic example: ask what made the rushed day feel different.", shared: true, sharedDate: addDays(today, -6) },
       { id: "demo-note-2", date: addDays(today, -2), text: "Synthetic example: practise one short pause before answering.", shared: false, sharedDate: "" },
     ],
+    thoughtJournal: [
+      {
+        id: "demo-thought-1",
+        date: addDays(today, -1),
+        createdAt: `${addDays(today, -1)}T20:15:00.000Z`,
+        source: "manual",
+        title: "After the long walk",
+        text: "Synthetic example: I felt calmer once I stopped trying to solve the whole week at once.",
+      },
+      {
+        id: "demo-thought-2",
+        date: addDays(today, -4),
+        createdAt: `${addDays(today, -4)}T09:30:00.000Z`,
+        source: "apple-notes",
+        title: "Morning note",
+        text: "Synthetic Apple Notes example: protect one quiet hour before opening messages.",
+      },
+      {
+        id: "demo-thought-3",
+        date: addDays(today, -9),
+        createdAt: `${addDays(today, -9)}T18:40:00.000Z`,
+        source: "manual",
+        title: "What worked",
+        text: "Synthetic example: writing the next concrete action made the uncertainty feel smaller.",
+      },
+    ],
     progressPhotos: [],
     goals: {
       sleepHours: 8.2,

@@ -201,6 +201,7 @@ export function mergeConcurrentHealthState(
     (value) => `${value.startedAt}:${value.exercise}:${value.setNumber}`,
   );
   const notes = mergeList(common.therapyNotes, local.therapyNotes, remote.therapyNotes, (value) => value.id);
+  const thoughts = mergeList(common.thoughtJournal, local.thoughtJournal, remote.thoughtJournal, (value) => value.id);
   const photos = mergeList(common.progressPhotos, local.progressPhotos, remote.progressPhotos, (value) => value.id);
   const goals = mergeGoals(common.goals, local.goals, remote.goals);
 
@@ -215,6 +216,7 @@ export function mergeConcurrentHealthState(
       labResults: labs.values,
       workoutSets: workouts.values,
       therapyNotes: notes.values,
+      thoughtJournal: thoughts.values,
       progressPhotos: photos.values,
       goals: goals.goals,
     }),
@@ -226,6 +228,7 @@ export function mergeConcurrentHealthState(
       labs.conflicts +
       workouts.conflicts +
       notes.conflicts +
+      thoughts.conflicts +
       photos.conflicts +
       goals.conflicts,
   };

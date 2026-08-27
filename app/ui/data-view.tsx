@@ -197,6 +197,7 @@ export function DataView({
               <div><dt>Nights</dt><dd>{pendingRestore.summary.nights}</dd></div>
               <div><dt>Workouts</dt><dd>{pendingRestore.summary.workouts}</dd></div>
               <div><dt>Labs</dt><dd>{pendingRestore.summary.labs}</dd></div>
+              <div><dt>Thoughts</dt><dd>{pendingRestore.summary.thoughts}</dd></div>
               <div><dt>Photos</dt><dd>{pendingRestore.photoEntries.length} available</dd></div>
             </dl>
             <div className="heading-actions">
@@ -235,11 +236,8 @@ export function DataView({
         </div>
       </section>
 
-      {demo ? (
-        <Note icon="lock">Automatic Apple sync and private recovery snapshots are available in your real record.</Note>
-      ) : (
-        <AppleHealthSyncPanel onNotice={onNotice} onChanged={onAppleChanged} />
-      )}
+      <AppleHealthSyncPanel onNotice={onNotice} onChanged={onAppleChanged} demo={demo} />
+      {demo ? <Note icon="lock">Private recovery snapshots are available in your real record.</Note> : null}
 
       {/* Keyed so a restored backup or a sync from another device replaces the draft outright. */}
       <GoalsPanel key={JSON.stringify(state.goals)} goals={state.goals} onGoals={onGoals} />
@@ -346,20 +344,26 @@ type AppleSyncStatus = {
 function AppleHealthSyncPanel({
   onNotice,
   onChanged,
+  demo = false,
 }: {
   onNotice: (message: string) => void;
   onChanged: (overlay: Partial<ImportRecords> | null) => void;
+  demo?: boolean;
 }) {
-  const [status, setStatus] = useState<AppleSyncStatus>({ loading: true, configured: false, lastSyncedAt: null });
+  const [status, setStatus] = useState<AppleSyncStatus>({ loading: !demo, configured: false, lastSyncedAt: null });
   const [token, setToken] = useState("");
   const [endpoint, setEndpoint] = useState(() =>
     typeof window === "undefined"
       ? "/api/apple-health-sync"
       : new URL("/api/apple-health-sync", window.location.origin).toString(),
   );
+  const notesEndpoint = typeof window === "undefined"
+    ? "/api/thought-journal"
+    : new URL("/api/thought-journal", window.location.origin).toString();
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    if (demo) return;
     let active = true;
     void fetch("/api/apple-health-sync/setup", { cache: "no-store", signal: AbortSignal.timeout(10_000) })
       .then(async (response) => {
@@ -387,7 +391,7 @@ function AppleHealthSyncPanel({
     return () => {
       active = false;
     };
-  }, [onNotice, onChanged]);
+  }, [demo, onNotice, onChanged]);
 
   async function createToken() {
     setBusy(true);
@@ -398,7 +402,7 @@ function AppleHealthSyncPanel({
       setToken(data.token);
       if (data.endpoint) setEndpoint(new URL(data.endpoint, window.location.origin).toString());
       setStatus((current) => ({ ...current, loading: false, configured: true }));
-      onNotice("Apple Health sync is ready to connect.");
+      onNotice("Your private iPhone connection is ready.");
     } catch (error) {
       onNotice(error instanceof Error ? error.message : "A sync key could not be created.");
     } finally {
@@ -415,7 +419,7 @@ function AppleHealthSyncPanel({
       setToken("");
       setStatus({ loading: false, configured: false, lastSyncedAt: null });
       onChanged(null);
-      onNotice("Apple Health sync is off.");
+      onNotice("The private iPhone connection is off. Saved thoughts remain in Mind.");
     } catch (error) {
       onNotice(error instanceof Error ? error.message : "Apple Health sync could not be turned off.");
     } finally {
@@ -433,7 +437,9 @@ function AppleHealthSyncPanel({
   }
 
   const bearer = token ? `Bearer ${token}` : "";
-  const summary = status.loading
+  const summary = demo
+    ? "Preview only · no connection or key is created"
+    : status.loading
     ? "Checking connection…"
     : status.configured
       ? status.lastSyncedAt
@@ -445,19 +451,21 @@ function AppleHealthSyncPanel({
     <section className="panel wide-panel apple-sync-panel">
       <div className="panel-head wrap">
         <div>
-          <p className="kicker">Automatic · every 2 days</p>
-          <h2>Apple Health sync</h2>
+          <p className="kicker">Health automation · Notes share sheet</p>
+          <h2>Private iPhone connection</h2>
           <p className="panel-body">{summary}</p>
         </div>
-        {!status.configured ? (
+        {demo ? (
+          <button type="button" className="button secondary small" disabled>Real record only</button>
+        ) : !status.configured ? (
           <button type="button" className="button primary small" disabled={status.loading || busy} onClick={createToken}>
             {busy ? "Creating…" : "Create connection"}
           </button>
         ) : (
           <div className="heading-actions">
             <ConfirmButton
-              label="Replace connection key"
-              confirmLabel="Disconnect old phone"
+              label="Replace shared key"
+              confirmLabel="Replace key for both"
               className="button secondary small"
               icon="key"
               disabled={busy}
@@ -465,7 +473,7 @@ function AppleHealthSyncPanel({
             />
             <ConfirmButton
               label="Turn off"
-              confirmLabel="Turn off sync"
+              confirmLabel="Turn off both feeds"
               className="button secondary small"
               disabled={busy}
               onConfirm={revokeToken}
@@ -475,11 +483,16 @@ function AppleHealthSyncPanel({
       </div>
 
       {token ? (
-        <div className="sync-credentials" aria-label="Apple Health connection details">
+        <div className="sync-credentials" aria-label="Private iPhone connection details">
           <div>
-            <small>URL</small>
+            <small>Health URL</small>
             <code>{endpoint}</code>
-            <button type="button" className="text-button" onClick={() => copy(endpoint, "URL")}>Copy</button>
+            <button type="button" className="text-button" onClick={() => copy(endpoint, "Health URL")}>Copy</button>
+          </div>
+          <div>
+            <small>Notes URL</small>
+            <code>{notesEndpoint}</code>
+            <button type="button" className="text-button" onClick={() => copy(notesEndpoint, "Notes URL")}>Copy</button>
           </div>
           <div>
             <small>Header</small>
@@ -492,19 +505,34 @@ function AppleHealthSyncPanel({
           </div>
         </div>
       ) : status.configured ? (
-        <p className="panel-body">The key is hidden. Create a new one only if you need to reconnect the phone.</p>
+        <p className="panel-body">The shared key is hidden. To add Send to Mind now, replace it and update Health Auto Export with the new key too.</p>
       ) : null}
 
-      {status.configured ? (
-        <ol className="sync-steps">
-          <li>Health Auto Export → New Automation → REST API</li>
-          <li>JSON · daily totals · last 4 days · every 2 days</li>
-          <li>Steps, sleep, weight, body fat, resting HR and HRV</li>
-        </ol>
-      ) : (
-        <p className="panel-body">One feed owns wellness data. Strong stays the only source for sets, reps and loads.</p>
-      )}
-      <Note icon="lock">Medical records, labs, medications and workouts are refused by this connection.</Note>
+      {!status.configured && !demo ? (
+        <p className="panel-body">Create one private connection to reveal the two URLs and shared key.</p>
+      ) : null}
+      <div className="iphone-connection-guides">
+          <div>
+            <h3>Health Auto Export</h3>
+            <ol className="sync-steps">
+              <li>New Automation → REST API → paste the Health URL</li>
+              <li>Use JSON · daily totals · last 4 days · every 2 days</li>
+              <li>Select steps, sleep, weight, body fat, resting HR and HRV</li>
+            </ol>
+          </div>
+          <div>
+            <h3>Apple Notes → Thought Journal</h3>
+            <ol className="sync-steps">
+              <li>Create a Share Sheet Shortcut named “Send to Mind”</li>
+              <li>Get Text from Shortcut Input, then POST JSON to the Notes URL</li>
+              <li>Send a JSON field named “text” and use the same Authorization header above</li>
+            </ol>
+            <p className="panel-body">In Notes, choose Share → Send Copy → Send to Mind. A “Thought Journal” folder or #thought-journal tag keeps selected notes easy to find. Re-sending identical text on the same date is safely ignored.</p>
+          </div>
+      </div>
+      <Note icon="lock">{demo
+        ? "This is a setup preview. Open your real record to create the private URLs and key."
+        : "The Health URL accepts only approved wellness metrics. The Notes URL accepts only thought text and optional metadata; neither URL can read your record. Replacing or turning off the shared key affects both connections, but thoughts already saved in Mind remain."}</Note>
     </section>
   );
 }

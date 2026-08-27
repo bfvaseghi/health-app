@@ -10,6 +10,7 @@ import {
   progressPhotosCsv,
   sleepEntriesCsv,
   therapyNotesCsv,
+  thoughtJournalCsv,
   workoutSetsCsv,
 } from "./health-model";
 import { normalizeAppleHealthSyncPayload } from "./apple-health-sync";
@@ -21,7 +22,7 @@ export const SOURCE_ARCHIVE = `${SOURCE_REPOSITORY}/archive/refs/heads/main.zip`
 
 type BackupEnvelope = {
   format: "baseline-backup";
-  backupVersion: 2;
+  backupVersion: 3;
   createdAt: string;
   source: { repository: string; archive: string };
   state: HealthState;
@@ -38,6 +39,7 @@ export type BackupSummary = {
   labs: number;
   medications: number;
   therapyNotes: number;
+  thoughts: number;
   photos: number;
 };
 
@@ -53,7 +55,7 @@ type ZipFile = { name: string; data: Uint8Array };
 function envelope(state: HealthState): BackupEnvelope {
   return {
     format: "baseline-backup",
-    backupVersion: 2,
+    backupVersion: 3,
     createdAt: new Date().toISOString(),
     source: { repository: SOURCE_REPOSITORY, archive: SOURCE_ARCHIVE },
     state,
@@ -68,6 +70,7 @@ function dateRange(state: HealthState): [string | null, string | null] {
     ...state.workoutSets.map((entry) => entry.date),
     ...state.medicationDoses.map((entry) => entry.date),
     ...state.therapyNotes.map((entry) => entry.date),
+    ...state.thoughtJournal.map((entry) => entry.date),
     ...state.progressPhotos.map((entry) => entry.date),
   ].sort();
   return [dates[0] ?? null, dates.at(-1) ?? null];
@@ -86,6 +89,7 @@ export function backupSummary(state: HealthState, createdAt: string | null = nul
     labs: state.labResults.length,
     medications: state.medications.length,
     therapyNotes: state.therapyNotes.length,
+    thoughts: state.thoughtJournal.length,
     photos: state.progressPhotos.length,
   };
 }
@@ -204,6 +208,7 @@ export async function createBaselineArchive(
     textFile("csv/medications.csv", medicationsCsv(state.medications)),
     textFile("csv/medication-doses.csv", medicationDosesCsv(state)),
     textFile("csv/therapy-notes.csv", therapyNotesCsv(state.therapyNotes)),
+    textFile("csv/thought-journal.csv", thoughtJournalCsv(state.thoughtJournal)),
     textFile("csv/progress-photos.csv", progressPhotosCsv(state.progressPhotos)),
     textFile("csv/goals.csv", goalsCsv(state.goals)),
   ];
@@ -226,7 +231,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function parseJsonBackup(value: unknown): { state: HealthState; createdAt: string | null } {
   const record = asRecord(value);
-  if (record.format === "baseline-backup" && record.backupVersion === 2 && record.state) {
+  if (record.format === "baseline-backup" && (record.backupVersion === 2 || record.backupVersion === 3) && record.state) {
     return {
       state: normalizeHealthState(record.state),
       createdAt: typeof record.createdAt === "string" ? record.createdAt : null,

@@ -48,8 +48,13 @@ import {
   upsertMedication,
   removeMedication,
   medicationDosesCsv,
+  mindSummary,
+  normalizeThoughtJournalEntry,
+  thoughtJournalCsv,
+  upsertThoughtJournalEntry,
 } from "../app/health-model.ts";
 import { createBaselineArchive, parseBackupFile } from "../app/portability.ts";
+import { parseThoughtJournalShortcut, thoughtJournalFingerprint } from "../app/thought-journal.ts";
 import {
   chooseInitialState,
   localStateEnvelope,
@@ -126,6 +131,14 @@ test("the complete archive round-trips while unrelated JSON is rejected", async 
   const state = normalizeHealthState({
     ...emptyHealthState(fixedNow),
     dailyEntries: [{ date: "2030-01-15", proteinG: 180, note: "synthetic" }],
+    thoughtJournal: [{
+      id: "synthetic-thought",
+      date: "2030-01-14",
+      createdAt: "2030-01-14T20:00:00.000Z",
+      source: "manual",
+      title: "Synthetic title",
+      text: "Synthetic journal text",
+    }],
   });
   const archive = await createBaselineArchive(state, {
     dailyEntries: [{ date: "2030-01-15", steps: 9000 }],
@@ -133,11 +146,78 @@ test("the complete archive round-trips while unrelated JSON is rejected", async 
   const parsed = await parseBackupFile(new File([archive], "baseline.zip", { type: "application/zip" }));
   assert.equal(parsed.state.dailyEntries[0].proteinG, 180);
   assert.equal(parsed.state.dailyEntries[0].steps, null, "automatic Apple data stays outside the editable backup");
+  assert.equal(parsed.state.thoughtJournal[0].text, "Synthetic journal text");
+  assert.equal(parsed.summary.thoughts, 1);
+
+  const legacyV2 = await parseBackupFile(new File([JSON.stringify({
+    format: "baseline-backup",
+    backupVersion: 2,
+    createdAt: "2030-01-15T12:00:00.000Z",
+    state: { ...state, thoughtJournal: undefined },
+  })], "baseline-v2.json", { type: "application/json" }));
+  assert.deepEqual(legacyV2.state.thoughtJournal, [], "version 2 backups remain restorable");
 
   await assert.rejects(
     parseBackupFile(new File(["{}"], "unrelated.json", { type: "application/json" })),
     /not a Baseline backup/i,
   );
+});
+
+test("thought journal entries normalize, merge into mind history, and export safely", () => {
+  const normalized = normalizeThoughtJournalEntry({
+    date: "2030-01-15",
+    source: "apple-notes",
+    title: "  Synthetic reflection  ",
+    text: "  =HYPERLINK(\"https://invalid.example\")  ",
+    createdAt: "2030-01-15T08:30:00-05:00",
+  });
+  assert.ok(normalized);
+  assert.equal(normalized.source, "apple-notes");
+  assert.equal(normalized.title, "Synthetic reflection");
+  assert.equal(normalized.createdAt, "2030-01-15T13:30:00.000Z");
+
+  const state = upsertThoughtJournalEntry(emptyHealthState(fixedNow), normalized);
+  assert.equal(state.thoughtJournal.length, 1);
+  assert.equal(mindSummary(state, "2030-01-15", 7).journalDays, 1);
+
+  const csv = thoughtJournalCsv(state.thoughtJournal);
+  assert.match(csv, /'=HYPERLINK/,
+    "spreadsheet exports neutralize formula-looking journal text");
+  const negativeLabCsv = labResultsCsv([{ id: "negative", name: "Synthetic", date: "2030-01-15", value: -2, unit: "", rangeLow: null, rangeHigh: null, note: "" }]);
+  assert.match(negativeLabCsv, /,-2,/, "genuine negative numbers remain numeric");
+});
+
+test("the Apple Notes shortcut boundary is strict and idempotent", () => {
+  const parsed = parseThoughtJournalShortcut({
+    text: "  A synthetic Apple Note  ",
+    title: "  Morning note  ",
+    createdAt: "2030-01-15T08:30:00-05:00",
+    sourceKey: "synthetic-note-key",
+  }, "2030-01-15");
+  assert.equal(parsed.ok, true);
+  if (!parsed.ok) return;
+  assert.equal(parsed.value.text, "A synthetic Apple Note");
+  assert.equal(parsed.value.date, "2030-01-15");
+  assert.equal(parsed.value.createdAt, "2030-01-15T13:30:00.000Z");
+  assert.equal(thoughtJournalFingerprint(parsed.value), "synthetic-note-key");
+
+  assert.equal(parseThoughtJournalShortcut({ text: " " }, "2030-01-15").ok, false);
+  assert.equal(parseThoughtJournalShortcut({ text: "synthetic", date: "2030-01-17" }, "2030-01-15").ok, false);
+  assert.equal(parseThoughtJournalShortcut({ text: "synthetic", date: "2030-01-15", createdAt: "2099-01-01T12:00:00Z" }, "2030-01-15").ok, false);
+  assert.equal(parseThoughtJournalShortcut({ text: "synthetic", date: "2030-01-16" }, "2030-01-15").ok, true,
+    "one local-calendar day ahead of UTC is tolerated");
+});
+
+test("independent thought journal entries survive a concurrent merge", () => {
+  const base = emptyHealthState(fixedNow);
+  const local = upsertThoughtJournalEntry(base, {
+    id: "local-thought", date: "2030-01-15", createdAt: "2030-01-15T10:00:00Z", text: "Local synthetic thought",
+  });
+  const remote = upsertThoughtJournalEntry(base, {
+    id: "remote-thought", date: "2030-01-15", createdAt: "2030-01-15T11:00:00Z", text: "Remote synthetic thought",
+  });
+  const merged = mergeConcurrentHealthState(base, local, remote);
+  assert.deepEqual(new Set(merged.state.thoughtJournal.map((entry) => entry.id)), new Set(["local-thought", "remote-thought"]));
 });
 
 test("a revision conflict keeps independent edits from both devices", () => {

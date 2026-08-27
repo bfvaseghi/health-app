@@ -55,6 +55,16 @@ export type TherapyNote = {
   sharedDate: string;
 };
 
+/** A private free-form reflection, kept separate from the therapy agenda. */
+export type ThoughtJournalEntry = {
+  id: string;
+  date: string;
+  text: string;
+  source: "manual" | "apple-notes";
+  title: string;
+  createdAt: string;
+};
+
 /**
  * A progress photo's record. The image itself is not here: photos live in this
  * device's own storage, and only what describes them is synced.
@@ -174,6 +184,7 @@ export type HealthState = {
   labResults: LabResult[];
   workoutSets: WorkoutSet[];
   therapyNotes: TherapyNote[];
+  thoughtJournal: ThoughtJournalEntry[];
   progressPhotos: ProgressPhoto[];
   goals: GoalSettings;
 };
@@ -217,6 +228,7 @@ export function emptyHealthState(now = new Date()): HealthState {
     labResults: [],
     workoutSets: [],
     therapyNotes: [],
+    thoughtJournal: [],
     progressPhotos: [],
     goals: { ...defaultGoals },
   };
@@ -504,6 +516,25 @@ export function normalizeTherapyNote(value: unknown): TherapyNote | null {
   };
 }
 
+export function normalizeThoughtJournalEntry(value: unknown): ThoughtJournalEntry | null {
+  const entry = recordValue(value);
+  const text = safeText(entry.text, 10_000);
+  if (!text) return null;
+  const date = validIsoDate(entry.date) ? entry.date : todayLocal();
+  const source = entry.source === "apple-notes" ? "apple-notes" : "manual";
+  const createdAt = typeof entry.createdAt === "string" && Number.isFinite(Date.parse(entry.createdAt))
+    ? new Date(entry.createdAt).toISOString()
+    : `${date}T12:00:00.000Z`;
+  return {
+    id: safeText(entry.id, 160) || `thought-${date}-${Math.abs(hashText(`${source}:${text}`)).toString(36)}`,
+    date,
+    text,
+    source,
+    title: safeText(entry.title, 160),
+    createdAt,
+  };
+}
+
 export function normalizeProgressPhoto(value: unknown): ProgressPhoto | null {
   const photo = recordValue(value);
   const id = safeText(photo.id, 120);
@@ -783,6 +814,9 @@ export function normalizeHealthState(value: unknown): HealthState {
   const therapy = Array.isArray(state.therapyNotes)
     ? state.therapyNotes.map(normalizeTherapyNote).filter((note): note is TherapyNote => Boolean(note))
     : [];
+  const thoughts = Array.isArray(state.thoughtJournal)
+    ? state.thoughtJournal.map(normalizeThoughtJournalEntry).filter((entry): entry is ThoughtJournalEntry => Boolean(entry))
+    : [];
   const photos = Array.isArray(state.progressPhotos)
     ? state.progressPhotos.map(normalizeProgressPhoto).filter((photo): photo is ProgressPhoto => Boolean(photo))
     : [];
@@ -820,6 +854,8 @@ export function normalizeHealthState(value: unknown): HealthState {
     workoutSets: dedupeByKey(workouts, (entry) => `${entry.startedAt}:${entry.exercise}:${entry.setNumber}`)
       .sort((a, b) => b.startedAt.localeCompare(a.startedAt) || a.exercise.localeCompare(b.exercise) || a.setNumber - b.setNumber),
     therapyNotes: dedupeByKey(therapy, (note) => note.id).sort((a, b) => b.date.localeCompare(a.date)),
+    thoughtJournal: dedupeByKey(thoughts, (entry) => entry.id)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.date.localeCompare(a.date)),
     progressPhotos: dedupeByKey(photos, (photo) => photo.id).sort((a, b) => b.date.localeCompare(a.date)),
     goals: normalizeGoals(state.goals),
   };
@@ -1160,6 +1196,7 @@ export function latestRecordDate(state: HealthState): string | null {
     state.medicationDoses[0]?.date,
     state.labResults[0]?.date,
     state.therapyNotes[0]?.date,
+    state.thoughtJournal[0]?.date,
     state.progressPhotos[0]?.date,
   ].filter((date): date is string => Boolean(date));
   return dates.length ? dates.sort().at(-1)! : null;
@@ -1235,6 +1272,24 @@ export function removeTherapyNote(state: HealthState, id: string): HealthState {
     ...state,
     updatedAt: new Date().toISOString(),
     therapyNotes: state.therapyNotes.filter((note) => note.id !== id),
+  });
+}
+
+export function upsertThoughtJournalEntry(state: HealthState, value: unknown): HealthState {
+  const entry = normalizeThoughtJournalEntry(value);
+  if (!entry) return state;
+  return normalizeHealthState({
+    ...state,
+    updatedAt: new Date().toISOString(),
+    thoughtJournal: [entry, ...state.thoughtJournal.filter((item) => item.id !== entry.id)],
+  });
+}
+
+export function removeThoughtJournalEntry(state: HealthState, id: string): HealthState {
+  return normalizeHealthState({
+    ...state,
+    updatedAt: new Date().toISOString(),
+    thoughtJournal: state.thoughtJournal.filter((entry) => entry.id !== id),
   });
 }
 
@@ -1695,7 +1750,10 @@ export function reportToText(
 
 function csvCell(value: unknown): string {
   if (value === null || value === undefined) return "";
-  const text = typeof value === "boolean" ? (value ? "yes" : "no") : String(value);
+  const raw = typeof value === "boolean" ? (value ? "yes" : "no") : String(value);
+  // A journal entry may legitimately start with any character. Spreadsheet
+  // apps must still treat it as text rather than executing it as a formula.
+  const text = typeof value === "string" && /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
@@ -1783,6 +1841,15 @@ export function therapyNotesCsv(entries: TherapyNote[]): string {
     ["id", "date", "text", "raised", "raised_date"],
     [...entries].sort((a, b) => a.date.localeCompare(b.date)).map((entry) => [
       entry.id, entry.date, entry.text, entry.shared, entry.sharedDate,
+    ]),
+  );
+}
+
+export function thoughtJournalCsv(entries: ThoughtJournalEntry[]): string {
+  return toCsv(
+    ["id", "date", "created_at", "source", "title", "text"],
+    [...entries].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((entry) => [
+      entry.id, entry.date, entry.createdAt, entry.source, entry.title, entry.text,
     ]),
   );
 }
@@ -2102,11 +2169,18 @@ export type MindSummary = {
 
 export function mindSummary(state: HealthState, asOf = todayLocal(), days = 7): MindSummary {
   const window = entriesInWindow(state.dailyEntries, asOf, days);
+  const start = addDays(asOf, -(Math.max(1, Math.trunc(days)) - 1));
+  const journalDates = new Set([
+    ...window.filter((entry) => entry.journaled).map((entry) => entry.date),
+    ...state.thoughtJournal
+      .filter((entry) => entry.date >= start && entry.date <= asOf)
+      .map((entry) => entry.date),
+  ]);
   return {
     days: Math.max(1, Math.trunc(days)),
     meditationDays: window.filter((entry) => (entry.meditationMinutes ?? 0) > 0).length,
     meditationMinutes: Math.round(window.reduce((total, entry) => total + (entry.meditationMinutes ?? 0), 0)),
-    journalDays: window.filter((entry) => entry.journaled).length,
+    journalDays: journalDates.size,
     openTherapyNotes: state.therapyNotes.filter((note) => !note.shared).length,
   };
 }

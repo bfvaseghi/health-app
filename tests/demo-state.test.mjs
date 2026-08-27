@@ -21,6 +21,8 @@ test("demo data is populated, date-relative, and normalized", () => {
   assert.equal(state.sleepEntries.length, 65);
   assert.equal(state.labResults.length, 10);
   assert.equal(state.workoutSets.length, 74);
+  assert.equal(state.thoughtJournal.length, 3);
+  assert.ok(state.thoughtJournal.some((entry) => entry.source === "apple-notes"));
   assert.equal(buildWorkoutSessions(state.workoutSets).length, 7);
   assert.equal(state.progressPhotos.length, 0, "the demo never invents or loads private photos");
 

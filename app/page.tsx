@@ -13,6 +13,7 @@ import {
   SleepSource,
   STORAGE_KEY,
   TherapyNote,
+  ThoughtJournalEntry,
   emptyDailyEntry,
   emptyHealthState,
   normalizeHealthState,
@@ -25,6 +26,7 @@ import {
   removeProgressPhoto,
   removeSleepEntry,
   removeTherapyNote,
+  removeThoughtJournalEntry,
   removeWorkoutSession,
   todayLocal,
   upsertDailyEntry,
@@ -32,6 +34,7 @@ import {
   upsertProgressPhoto,
   upsertSleepEntry,
   upsertTherapyNote,
+  upsertThoughtJournalEntry,
 } from "./health-model";
 import { demoHealthState } from "./demo-state";
 import { applyImport } from "./import";
@@ -76,7 +79,12 @@ function persistLocalState(state: HealthState, base: HealthState | null, revisio
 }
 
 function recordId(prefix: string): string {
-  return `${prefix}-${crypto.randomUUID()}`;
+  if (typeof crypto.randomUUID === "function") return `${prefix}-${crypto.randomUUID()}`;
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0"));
+  return `${prefix}-${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
 }
 
 function isTheme(value: unknown): value is Theme {
@@ -137,6 +145,14 @@ export default function Home() {
   const serverBase = useRef<HealthState | null>(null);
   const [today, setToday] = useState(todayLocal);
 
+  /** Keeps event handlers on one live snapshot even when several fire before React paints. */
+  const updateState = useCallback((update: HealthStateUpdate): HealthState => {
+    const next = update(stateRef.current);
+    stateRef.current = next;
+    setState(next);
+    return next;
+  }, []);
+
   useEffect(() => {
     const refreshDate = () => setToday(todayLocal());
     const timer = window.setInterval(refreshDate, 60_000);
@@ -154,15 +170,39 @@ export default function Home() {
     let active = true;
     const refresh = async () => {
       try {
-        const response = await fetch("/api/apple-health-sync/setup", {
+        const response = await fetch("/api/health-state", {
           cache: "no-store",
           signal: AbortSignal.timeout(8_000),
         });
         if (!response.ok || !active) return;
-        const data = (await response.json()) as { appleOverlay?: Partial<ImportRecords> | null };
-        setAppleOverlay(data.appleOverlay ?? null);
+        const data = (await response.json()) as {
+          state?: unknown;
+          updatedAt?: string;
+          revision?: number;
+          appleOverlay?: Partial<ImportRecords> | null;
+        };
+        const overlay = data.appleOverlay ?? null;
+        setAppleOverlay(overlay);
+        const revision = Number.isSafeInteger(data.revision) ? data.revision ?? 0 : 0;
+        if (!data.state || revision <= serverRevision.current) return;
+
+        const storedRemote = normalizeHealthState({
+          ...(data.state as object),
+          updatedAt: data.updatedAt ?? new Date().toISOString(),
+        });
+        const remote = overlay ? subtractAppleHealthSyncOverlay(storedRemote, overlay) : storedRemote;
+        const merged = mergeConcurrentHealthState(serverBase.current, stateRef.current, remote);
+        serverBase.current = storedRemote;
+        serverRevision.current = revision;
+        updateState(() => merged.state);
+        persistLocalState(merged.state, storedRemote, revision);
+        setToast({
+          message: merged.conflicts
+            ? `Received synced data and kept ${merged.conflicts} newer local ${merged.conflicts === 1 ? "edit" : "edits"}.`
+            : "New synced data added.",
+        });
       } catch {
-        // The existing overlay remains visible while a background refresh is unavailable.
+        // The current record remains usable while a background refresh is unavailable.
       }
     };
     const onFocus = () => void refresh();
@@ -176,15 +216,7 @@ export default function Home() {
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [demoMode, hydrated]);
-
-  /** Keeps event handlers on one live snapshot even when several fire before React paints. */
-  const updateState = useCallback((update: HealthStateUpdate): HealthState => {
-    const next = update(stateRef.current);
-    stateRef.current = next;
-    setState(next);
-    return next;
-  }, []);
+  }, [demoMode, hydrated, updateState]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -547,6 +579,21 @@ export default function Home() {
 
   const deleteTherapyNote = (id: string) => commit((current) => removeTherapyNote(current, id), "Note deleted.", true);
 
+  const addThought = ({ title, text, source }: { title: string; text: string; source: ThoughtJournalEntry["source"] }) =>
+    updateState((current) =>
+      upsertThoughtJournalEntry(current, {
+        id: recordId("thought"),
+        date: todayLocal(),
+        createdAt: new Date().toISOString(),
+        title,
+        text,
+        source,
+      }),
+    );
+
+  const deleteThought = (id: string) =>
+    commit((current) => removeThoughtJournalEntry(current, id), "Thought deleted.", true);
+
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
       if (event.metaKey || event.ctrlKey || event.altKey || modal) return;
@@ -762,6 +809,9 @@ export default function Home() {
             onAddNote={addTherapyNote}
             onToggleNote={toggleTherapyNote}
             onDeleteNote={deleteTherapyNote}
+            onAddThought={addThought}
+            onDeleteThought={deleteThought}
+            onNotice={notice}
           />
         )}
         {view === "meds" && (

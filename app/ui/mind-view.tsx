@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import type { DailyEntry, HealthState, TherapyNote } from "../health-model";
+import type { DailyEntry, HealthState, TherapyNote, ThoughtJournalEntry } from "../health-model";
 import { addDays, dateLabel, mindSummary } from "../health-model";
 import { Icon } from "./icons";
 import { ConfirmButton, Empty, PageHeading, Stat } from "./primitives";
@@ -18,6 +18,9 @@ export function MindView({
   onAddNote,
   onToggleNote,
   onDeleteNote,
+  onAddThought,
+  onDeleteThought,
+  onNotice,
 }: {
   state: HealthState;
   today: string;
@@ -25,6 +28,9 @@ export function MindView({
   onAddNote: (text: string) => void;
   onToggleNote: (note: TherapyNote) => void;
   onDeleteNote: (id: string) => void;
+  onAddThought: (entry: { title: string; text: string; source: ThoughtJournalEntry["source"] }) => void;
+  onDeleteThought: (id: string) => void;
+  onNotice: (message: string) => void;
 }) {
   const [draft, setDraft] = useState("");
   const [showRaised, setShowRaised] = useState(false);
@@ -33,6 +39,7 @@ export function MindView({
   const open = state.therapyNotes.filter((note) => !note.shared);
   const raised = state.therapyNotes.filter((note) => note.shared);
   const week = Array.from({ length: 14 }, (_, index) => addDays(today, index - 13));
+  const thoughtDates = new Set(state.thoughtJournal.map((entry) => entry.date));
 
   function submitNote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -45,6 +52,13 @@ export function MindView({
   return (
     <div className="page mind-page">
       <PageHeading title="Mind" />
+
+      <ThoughtJournal
+        entries={state.thoughtJournal}
+        onAdd={onAddThought}
+        onDelete={onDeleteThought}
+        onNotice={onNotice}
+      />
 
       <section className="panel wide-panel mind-agenda">
         <div className="panel-head wrap">
@@ -109,19 +123,20 @@ export function MindView({
           {week.map((date) => {
             const entry = state.dailyEntries.find((item) => item.date === date);
             const minutes = entry?.meditationMinutes ?? 0;
+            const journaled = Boolean(entry?.journaled) || thoughtDates.has(date);
             return (
               <li
                 key={date}
                 className={date === today ? "current" : ""}
                 aria-label={`${dateLabel(date, { weekday: "long", month: "long", day: "numeric" })}: ${
                   minutes ? `${minutes} minutes meditated` : "no meditation"
-                }, ${entry?.journaled ? "journaled" : "not journaled"}.`}
+                }, ${journaled ? "journaled" : "not journaled"}.`}
               >
                 <small aria-hidden="true">{dateLabel(date, { weekday: "narrow" })}</small>
                 <span aria-hidden="true" className={minutes ? "day-dot strong" : "day-dot"}>
                   {minutes || "—"}
                 </span>
-                <i aria-hidden="true" className={entry?.journaled ? "med-pip is-taken" : "med-pip"} />
+                <i aria-hidden="true" className={journaled ? "med-pip is-taken" : "med-pip"} />
               </li>
             );
           })}
@@ -150,6 +165,115 @@ export function MindView({
         </div>
       </section>
     </div>
+  );
+}
+
+function ThoughtJournal({
+  entries,
+  onAdd,
+  onDelete,
+  onNotice,
+}: {
+  entries: ThoughtJournalEntry[];
+  onAdd: (entry: { title: string; text: string; source: ThoughtJournalEntry["source"] }) => void;
+  onDelete: (id: string) => void;
+  onNotice: (message: string) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [text, setText] = useState("");
+  const [source, setSource] = useState<ThoughtJournalEntry["source"]>("manual");
+  const [showAll, setShowAll] = useState(false);
+
+  async function pasteFromNotes() {
+    try {
+      const value = (await navigator.clipboard.readText()).trim();
+      if (!value) {
+        onNotice("Copy a note in Apple Notes first.");
+        return;
+      }
+      setText((current) => current.trim() ? `${current.trimEnd()}\n\n${value}` : value);
+      setSource("apple-notes");
+      onNotice(text.trim() ? "Apple Notes text added below your draft." : "Apple Notes text pasted. Review it before saving.");
+    } catch {
+      onNotice("Copy the note, then press and hold in the journal box to paste it.");
+    }
+  }
+
+  function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const value = text.trim();
+    if (!value) return;
+    onAdd({ title: title.trim(), text: value, source });
+    setTitle("");
+    setText("");
+    setSource("manual");
+  }
+
+  const shown = showAll ? entries : entries.slice(0, 4);
+  return (
+    <section className="panel wide-panel thought-journal" aria-labelledby="thought-journal-title">
+      <div className="panel-head wrap">
+        <div>
+          <p className="kicker">Private reflections</p>
+          <h2 id="thought-journal-title">Thought journal</h2>
+        </div>
+        <button type="button" className="button secondary small" onClick={() => void pasteFromNotes()}>
+          <Icon name="copy" /> Paste from Notes
+        </button>
+      </div>
+      <p className="panel-body">Write freely here. Nothing becomes a therapy topic unless you add it to that list yourself.</p>
+      <form className="thought-form" onSubmit={submit}>
+        <input
+          value={title}
+          maxLength={160}
+          placeholder="Title (optional)"
+          aria-label="Thought title"
+          onChange={(event) => setTitle(event.target.value)}
+        />
+        <textarea
+          value={text}
+          maxLength={10_000}
+          placeholder="What is on your mind?"
+          aria-label="Thought journal entry"
+          onChange={(event) => {
+            setText(event.target.value);
+            if (!event.target.value) setSource("manual");
+          }}
+        />
+        <div className="thought-form-foot">
+          <small>{source === "apple-notes" ? "Pasted from Apple Notes" : "Saved to your private Baseline record"}</small>
+          <button type="submit" className="button primary" disabled={!text.trim()}>
+            <Icon name="plus" /> Save thought
+          </button>
+        </div>
+      </form>
+
+      {shown.length ? (
+        <ol className="thought-list">
+          {shown.map((entry) => (
+            <li key={entry.id}>
+              <div className="thought-meta">
+                <span>{entry.source === "apple-notes" ? "Apple Notes" : "Baseline"}</span>
+                <time dateTime={entry.date}>{dateLabel(entry.date, { month: "short", day: "numeric", year: "numeric" })}</time>
+              </div>
+              {entry.title ? <h3>{entry.title}</h3> : null}
+              <p>{entry.text}</p>
+              <ConfirmButton label={`Delete thought from ${entry.date}`} onConfirm={() => onDelete(entry.id)} />
+            </li>
+          ))}
+        </ol>
+      ) : (
+        <Empty icon="journal" title="No thoughts yet" body="Write here or paste text you copied from Apple Notes." />
+      )}
+      {entries.length > 4 ? (
+        <button type="button" className="text-button" onClick={() => setShowAll((value) => !value)}>
+          {showAll ? "Show recent" : `Show all ${entries.length}`} <Icon name="chevron" />
+        </button>
+      ) : null}
+      <p className="thought-shortcut-note">
+        Want one-tap transfer? Use the Apple Notes Shortcut URL and private key shown in Data &amp; goals.
+      </p>
+    </section>
   );
 }
 

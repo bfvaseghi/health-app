@@ -1359,6 +1359,42 @@ td .range-badge { justify-self: auto; display: inline-block; }
 .therapy-check:hover { border-color: var(--accent); color: var(--faint); }
 .therapy-check.done { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
 
+.thought-journal {
+  border-color: color-mix(in srgb, var(--plum) 38%, var(--line));
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--plum-pale) 54%, var(--paper)), var(--paper) 62%);
+}
+.thought-journal .kicker, .thought-journal .thought-meta span { color: var(--plum); }
+.thought-form { margin: 18px 0 8px; display: grid; gap: 9px; }
+.thought-form input,
+.thought-form textarea {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--raised) 88%, transparent);
+  color: var(--ink);
+  outline: 0;
+}
+.thought-form input { min-height: 42px; padding: 9px 12px; font-size: 14px; }
+.thought-form textarea { min-height: 132px; padding: 12px; resize: vertical; font: inherit; font-size: 14px; line-height: 1.55; }
+.thought-form input:focus,
+.thought-form textarea:focus { border-color: var(--plum); box-shadow: 0 0 0 3px color-mix(in srgb, var(--plum) 18%, transparent); }
+.thought-form-foot { display: flex; align-items: center; justify-content: space-between; gap: 14px; }
+.thought-form-foot small { color: var(--faint); font-size: 12px; }
+.thought-list { list-style: none; margin: 18px 0 0; padding: 0; display: grid; gap: 10px; }
+.thought-list > li {
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--plum) 18%, var(--line));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--paper) 92%, transparent);
+}
+.thought-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.thought-meta span { font-size: 10px; font-weight: 720; letter-spacing: 0.07em; text-transform: uppercase; }
+.thought-meta time { color: var(--faint); font-size: 11px; }
+.thought-list h3 { margin: 9px 0 4px; font-family: var(--font-display); font-size: 17px; }
+.thought-list p { margin: 8px 0 12px; color: var(--muted); font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.thought-shortcut-note { margin: 14px 0 0; color: var(--faint); font-size: 12px; line-height: 1.5; }
+
 .raise-list { list-style: none; margin: 0; padding: 0; display: grid; }
 .raise-list > li { padding: 11px 0; border-top: 1px solid var(--line); display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
 .raise-list > li:first-child { border-top: 0; }
@@ -1468,6 +1504,12 @@ td .range-badge { justify-self: auto; display: inline-block; }
   font-size: 12px;
   font-weight: 700;
 }
+.iphone-connection-guides { margin-top: 18px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
+.iphone-connection-guides > div { min-width: 0; padding: 15px; border: 1px solid var(--line); border-radius: 14px; background: var(--raised); }
+.iphone-connection-guides h3 { margin: 0; font-family: var(--font-display); font-size: 16px; }
+.iphone-connection-guides .sync-steps { margin-top: 12px; }
+.iphone-connection-guides code { color: var(--ink); font-family: var(--font-data); font-size: 11px; }
+.iphone-connection-guides .panel-body { margin-top: 12px; }
 .danger-panel { border-color: var(--danger-pale); }
 
 /* Modals and forms */
@@ -1876,14 +1918,11 @@ kbd {
 .note svg { width: 18px; height: 18px; margin-top: 1px; color: var(--accent); }
 .note p { margin: 0; font-size: 12px; line-height: 1.55; }
 
-/* Mind: capture first, practices second, history last. */
-.mind-page { display: flex; flex-direction: column; }
-.mind-page > .page-heading { order: 0; }
-.mind-agenda { order: 1; border-color: color-mix(in srgb, var(--plum) 32%, var(--line)); }
+/* Mind: journal first, then therapy capture, practices and history. The JSX
+   follows this visual order so keyboard and screen-reader navigation do too. */
+.mind-agenda { border-color: color-mix(in srgb, var(--plum) 32%, var(--line)); }
 .mind-agenda .kicker, .mind-agenda .panel-meta { color: var(--plum); }
-.mind-practices { order: 2; }
-.mind-history { order: 3; }
-.mind-hero { order: 4; margin-top: 14px; }
+.mind-hero { margin-top: 14px; }
 .practice-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .practice-actions > span { display: flex; flex-wrap: wrap; gap: 8px; }
 .mind-strip { list-style: none; margin: 0; }
@@ -2307,6 +2346,9 @@ kbd {
   .sync-credentials > div { grid-template-columns: 1fr auto; gap: 4px 10px; }
   .sync-credentials small { grid-column: 1 / -1; }
   .sync-credentials code { font-size: 11px; }
+  .iphone-connection-guides { grid-template-columns: 1fr; gap: 10px; }
+  .thought-form-foot { align-items: stretch; flex-direction: column; }
+  .thought-form-foot .button { width: 100%; justify-content: center; }
   .connection-panel { grid-template-columns: 44px 1fr; }
   .connection-icon { width: 44px; height: 44px; }
   .modal-backdrop { padding: 0; place-items: end center; }
