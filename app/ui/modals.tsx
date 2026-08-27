@@ -15,6 +15,10 @@ import {
   estimateSleepHours,
   medicationStatuses,
   todayLocal,
+  validateDailyEntry,
+  validateLabResult,
+  validateMedication,
+  validateSleepEntry,
 } from "../health-model";
 import { Icon } from "./icons";
 import { ConfirmButton, Field, ModalFrame, TextAreaField, TextField } from "./primitives";
@@ -68,11 +72,12 @@ export function CheckInModal({
   state: HealthState;
   date: string;
   onClose: () => void;
-  onSave: (entry: DailyEntry) => void;
+  onSave: (entry: DailyEntry | null) => void;
   onDose: (medicationId: string, date: string, taken: boolean | null) => void;
   onDelete: (date: string) => void;
 }) {
   const [date, setDate] = useState(initialDate);
+  const [error, setError] = useState("");
   const existing = state.dailyEntries.find((entry) => entry.date === date);
   const draft = existing ?? emptyDailyEntry(date);
   // Only the medications actually due that day. A weekly injection is not a
@@ -82,18 +87,31 @@ export function CheckInModal({
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    for (const status of due) {
+    const doseAnswers = due.map((status) => {
       const answer = data.get(`med:${status.medication.id}`);
-      onDose(status.medication.id, date, answer === "yes" ? true : answer === "no" ? false : null);
-    }
-    onSave({
+      return [status.medication.id, answer === "yes" ? true : answer === "no" ? false : null] as const;
+    });
+    const entry: DailyEntry = {
       ...draft,
       date,
       weightLb: number(data.get("weight")),
       bodyFatPercent: number(data.get("bodyfat")),
       proteinG: number(data.get("protein")),
       note: String(data.get("note") ?? ""),
-    });
+    };
+    const issue = validateDailyEntry(entry);
+    if (issue) {
+      if (due.length && issue.startsWith("Add at least")) {
+        for (const [medicationId, taken] of doseAnswers) onDose(medicationId, date, taken);
+        onSave(null);
+        return;
+      }
+      setError(issue);
+      return;
+    }
+    setError("");
+    for (const [medicationId, taken] of doseAnswers) onDose(medicationId, date, taken);
+    onSave(entry);
   }
 
   return (
@@ -103,7 +121,7 @@ export function CheckInModal({
       onClose={onClose}
     >
       <DateStepper date={date} onChange={setDate} />
-      <form onSubmit={submit} className="form-stack" key={date}>
+      <form onSubmit={submit} className="form-stack" key={date} noValidate>
         {due.map((status) => (
           <fieldset className="radio-card" key={status.medication.id}>
             <legend>{status.medication.name}</legend>
@@ -138,7 +156,7 @@ export function CheckInModal({
         ))}
 
         <div className="input-grid">
-          <Field name="weight" label="Weight" suffix="lb" step="0.1" value={draft.weightLb} />
+          <Field name="weight" label="Weight" suffix="lb" step="0.1" min="40" max="1000" value={draft.weightLb} />
           <Field name="bodyfat" label="Body fat" suffix="%" step="0.1" min="3" max="60" value={draft.bodyFatPercent} />
         </div>
 
@@ -151,6 +169,8 @@ export function CheckInModal({
         </div>
 
         <TextAreaField name="note" label="Optional note" value={draft.note} />
+
+        {error ? <p className="form-error" role="alert">{error}</p> : null}
 
         <div className="modal-actions">
           {existing ? (
@@ -174,8 +194,6 @@ export function CheckInModal({
   );
 }
 
-const sourceOptions: SleepSource[] = ["manual", "apple", "oura", "whoop", "other"];
-
 export function SleepModal({
   state,
   date: initialDate,
@@ -192,7 +210,7 @@ export function SleepModal({
   onDelete: (date: string, source: SleepSource) => void;
 }) {
   const [date, setDate] = useState(initialDate);
-  const [source, setSource] = useState<SleepSource>(initialSource);
+  const source = initialSource;
   const existing = state.sleepEntries.find((entry) => entry.date === date && entry.source === source);
 
   return (
@@ -207,7 +225,6 @@ export function SleepModal({
         date={date}
         source={source}
         existing={existing}
-        onSource={setSource}
         onClose={onClose}
         onSave={onSave}
         onDelete={onDelete}
@@ -221,7 +238,6 @@ function SleepForm({
   date,
   source,
   existing,
-  onSource,
   onClose,
   onSave,
   onDelete,
@@ -229,7 +245,6 @@ function SleepForm({
   date: string;
   source: SleepSource;
   existing: SleepEntry | undefined;
-  onSource: (source: SleepSource) => void;
   onClose: () => void;
   onSave: (entry: SleepEntry) => void;
   onDelete: (date: string, source: SleepSource) => void;
@@ -238,12 +253,13 @@ function SleepForm({
   const [bedtime, setBedtime] = useState(draft.bedtime);
   const [wakeTime, setWakeTime] = useState(draft.wakeTime);
   const [duration, setDuration] = useState(draft.durationHours === null ? "" : String(draft.durationHours));
+  const [error, setError] = useState("");
   const estimate = estimateSleepHours(bedtime, wakeTime);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
-    onSave({
+    const entry: SleepEntry = {
       ...draft,
       date,
       source,
@@ -257,23 +273,24 @@ function SleepForm({
       restingHeartRate: number(data.get("rhr")),
       hrvMs: number(data.get("hrv")),
       note: String(data.get("note") ?? ""),
-    });
+    };
+    const issue = validateSleepEntry(entry);
+    if (issue) {
+      setError(issue);
+      return;
+    }
+    setError("");
+    onSave(entry);
   }
 
   return (
-    <form onSubmit={submit} className="form-stack">
+    <form onSubmit={submit} className="form-stack" noValidate>
       <div className="input-grid">
-        <div className="field">
-          <label htmlFor="sleep-source">Source</label>
-          <select id="sleep-source" value={source} onChange={(event) => onSource(event.target.value as SleepSource)}>
-            {sourceOptions.map((option) => (
-              <option key={option} value={option}>
-                {option[0].toUpperCase() + option.slice(1)}
-              </option>
-            ))}
-          </select>
+        <div className="field read-only">
+          <span>Source</span>
+          <p>{source === "manual" ? "Manual entry" : `${source[0].toUpperCase() + source.slice(1)} import`}</p>
         </div>
-        <Field name="duration" label="Duration" suffix="hours" step="0.1" value={duration} onChange={setDuration} />
+        <Field name="duration" label="Duration" suffix="hours" step="0.1" min="1" max="18" value={duration} onChange={setDuration} />
         <TextField name="bedtime" label="Bedtime" type="time" value={bedtime} onChange={setBedtime} />
         <TextField name="wakeTime" label="Wake time" type="time" value={wakeTime} onChange={setWakeTime} />
       </div>
@@ -292,14 +309,16 @@ function SleepForm({
         <div className="input-grid">
           <Field name="quality" label="Quality" suffix="1–5" min="1" max="5" value={draft.quality} />
           <Field name="efficiency" label="Efficiency" suffix="%" min="0" max="100" value={draft.efficiencyPercent} />
-          <Field name="deep" label="Deep sleep" suffix="hours" step="0.1" value={draft.deepHours} />
-          <Field name="rem" label="REM sleep" suffix="hours" step="0.1" value={draft.remHours} />
-          <Field name="rhr" label="Resting heart rate" suffix="bpm" value={draft.restingHeartRate} />
-          <Field name="hrv" label="HRV" suffix="ms" value={draft.hrvMs} />
+          <Field name="deep" label="Deep sleep" suffix="hours" step="0.1" min="0" max="12" value={draft.deepHours} />
+          <Field name="rem" label="REM sleep" suffix="hours" step="0.1" min="0" max="12" value={draft.remHours} />
+          <Field name="rhr" label="Resting heart rate" suffix="bpm" min="20" max="250" value={draft.restingHeartRate} />
+          <Field name="hrv" label="HRV" suffix="ms" min="0" max="500" value={draft.hrvMs} />
         </div>
       </div>
 
       <TextAreaField name="note" label="Optional note" value={draft.note} />
+
+      {error ? <p className="form-error" role="alert">{error}</p> : null}
 
       <div className="modal-actions">
         {existing ? (
@@ -344,19 +363,27 @@ export function MedicationModal({
 }) {
   const existing = id ? state.medications.find((entry) => entry.id === id) : undefined;
   const [weekly, setWeekly] = useState(existing?.schedule === "weekly");
+  const [error, setError] = useState("");
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const name = String(data.get("name") ?? "").trim();
     const schedule = data.get("schedule") === "weekly" ? "weekly" : "daily";
-    onSave({
+    const medication: Medication = {
       id: existing?.id ?? `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "med"}-${crypto.randomUUID()}`,
       name,
       schedule,
       dueDay: schedule === "weekly" ? Number(data.get("dueDay") ?? 1) : null,
       archived: false,
-    });
+    };
+    const issue = validateMedication(medication);
+    if (issue) {
+      setError(issue);
+      return;
+    }
+    setError("");
+    onSave(medication);
   }
 
   return (
@@ -365,7 +392,7 @@ export function MedicationModal({
       subtitle="Only what it is called and how often it is due. Nothing here is advice about taking it."
       onClose={onClose}
     >
-      <form onSubmit={submit} className="form-stack">
+      <form onSubmit={submit} className="form-stack" noValidate>
         <TextField name="name" label="Name" value={existing?.name} required placeholder="Example: Finasteride" />
         <fieldset className="field">
           <legend>How often</legend>
@@ -404,6 +431,7 @@ export function MedicationModal({
             </select>
           </div>
         ) : null}
+        {error ? <p className="form-error" role="alert">{error}</p> : null}
         <div className="modal-actions">
           {existing ? (
             <ConfirmButton
@@ -445,13 +473,14 @@ export function LabModal({
     () => [...new Set(state.labResults.map((result) => result.unit).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
     [state.labResults],
   );
+  const [error, setError] = useState("");
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const data = new FormData(event.currentTarget);
     const name = String(data.get("name") ?? "").trim();
     const date = String(data.get("date"));
-    onSave({
+    const result: LabResult = {
       id: existing?.id ?? `${date}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${crypto.randomUUID()}`,
       name,
       date,
@@ -460,7 +489,14 @@ export function LabModal({
       referenceLow: number(data.get("low")),
       referenceHigh: number(data.get("high")),
       note: String(data.get("note") ?? ""),
-    });
+    };
+    const issue = validateLabResult(result);
+    if (issue) {
+      setError(issue);
+      return;
+    }
+    setError("");
+    onSave(result);
   }
 
   return (
@@ -469,7 +505,7 @@ export function LabModal({
       subtitle="Use the exact units and reference range printed by the lab that ran it."
       onClose={onClose}
     >
-      <form onSubmit={submit} className="form-stack">
+      <form onSubmit={submit} className="form-stack" noValidate>
         <div className="field">
           <label htmlFor="lab-name">Test name</label>
           <input
@@ -486,7 +522,7 @@ export function LabModal({
             ))}
           </datalist>
         </div>
-        <TextField name="date" label="Date" type="date" value={existing?.date ?? todayLocal()} required />
+        <TextField name="date" label="Date" type="date" value={existing?.date ?? todayLocal()} max={todayLocal()} required />
         <div className="input-grid">
           <Field name="value" label="Result" step="any" value={existing?.value} />
           <div className="field">
@@ -502,6 +538,7 @@ export function LabModal({
           <Field name="high" label="Reference high" step="any" value={existing?.referenceHigh} />
         </div>
         <TextAreaField name="note" label="Optional note" value={existing?.note} />
+        {error ? <p className="form-error" role="alert">{error}</p> : null}
         <div className="modal-actions">
           {existing ? (
             <ConfirmButton

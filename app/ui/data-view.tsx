@@ -1,19 +1,24 @@
 "use client";
 
-import { ChangeEvent, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   GoalSettings,
   HealthState,
+  ImportRecords,
   WeightDirection,
-  dailyEntriesCsv,
-  labResultsCsv,
-  medicationDosesCsv,
   normalizeHealthState,
-  sleepEntriesCsv,
 } from "../health-model";
+import {
+  ParsedBackup,
+  SOURCE_ARCHIVE,
+  SOURCE_REPOSITORY,
+  createBaselineArchive,
+  parseBackupFile,
+  restoreArchivePhotos,
+} from "../portability";
 import { Icon } from "./icons";
 import { ConfirmButton, Note, NumberSetting, PageHeading, SelectSetting, Segmented } from "./primitives";
-import { downloadCsv, downloadJson, formatBytes, formatTimestamp } from "./format";
+import { downloadBlob, formatBytes, formatTimestamp } from "./format";
 import { Modal, Theme } from "./types";
 
 type Snapshot = { id: number; createdAt: string; bytes: number };
@@ -21,28 +26,77 @@ type SnapshotState = { status: "idle" | "loading" | "ready" | "error"; items: Sn
 
 export function DataView({
   state,
+  appleOverlay,
   today,
   theme,
   onTheme,
   onGoals,
   open,
-  onRestoreFile,
   onRestoreState,
   onErase,
+  onAppleChanged,
   onNotice,
+  demo = false,
 }: {
   state: HealthState;
+  appleOverlay: Partial<ImportRecords> | null;
   today: string;
   theme: Theme;
   onTheme: (theme: Theme) => void;
   onGoals: (goals: GoalSettings) => void;
   open: (modal: Modal) => void;
-  onRestoreFile: (event: ChangeEvent<HTMLInputElement>) => void;
   onRestoreState: (state: HealthState, label: string) => void;
-  onErase: () => void;
+  onErase: () => void | Promise<void>;
+  onAppleChanged: (overlay: Partial<ImportRecords> | null) => void;
   onNotice: (message: string) => void;
+  demo?: boolean;
 }) {
   const [snapshots, setSnapshots] = useState<SnapshotState>({ status: "idle", items: [], message: "" });
+  const [exporting, setExporting] = useState(false);
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const [pendingRestore, setPendingRestore] = useState<ParsedBackup | null>(null);
+  const restorePreviewRef = useRef<HTMLElement>(null);
+
+  async function exportEverything() {
+    setExporting(true);
+    try {
+      const archive = await createBaselineArchive(state, appleOverlay);
+      downloadBlob(`baseline-everything-${today}.zip`, archive);
+      onNotice("Your complete Baseline archive is downloading.");
+    } catch {
+      onNotice("The complete archive could not be created on this device.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function chooseRestore(file: File | undefined) {
+    if (!file) return;
+    try {
+      const parsed = await parseBackupFile(file);
+      setPendingRestore(parsed);
+      window.setTimeout(() => restorePreviewRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "That backup could not be read.");
+    }
+  }
+
+  async function confirmRestore() {
+    if (!pendingRestore) return;
+    setRestoreBusy(true);
+    try {
+      const images = await restoreArchivePhotos(pendingRestore);
+      onRestoreState(
+        pendingRestore.state,
+        images ? `Backup restored, including ${images} progress ${images === 1 ? "photo" : "photos"}.` : "Backup restored.",
+      );
+      setPendingRestore(null);
+    } catch {
+      onNotice("The backup could not be restored completely. Your current record was not replaced.");
+    } finally {
+      setRestoreBusy(false);
+    }
+  }
 
   async function loadSnapshots() {
     setSnapshots({ status: "loading", items: [], message: "" });
@@ -77,6 +131,90 @@ export function DataView({
         title="Data & goals"
       />
 
+      <section className="panel wide-panel portability-panel" aria-labelledby="portability-title">
+        <div className="portability-hero">
+          <div className="connection-icon">
+            <Icon name="download" />
+          </div>
+          <div>
+            <p className="kicker">No lock-in</p>
+            <h2 id="portability-title">Take everything with you</h2>
+            <p className="panel-body">
+              One data archive contains a restorable record, spreadsheet tables, the separate automatic Apple lane,
+              and every available progress photo. The full app source is beside it.
+            </p>
+          </div>
+          <button type="button" className="button primary export-everything" disabled={exporting} onClick={exportEverything}>
+            <Icon name="download" />
+            {exporting ? "Building archive…" : "Download all data"}
+          </button>
+        </div>
+
+        <div className="portability-grid">
+          <div className="portability-item">
+            <small>Your data</small>
+            <b>JSON · CSV · photos</b>
+            <span>Readable without Baseline and restorable in one step.</span>
+          </div>
+          <div className="portability-item">
+            <small>Your app</small>
+            <b>Complete source code</b>
+            <span>Clone, fork, download, or hand it to another developer.</span>
+            <div className="inline-links">
+              <a href={SOURCE_REPOSITORY} target="_blank" rel="noreferrer">Open source</a>
+              <a href={SOURCE_ARCHIVE}>Download code</a>
+            </div>
+          </div>
+          <label className="portability-item restore-picker">
+            <small>Bring it back</small>
+            <b>Restore from archive</b>
+            <span>Choose a Baseline ZIP or legacy JSON. Nothing changes until you review it.</span>
+            <input
+              type="file"
+              accept="application/zip,.zip,application/json,.json"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                void chooseRestore(file);
+              }}
+            />
+          </label>
+        </div>
+
+        {pendingRestore ? (
+          <section className="restore-preview" ref={restorePreviewRef} aria-live="polite">
+            <div>
+              <p className="kicker">Review before replacing</p>
+              <h3>Backup contents</h3>
+              <p>
+                {pendingRestore.summary.firstDate && pendingRestore.summary.lastDate
+                  ? `${pendingRestore.summary.firstDate} to ${pendingRestore.summary.lastDate}`
+                  : "No dated records"}
+              </p>
+            </div>
+            <dl>
+              <div><dt>Days</dt><dd>{pendingRestore.summary.days}</dd></div>
+              <div><dt>Nights</dt><dd>{pendingRestore.summary.nights}</dd></div>
+              <div><dt>Workouts</dt><dd>{pendingRestore.summary.workouts}</dd></div>
+              <div><dt>Labs</dt><dd>{pendingRestore.summary.labs}</dd></div>
+              <div><dt>Photos</dt><dd>{pendingRestore.photoEntries.length} available</dd></div>
+            </dl>
+            <div className="heading-actions">
+              <button type="button" className="button secondary" disabled={restoreBusy} onClick={() => setPendingRestore(null)}>
+                Cancel
+              </button>
+              <button type="button" className="button danger" disabled={restoreBusy} onClick={() => void confirmRestore()}>
+                {restoreBusy ? "Restoring…" : "Replace current data"}
+              </button>
+            </div>
+          </section>
+        ) : null}
+
+        <Note icon="lock">
+          The archive contains sensitive health information. It is created on this device and is not uploaded elsewhere.
+        </Note>
+      </section>
+
       <section className="panel wide-panel import-panel">
         <div className="connection-icon">
           <Icon name="upload" />
@@ -97,7 +235,11 @@ export function DataView({
         </div>
       </section>
 
-      <AppleHealthSyncPanel onNotice={onNotice} />
+      {demo ? (
+        <Note icon="lock">Automatic Apple sync and private recovery snapshots are available in your real record.</Note>
+      ) : (
+        <AppleHealthSyncPanel onNotice={onNotice} onChanged={onAppleChanged} />
+      )}
 
       {/* Keyed so a restored backup or a sync from another device replaces the draft outright. */}
       <GoalsPanel key={JSON.stringify(state.goals)} goals={state.goals} onGoals={onGoals} />
@@ -125,63 +267,7 @@ export function DataView({
         </button>
       </section>
 
-      <section className="panel wide-panel">
-        <div className="panel-head">
-          <div>
-            <p className="kicker">Your copy</p>
-            <h2>Export and restore</h2>
-          </div>
-        </div>
-        <div className="data-actions">
-          <button
-            type="button"
-            className="data-action"
-            onClick={() => downloadJson(`baseline-backup-${today}.json`, state)}
-          >
-            <span>
-              <Icon name="download" />
-            </span>
-            <b>Full backup (JSON)</b>
-            <small>Every record and goal, in the format this app restores from.</small>
-          </button>
-          <button
-            type="button"
-            className="data-action"
-            onClick={() => {
-              downloadCsv(`baseline-daily-${today}.csv`, dailyEntriesCsv(state.dailyEntries));
-              downloadCsv(`baseline-sleep-${today}.csv`, sleepEntriesCsv(state.sleepEntries));
-              downloadCsv(`baseline-labs-${today}.csv`, labResultsCsv(state.labResults));
-              const meds = state.medicationDoses.length;
-              if (meds) downloadCsv(`baseline-meds-${today}.csv`, medicationDosesCsv(state));
-              onNotice(
-                meds
-                  ? "Four CSV files downloaded: days, nights, labs, and meds."
-                  : "Three CSV files downloaded: days, nights, and labs.",
-              );
-            }}
-          >
-            <span>
-              <Icon name="table" />
-            </span>
-            <b>Spreadsheet export (CSV)</b>
-            <small>Days, nights, labs and meds as separate files for a spreadsheet.</small>
-          </button>
-          <label className="data-action">
-            <span>
-              <Icon name="upload" />
-            </span>
-            <b>Restore a backup</b>
-            <small>Replace this dashboard with a prior JSON export.</small>
-            <input type="file" accept="application/json,.json" onChange={onRestoreFile} />
-          </label>
-        </div>
-        <Note icon="lock">
-          Records are stored in your private Site database and in this browser as a fallback. Imported files never
-          leave this device.
-        </Note>
-      </section>
-
-      <section className="panel wide-panel">
+      {!demo ? <section className="panel wide-panel">
         <div className="panel-head wrap">
           <div>
             <p className="kicker">Server history</p>
@@ -226,9 +312,9 @@ export function DataView({
             <p className="panel-body">No earlier versions are stored yet.</p>
           )
         ) : null}
-      </section>
+      </section> : null}
 
-      <section className="panel wide-panel danger-panel">
+      {!demo ? <section className="panel wide-panel danger-panel">
         <div className="panel-head wrap">
           <div>
             <p className="kicker">Start over</p>
@@ -237,10 +323,10 @@ export function DataView({
           <ConfirmButton label="Erase all data" confirmLabel="Erase everything" className="button danger" onConfirm={onErase} />
         </div>
         <p className="panel-body">
-          Clears every night, day, and lab result from this dashboard and your private database. Goals are kept. Undo
-          is offered for a few seconds and a server snapshot is kept, but export a backup first.
+          Permanently clears every record, progress photo, recovery snapshot, and Apple sync connection from this
+          dashboard and its private storage. Goals are kept. This cannot be undone, so export a backup first.
         </p>
-      </section>
+      </section> : null}
     </div>
   );
 }
@@ -257,7 +343,13 @@ type AppleSyncStatus = {
  * source, so an automatic refresh cannot duplicate a set or choose a winner by
  * accident.
  */
-function AppleHealthSyncPanel({ onNotice }: { onNotice: (message: string) => void }) {
+function AppleHealthSyncPanel({
+  onNotice,
+  onChanged,
+}: {
+  onNotice: (message: string) => void;
+  onChanged: (overlay: Partial<ImportRecords> | null) => void;
+}) {
   const [status, setStatus] = useState<AppleSyncStatus>({ loading: true, configured: false, lastSyncedAt: null });
   const [token, setToken] = useState("");
   const [endpoint, setEndpoint] = useState(() =>
@@ -269,9 +361,14 @@ function AppleHealthSyncPanel({ onNotice }: { onNotice: (message: string) => voi
 
   useEffect(() => {
     let active = true;
-    void fetch("/api/apple-health-sync/setup", { cache: "no-store" })
+    void fetch("/api/apple-health-sync/setup", { cache: "no-store", signal: AbortSignal.timeout(10_000) })
       .then(async (response) => {
-        const data = (await response.json()) as { configured?: boolean; lastSyncedAt?: string | null; error?: string };
+        const data = (await response.json()) as {
+          configured?: boolean;
+          lastSyncedAt?: string | null;
+          appleOverlay?: Partial<ImportRecords> | null;
+          error?: string;
+        };
         if (!response.ok) throw new Error(data.error ?? "Apple Health sync is unavailable.");
         if (active) {
           setStatus({
@@ -279,6 +376,7 @@ function AppleHealthSyncPanel({ onNotice }: { onNotice: (message: string) => voi
             configured: data.configured === true,
             lastSyncedAt: data.lastSyncedAt ?? null,
           });
+          onChanged(data.appleOverlay ?? null);
         }
       })
       .catch((error) => {
@@ -289,12 +387,12 @@ function AppleHealthSyncPanel({ onNotice }: { onNotice: (message: string) => voi
     return () => {
       active = false;
     };
-  }, [onNotice]);
+  }, [onNotice, onChanged]);
 
   async function createToken() {
     setBusy(true);
     try {
-      const response = await fetch("/api/apple-health-sync/setup", { method: "POST" });
+      const response = await fetch("/api/apple-health-sync/setup", { method: "POST", signal: AbortSignal.timeout(10_000) });
       const data = (await response.json()) as { token?: string; endpoint?: string; error?: string };
       if (!response.ok || !data.token) throw new Error(data.error ?? "A sync key could not be created.");
       setToken(data.token);
@@ -311,11 +409,12 @@ function AppleHealthSyncPanel({ onNotice }: { onNotice: (message: string) => voi
   async function revokeToken() {
     setBusy(true);
     try {
-      const response = await fetch("/api/apple-health-sync/setup", { method: "DELETE" });
+      const response = await fetch("/api/apple-health-sync/setup", { method: "DELETE", signal: AbortSignal.timeout(10_000) });
       const data = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(data.error ?? "Apple Health sync could not be turned off.");
       setToken("");
       setStatus({ loading: false, configured: false, lastSyncedAt: null });
+      onChanged(null);
       onNotice("Apple Health sync is off.");
     } catch (error) {
       onNotice(error instanceof Error ? error.message : "Apple Health sync could not be turned off.");
@@ -356,13 +455,19 @@ function AppleHealthSyncPanel({ onNotice }: { onNotice: (message: string) => voi
           </button>
         ) : (
           <div className="heading-actions">
-            <button type="button" className="button secondary small" disabled={busy} onClick={createToken}>
-              New key
-            </button>
+            <ConfirmButton
+              label="Replace connection key"
+              confirmLabel="Disconnect old phone"
+              className="button secondary small"
+              icon="key"
+              disabled={busy}
+              onConfirm={createToken}
+            />
             <ConfirmButton
               label="Turn off"
               confirmLabel="Turn off sync"
               className="button secondary small"
+              disabled={busy}
               onConfirm={revokeToken}
             />
           </div>

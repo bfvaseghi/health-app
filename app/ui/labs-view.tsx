@@ -17,16 +17,21 @@ export function LabsView({
   onDeleteLab: (id: string) => void;
 }) {
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<"all" | "flagged">("all");
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const trends = useMemo(() => buildLabTrends(state.labResults), [state.labResults]);
-  const shown = useMemo(() => filterLabTrends(trends, query), [trends, query]);
+  const flagged = trends.filter((trend) => trend.status === "low" || trend.status === "high");
+  const shown = useMemo(
+    () => filterLabTrends(trends, query).filter((trend) => filter === "all" || trend.status === "low" || trend.status === "high"),
+    [trends, query, filter],
+  );
 
   return (
     <div className="page">
       <PageHeading
         title="Labs"
-        body="Grouped by test, so a marker measured over years reads as one history."
+        body={trends.length ? `${flagged.length} flagged · ${trends.length - flagged.length} within range or unrated` : "Results stay grouped by test and unit."}
         action={
           <button type="button" className="button primary" onClick={() => open({ kind: "lab" })}>
             <Icon name="plus" />
@@ -53,6 +58,13 @@ export function LabsView({
             </div>
           ) : null}
         </div>
+
+        {trends.length ? (
+          <div className="lab-filter-row" role="group" aria-label="Filter lab status">
+            <button type="button" className={filter === "all" ? "chip primary" : "chip"} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>All {trends.length}</button>
+            <button type="button" className={filter === "flagged" ? "chip primary" : "chip"} aria-pressed={filter === "flagged"} onClick={() => setFilter("flagged")}>Flagged {flagged.length}</button>
+          </div>
+        ) : null}
 
         {trends.length ? (
           shown.length ? (
@@ -92,7 +104,7 @@ export function LabsView({
                         <b>
                           {trend.change === null
                             ? "—"
-                            : `${trend.change > 0 ? "+" : ""}${Number(trend.change.toFixed(2))}`}
+                            : `${trend.change > 0 ? "+" : ""}${Number(trend.change.toFixed(2))} ${trend.unit}`}
                         </b>
                       </div>
                       <div className="spark-slot">
@@ -192,7 +204,10 @@ export function LabsView({
               })}
             </ul>
           ) : (
-            <p className="panel-body">{`No test matches “${query}”.`}</p>
+            <div className="empty-inline">
+              <p className="panel-body">{query ? `No test matches “${query}”.` : "No flagged results in this view."}</p>
+              {query ? <button type="button" className="text-button" onClick={() => setQuery("")}>Clear search</button> : null}
+            </div>
           )
         ) : (
           // The heading already carries "Add result", a few hundred pixels

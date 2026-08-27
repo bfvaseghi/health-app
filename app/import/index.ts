@@ -440,6 +440,7 @@ export function combineRecords(items: ImportItem[]): ParsedRecords {
     combined.sleepEntries.push(...records.sleepEntries);
     combined.labResults.push(...records.labResults);
     combined.workoutSets.push(...records.workoutSets);
+    combined.replaceWorkoutHistory ||= records.replaceWorkoutHistory;
     combined.skipped += records.skipped;
     combined.warnings.push(...records.warnings);
   }
@@ -447,5 +448,6 @@ export function combineRecords(items: ImportItem[]): ParsedRecords {
 }
 
 export function applyImport(state: HealthState, items: ImportItem[]): HealthState {
-  return mergeRecords(state, combineRecords(items));
+  const records = combineRecords(items);
+  return mergeRecords(state, records);
 }

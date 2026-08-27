@@ -10,18 +10,6 @@ import type { Modal } from "./types";
 const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 /**
- * One tap for the common ones, with the right schedule already on them: the
- * hair pair and the fluoxetine are daily, the semaglutide is a weekly shot.
- * Nothing is added until it is tapped.
- */
-const SUGGESTIONS: { name: string; schedule: "daily" | "weekly" }[] = [
-  { name: "Finasteride", schedule: "daily" },
-  { name: "Minoxidil", schedule: "daily" },
-  { name: "Prozac", schedule: "daily" },
-  { name: "Ozempic", schedule: "weekly" },
-];
-
-/**
  * What you are on, and whether you took it.
  *
  * One tick a day could only ever be a lie about two of them. A finasteride, a
@@ -34,21 +22,17 @@ export function MedsView({
   today,
   open,
   onDose,
-  onAddMedication,
   onDeleteMedication,
 }: {
   state: HealthState;
   today: string;
   open: (modal: Modal) => void;
   onDose: (medicationId: string, date: string, taken: boolean) => void;
-  onAddMedication: (name: string, schedule: "daily" | "weekly") => void;
   onDeleteMedication: (id: string) => void;
 }) {
   const statuses = useMemo(() => medicationStatuses(state, today, 30), [state, today]);
   const due = statuses.filter((status) => status.dueToday);
   const answered = due.filter((status) => status.today !== null).length;
-  const have = new Set(state.medications.map((medication) => medication.name.trim().toLowerCase()));
-  const offers = SUGGESTIONS.filter((offer) => !have.has(offer.name.toLowerCase()));
 
   return (
     <div className="page">
@@ -121,16 +105,16 @@ export function MedsView({
 
               <div className="med-stats">
                 <span>
+                  <b>{`${status.recorded} / ${status.due}`}</b>
+                  <small>due doses answered</small>
+                </span>
+                <span>
                   <b>{status.percent === null ? "—" : `${status.percent}%`}</b>
-                  <small>{status.recorded ? `of ${status.recorded} due` : "nothing recorded"}</small>
+                  <small>taken of answered</small>
                 </span>
                 <span>
-                  <b>{status.streak}</b>
-                  <small>{status.streak === 1 ? "in a row" : "in a row"}</small>
-                </span>
-                <span>
-                  <b>{status.missed}</b>
-                  <small>missed</small>
+                  <b>{status.unanswered}</b>
+                  <small>not logged</small>
                 </span>
               </div>
             </li>
@@ -145,26 +129,6 @@ export function MedsView({
           />
         </section>
       )}
-
-      {offers.length ? (
-        <section className="med-offers" aria-label="Add a common medication in one tap">
-          <p>Add in one tap</p>
-          <div className="chip-row">
-            {offers.map((offer) => (
-              <button
-                key={offer.name}
-                type="button"
-                className="chip"
-                onClick={() => onAddMedication(offer.name, offer.schedule)}
-              >
-                <Icon name="plus" />
-                {offer.name}
-                <small>{offer.schedule === "daily" ? "daily" : "weekly"}</small>
-              </button>
-            ))}
-          </div>
-        </section>
-      ) : null}
     </div>
   );
 }

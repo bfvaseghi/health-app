@@ -45,36 +45,51 @@ export function ImportDialog({
 }) {
   const [items, setItems] = useState<ImportItem[]>([]);
   const [busy, setBusy] = useState("");
+  const [pendingBatches, setPendingBatches] = useState(0);
   const [progress, setProgress] = useState(0);
   const [dragging, setDragging] = useState(false);
   const [showGuides, setShowGuides] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const input = useRef<HTMLInputElement>(null);
+  const batchQueue = useRef<Promise<void>>(Promise.resolve());
+  const pendingRef = useRef(0);
 
-  async function addFiles(files: File[]) {
-    for (const file of files) {
-      setBusy(file.name);
-      setProgress(0);
-      // Yield first so the file name paints before a large export blocks the thread.
-      await new Promise((resolve) => window.setTimeout(resolve, 0));
-      const found = await inspectFile(file, setProgress);
-      setItems((current) => [...current, ...found]);
-    }
-    setBusy("");
-    setProgress(0);
+  function addFiles(files: File[]) {
+    pendingRef.current += 1;
+    setPendingBatches(pendingRef.current);
+    const run = async () => {
+      try {
+        for (const file of files) {
+          setBusy(file.name);
+          setProgress(0);
+          // Yield first so the file name paints before a large export blocks the thread.
+          await new Promise((resolve) => window.setTimeout(resolve, 0));
+          const found = await inspectFile(file, setProgress);
+          setItems((current) => [...current, ...found]);
+        }
+      } finally {
+        pendingRef.current -= 1;
+        setPendingBatches(pendingRef.current);
+        if (pendingRef.current === 0) {
+          setBusy("");
+          setProgress(0);
+        }
+      }
+    };
+    batchQueue.current = batchQueue.current.then(run, run);
   }
 
   function onDrop(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     setDragging(false);
     const files = [...event.dataTransfer.files];
-    if (files.length) void addFiles(files);
+    if (files.length) addFiles(files);
   }
 
   function onChoose(event: ChangeEvent<HTMLInputElement>) {
     const files = [...(event.target.files ?? [])];
     event.target.value = "";
-    if (files.length) void addFiles(files);
+    if (files.length) addFiles(files);
   }
 
   function updateMapping(id: string, index: number, change: Partial<ColumnMapping>) {
@@ -123,7 +138,7 @@ export function ImportDialog({
           <Icon name="upload" />
         </span>
         <b>Drop a file, or</b>
-        <button type="button" className="button primary" onClick={() => input.current?.click()} disabled={Boolean(busy)}>
+        <button type="button" className="button primary" onClick={() => input.current?.click()} disabled={pendingBatches > 0}>
           Choose files
         </button>
         <small>Oura, Whoop, and Apple Health — zip, CSV, or JSON. Several files at once is fine.</small>
@@ -283,8 +298,8 @@ export function ImportDialog({
 
       {items.length ? (
         <Note icon="shield">
-          Nothing is overwritten. A night from another device is kept beside this one, and a day only gains what the
-          file adds.
+          Health records merge field by field. A complete Strong export replaces prior lifting history so deleted or
+          renamed sets do not remain behind; the preview above shows that scope before you continue.
         </Note>
       ) : null}
 
@@ -297,7 +312,7 @@ export function ImportDialog({
         <button type="button" className="button secondary" onClick={onClose}>
           Cancel
         </button>
-        <button type="button" className="button primary" disabled={!ready || Boolean(busy)} onClick={() => onImport(items)}>
+        <button type="button" className="button primary" disabled={!ready || pendingBatches > 0} onClick={() => onImport(items)}>
           <Icon name="upload" />
           Import
         </button>

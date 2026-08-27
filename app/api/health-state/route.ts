@@ -1,10 +1,10 @@
-import { and, desc, eq, notInArray } from "drizzle-orm";
+import { and, desc, eq, notInArray, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
 import { appleHealthSyncs, healthStateBackups, healthStates } from "../../../db/schema";
 import { normalizeAppleHealthSyncPayload } from "../../apple-health-sync";
 import { isBaselineOwner } from "../../baseline-owner";
 import { getChatGPTUser } from "../../chatgpt-auth";
-import { HealthState, findRetiredFields, mergeRecords, normalizeHealthState } from "../../health-model";
+import { HealthState, emptyHealthState, normalizeHealthState } from "../../health-model";
 
 const MAX_PAYLOAD_BYTES = 1_500_000;
 const BACKUP_LIMIT = 30;
@@ -25,7 +25,6 @@ async function authenticatedUserId(): Promise<string | null> {
   return user?.email.toLowerCase() ?? null;
 }
 
-type Database = ReturnType<typeof getDb>;
 type StoredState = { payload: string; updatedAt: string; revision: number };
 type StoredAppleSync = { payload: string; updatedAt: string };
 
@@ -46,75 +45,25 @@ function parseStoredState(row: StoredState | undefined): HealthState | null {
   }
 }
 
-/** Apple owns its small wellness lane and never mutates the editable state row. */
-function composeAppleSync(state: HealthState, apple: StoredAppleSync | undefined): HealthState {
-  if (!apple) return state;
+function sameRecord(left: HealthState, right: HealthState): boolean {
+  return JSON.stringify({ ...left, updatedAt: "" }) === JSON.stringify({ ...right, updatedAt: "" });
+}
+
+/** Apple stays an overlay. It is displayed in memory and is never PUT back. */
+function readAppleSync(apple: StoredAppleSync | undefined) {
+  if (!apple) return null;
   let payload: unknown;
   try {
     payload = JSON.parse(apple.payload);
   } catch {
-    return state;
+    return null;
   }
   const records = normalizeAppleHealthSyncPayload(payload);
-  if (!records.dailyEntries.length && !records.sleepEntries.length) return state;
-  const merged = mergeRecords(state, records);
-  return normalizeHealthState({
-    ...merged,
-    updatedAt: state.updatedAt > apple.updatedAt ? state.updatedAt : apple.updatedAt,
-  });
+  return records.dailyEntries.length || records.sleepEntries.length ? records : null;
 }
 
 function revisionHeaders(revision: number): HeadersInit {
   return { "Cache-Control": "no-store", ETag: `"${revision}"` };
-}
-
-/**
- * Rewrites the saved record and every snapshot without the fields this version
- * retired. Normalization drops them whenever a payload is read, but the stored
- * JSON keeps them until something writes over it, so this does the writing.
- *
- * Snapshots are fetched one at a time rather than all at once: a payload can run
- * to a megabyte and thirty of them do not need to be in memory together. This
- * only runs when a retired field is actually found, so it happens once.
- */
-async function purgeRetiredData(db: Database, userId: string, state: HealthState): Promise<number> {
-  await db
-    .update(healthStates)
-    .set({ payload: JSON.stringify(state) })
-    .where(eq(healthStates.userId, userId));
-
-  const ids = await db
-    .select({ id: healthStateBackups.id })
-    .from(healthStateBackups)
-    .where(eq(healthStateBackups.userId, userId))
-    .orderBy(desc(healthStateBackups.createdAt), desc(healthStateBackups.id))
-    .limit(BACKUP_LIMIT);
-
-  let cleaned = 0;
-  for (const { id } of ids) {
-    const [snapshot] = await db
-      .select({ payload: healthStateBackups.payload })
-      .from(healthStateBackups)
-      .where(and(eq(healthStateBackups.id, id), eq(healthStateBackups.userId, userId)))
-      .limit(1);
-    if (!snapshot) continue;
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(snapshot.payload);
-    } catch {
-      continue;
-    }
-    if (!findRetiredFields(parsed).fields.length) continue;
-
-    await db
-      .update(healthStateBackups)
-      .set({ payload: JSON.stringify(normalizeHealthState(parsed)) })
-      .where(eq(healthStateBackups.id, id));
-    cleaned += 1;
-  }
-
-  return cleaned;
 }
 
 export async function GET() {
@@ -140,10 +89,8 @@ export async function GET() {
     ]);
 
     if (!row) {
-      if (!apple) return Response.json({ state: null, revision: 0 }, { headers: revisionHeaders(0) });
-      const state = composeAppleSync(normalizeHealthState({ updatedAt: apple.updatedAt }), apple);
       return Response.json(
-        { state, updatedAt: state.updatedAt, revision: 0 },
+        { state: null, appleOverlay: readAppleSync(apple), revision: 0 },
         { headers: revisionHeaders(0) },
       );
     }
@@ -155,18 +102,14 @@ export async function GET() {
       return Response.json({ error: "The saved record could not be read." }, { status: 422 });
     }
 
-    const retired = findRetiredFields(parsed);
     const normalized = normalizeHealthState(parsed);
     const base = normalizeHealthState({ ...normalized, updatedAt: row.updatedAt });
-    const snapshots = retired.fields.length ? await purgeRetiredData(db, userId, base) : 0;
-    const state = composeAppleSync(base, apple);
-    const updatedAt = state.updatedAt;
     return Response.json(
       {
-        state,
-        updatedAt,
+        state: base,
+        appleOverlay: readAppleSync(apple),
+        updatedAt: base.updatedAt,
         revision: row.revision,
-        ...(retired.fields.length ? { purged: { ...retired, snapshots } } : {}),
       },
       { headers: revisionHeaders(row.revision) },
     );
@@ -225,20 +168,13 @@ export async function PUT(request: Request) {
       .limit(1);
 
     const conflict = async () => {
-      const [[latest], [apple]] = await Promise.all([
-        db
-          .select({ payload: healthStates.payload, updatedAt: healthStates.updatedAt, revision: healthStates.revision })
-          .from(healthStates)
-          .where(eq(healthStates.userId, userId))
-          .limit(1),
-        db
-          .select({ payload: appleHealthSyncs.payload, updatedAt: appleHealthSyncs.updatedAt })
-          .from(appleHealthSyncs)
-          .where(eq(appleHealthSyncs.userId, userId))
-          .limit(1),
-      ]);
+      const [latest] = await db
+        .select({ payload: healthStates.payload, updatedAt: healthStates.updatedAt, revision: healthStates.revision })
+        .from(healthStates)
+        .where(eq(healthStates.userId, userId))
+        .limit(1);
       const parsedLatest = parseStoredState(latest);
-      const latestState = parsedLatest ? composeAppleSync(parsedLatest, apple) : null;
+      const latestState = parsedLatest;
       const revision = latest?.revision ?? 0;
       return Response.json(
         {
@@ -253,57 +189,105 @@ export async function PUT(request: Request) {
 
     if (expected !== (current?.revision ?? 0)) return conflict();
 
+    const currentState = parseStoredState(current);
+    if (currentState && sameRecord(currentState, state)) {
+      return Response.json(
+        { state: currentState, updatedAt: currentState.updatedAt, revision: current.revision },
+        { headers: revisionHeaders(current.revision) },
+      );
+    }
+
     const nextRevision = expected + 1;
-    const written = current
-      ? await db
-          .update(healthStates)
-          .set({ payload, updatedAt: now, revision: nextRevision })
-          .where(and(eq(healthStates.userId, userId), eq(healthStates.revision, expected)))
-          .returning({ revision: healthStates.revision })
-      : await db
+    if (!current) {
+      const written = await db
           .insert(healthStates)
           .values({ userId, payload, updatedAt: now, revision: nextRevision })
           .onConflictDoNothing({ target: healthStates.userId })
           .returning({ revision: healthStates.revision });
-
-    if (!written.length) return conflict();
-
-    if (current?.payload && current.payload !== payload) {
-      // Snapshot the previous record in this version's shape, so a retired field
-      // cannot re-enter storage through the recovery history.
-      let previous = current.payload;
-      try {
-        previous = JSON.stringify(normalizeHealthState(JSON.parse(previous)));
-      } catch {
-        previous = current.payload;
-      }
-      await db.insert(healthStateBackups).values({
-        userId,
-        payload: previous,
-        createdAt: now,
-      });
-
-      // Keep the newest, delete the rest. An OFFSET with no LIMIT is a syntax
-      // error in SQLite, so the prune is expressed as "everything but these".
-      const keep = await db
+      if (!written.length) return conflict();
+    } else {
+      // D1 batches are transactional. The snapshot insert is conditional on the
+      // same revision as the update, so a losing concurrent writer commits
+      // neither a replacement nor a misleading recovery point.
+      const backup = db.insert(healthStateBackups).select(
+        db
+          .select({
+            userId: healthStates.userId,
+            payload: healthStates.payload,
+            createdAt: sql<string>`${now}`,
+            replacedRevision: healthStates.revision,
+          })
+          .from(healthStates)
+          .where(and(eq(healthStates.userId, userId), eq(healthStates.revision, expected))),
+      );
+      const write = db
+        .update(healthStates)
+        .set({ payload, updatedAt: now, revision: nextRevision })
+        .where(and(eq(healthStates.userId, userId), eq(healthStates.revision, expected)))
+        .returning({ revision: healthStates.revision });
+      const keep = db
         .select({ id: healthStateBackups.id })
         .from(healthStateBackups)
         .where(eq(healthStateBackups.userId, userId))
         .orderBy(desc(healthStateBackups.createdAt), desc(healthStateBackups.id))
         .limit(BACKUP_LIMIT);
-      if (keep.length === BACKUP_LIMIT) {
-        await db.delete(healthStateBackups).where(
-          and(
-            eq(healthStateBackups.userId, userId),
-            notInArray(healthStateBackups.id, keep.map((row) => row.id)),
-          ),
-        );
-      }
+      const prune = db.delete(healthStateBackups).where(
+        and(
+          eq(healthStateBackups.userId, userId),
+          notInArray(healthStateBackups.id, keep),
+        ),
+      );
+      const [, written] = await db.batch([backup, write, prune]);
+      if (!written.length) return conflict();
     }
 
     return Response.json(
       { state, updatedAt: now, revision: nextRevision },
       { headers: revisionHeaders(nextRevision) },
+    );
+  } catch (error) {
+    return routeError(error);
+  }
+}
+
+/** Irreversible owner action: keep preferences, remove every record and recovery copy. */
+export async function DELETE() {
+  const userId = await authenticatedUserId();
+  if (!userId) return Response.json({ error: "Sign in with ChatGPT." }, { status: 401 });
+
+  try {
+    const db = getDb();
+    if (!(await isBaselineOwner(db, userId))) {
+      return Response.json({ error: "This is a private record." }, { status: 403 });
+    }
+    const [current] = await db
+      .select({ payload: healthStates.payload, updatedAt: healthStates.updatedAt, revision: healthStates.revision })
+      .from(healthStates)
+      .where(eq(healthStates.userId, userId))
+      .limit(1);
+    const previous = parseStoredState(current);
+    const now = new Date().toISOString();
+    const cleared = normalizeHealthState({
+      ...emptyHealthState(new Date(now)),
+      updatedAt: now,
+      goals: previous?.goals,
+    });
+    const revision = (current?.revision ?? 0) + 1;
+    const write = db
+      .insert(healthStates)
+      .values({ userId, payload: JSON.stringify(cleared), updatedAt: now, revision })
+      .onConflictDoUpdate({
+        target: healthStates.userId,
+        set: { payload: JSON.stringify(cleared), updatedAt: now, revision },
+      });
+    await db.batch([
+      db.delete(healthStateBackups).where(eq(healthStateBackups.userId, userId)),
+      db.delete(appleHealthSyncs).where(eq(appleHealthSyncs.userId, userId)),
+      write,
+    ]);
+    return Response.json(
+      { state: cleared, updatedAt: now, revision, appleOverlay: null },
+      { headers: revisionHeaders(revision) },
     );
   } catch (error) {
     return routeError(error);

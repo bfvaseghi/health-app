@@ -344,12 +344,22 @@ export type ParsedRecords = {
   sleepEntries: Record<string, unknown>[];
   labResults: Record<string, unknown>[];
   workoutSets: Record<string, unknown>[];
+  /** True only for a complete Strong export, which is the lifting source of record. */
+  replaceWorkoutHistory: boolean;
   skipped: number;
   warnings: string[];
 };
 
 export function emptyRecords(): ParsedRecords {
-  return { dailyEntries: [], sleepEntries: [], labResults: [], workoutSets: [], skipped: 0, warnings: [] };
+  return {
+    dailyEntries: [],
+    sleepEntries: [],
+    labResults: [],
+    workoutSets: [],
+    replaceWorkoutHistory: false,
+    skipped: 0,
+    warnings: [],
+  };
 }
 
 function convert(kind: FieldKind, raw: string, unit: string | undefined): unknown {

@@ -249,6 +249,8 @@ export function demoHealthState(today: string): HealthState {
       bodyFatTargetPercent: 16,
       trainingDays: [],
       addedSets: [],
+      trainingBlockStart: "",
+      trainingAnchorSets: {},
     },
   });
 }

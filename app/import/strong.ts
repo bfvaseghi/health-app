@@ -46,6 +46,9 @@ function columnIndex(table: Table, ...names: string[]): number {
 
 export function strongToRecords(table: Table): ParsedRecords {
   const records = emptyRecords();
+  // Strong exports its complete history. Re-importing must therefore remove
+  // sets that were renamed or deleted in Strong instead of accumulating ghosts.
+  records.replaceWorkoutHistory = true;
   const at = {
     date: columnIndex(table, "date"),
     workout: columnIndex(table, "workoutname"),
@@ -83,7 +86,7 @@ export function strongToRecords(table: Table): ParsedRecords {
       rest += 1;
       const seconds = toNumber(cell(at.seconds));
       const stamp = cell(at.date);
-      const exercise = cell(at.exercise);
+      const exercise = cell(at.exercise).replace(/^\*+\s*/, "").trim();
       if (previous && previous.stamp === stamp && previous.exercise === exercise && seconds !== null) {
         previous.set.restSeconds = seconds;
       }
@@ -101,7 +104,7 @@ export function strongToRecords(table: Table): ParsedRecords {
 
     const stamp = cell(at.date);
     const date = toIsoDate(stamp);
-    const exercise = cell(at.exercise);
+    const exercise = cell(at.exercise).replace(/^\*+\s*/, "").trim();
     if (!date || !exercise) {
       records.skipped += 1;
       previous = null;
@@ -125,6 +128,8 @@ export function strongToRecords(table: Table): ParsedRecords {
     const weight = toNumber(cell(at.weight));
     const unit = cell(at.weightUnit);
     const kilos = unit ? /\bkg\b|kilogram/i.test(unit) : headerKilos;
+    const convertedWeight = weight === null || weight === 0 ? null : kilos ? Math.round(weight * 2.204_62 * 10) / 10 : weight;
+    const assisted = /assisted/i.test(exercise) || (convertedWeight !== null && convertedWeight < 0);
     const set: Record<string, unknown> = {
       date,
       // The full timestamp keeps a morning and an evening session apart.
@@ -132,7 +137,9 @@ export function strongToRecords(table: Table): ParsedRecords {
       workoutName: cell(at.workout),
       exercise,
       setNumber,
-      weightLb: weight === null || weight === 0 ? null : kilos ? Math.round(weight * 2.204_62 * 10) / 10 : weight,
+      weightLb: assisted ? null : convertedWeight,
+      loadMode: assisted ? "assisted" : convertedWeight === null ? "bodyweight" : "loaded",
+      assistanceLb: assisted && convertedWeight !== null ? Math.abs(convertedWeight) : null,
       reps: toNumber(cell(at.reps)),
       distance: toNumber(cell(at.distance)) || null,
       seconds: toNumber(cell(at.seconds)) || null,

@@ -17,6 +17,7 @@ import { fitnessTabs, type FitnessTab, type Modal } from "./types";
  */
 export function FitnessView({
   state,
+  editableState,
   today,
   open,
   demo,
@@ -28,6 +29,7 @@ export function FitnessView({
   onNotice,
 }: {
   state: HealthState;
+  editableState: HealthState;
   today: string;
   open: (modal: Modal) => void;
   demo: boolean;
@@ -72,6 +74,7 @@ export function FitnessView({
       {tab === "body" && (
         <BodyTab
           state={state}
+          editableState={editableState}
           today={today}
           open={open}
           demo={demo}

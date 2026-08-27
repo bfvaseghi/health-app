@@ -20,6 +20,7 @@ import {
   mergeAppleHealthSyncPayload,
   normalizeAppleHealthSyncPayload,
   parseAppleHealthSync,
+  subtractAppleHealthSyncOverlay,
 } from "../app/apple-health-sync.ts";
 
 /* Shapes taken from what each vendor's own export looks like. Values are synthetic. */
@@ -526,6 +527,26 @@ test("Apple sync replays are idempotent and a partial day cannot erase earlier f
   assert.equal(replay.changedNights, 0);
 });
 
+test("the automatic Apple lane can be removed from a Version 7 base without erasing manual work", () => {
+  const overlay = {
+    dailyEntries: [{ date: "2026-08-22", steps: 5300, weightLb: 176 }],
+    sleepEntries: [{ date: "2026-08-22", source: "apple", durationHours: 7.5 }],
+  };
+  const contaminated = mergeRecords(emptyHealthState(new Date("2026-08-23T12:00:00Z")), overlay);
+  const cleaned = subtractAppleHealthSyncOverlay(contaminated, overlay);
+  assert.equal(cleaned.dailyEntries.length, 0);
+  assert.equal(cleaned.sleepEntries.length, 0);
+
+  const withManual = mergeRecords(contaminated, {
+    dailyEntries: [{ date: "2026-08-22", steps: 6200, note: "walked after dinner" }],
+    sleepEntries: [{ date: "2026-08-22", source: "manual", durationHours: 8, note: "manual note" }],
+  });
+  const preserved = subtractAppleHealthSyncOverlay(withManual, overlay);
+  assert.equal(preserved.dailyEntries[0].steps, 6200);
+  assert.equal(preserved.dailyEntries[0].note, "walked after dinner");
+  assert.equal(preserved.sleepEntries.some((entry) => entry.source === "manual"), true);
+});
+
 /* ---------------------------------------------------------------- lifting */
 
 import { readFileSync } from "node:fs";
@@ -600,6 +621,29 @@ test("Strong preserves an exercise whose set order restarts later in one session
     [1, 2],
   );
   assert.match(records.warnings.join(" "), /Renumbered 1 repeated Strong set/);
+});
+
+test("a complete Strong re-import replaces renamed and deleted sets", () => {
+  const first = strongToRecords(toTable(`Date,Workout Name,Exercise Name,Set Order,Weight,Reps
+2026-08-20 18:00:00,Upper,Bench Press,1,100,10
+2026-08-20 18:00:00,Upper,Bench Press,2,100,10
+2026-08-20 18:00:00,Upper,Bench Press,3,100,10`));
+  const second = strongToRecords(toTable(`Date,Workout Name,Exercise Name,Set Order,Weight,Reps
+2026-08-20 18:00:00,Upper,Incline Bench Press,1,95,10
+2026-08-20 18:00:00,Upper,Incline Bench Press,2,95,10`));
+  const once = mergeRecords(emptyHealthState(new Date("2026-08-21T12:00:00Z")), first);
+  const twice = mergeRecords(once, second);
+  assert.deepEqual(twice.workoutSets.map((entry) => entry.exercise), ["Incline Bench Press", "Incline Bench Press"]);
+  assert.equal(twice.workoutSets.length, 2);
+});
+
+test("Strong's superset marker cannot collapse two otherwise identical sets", () => {
+  const records = strongToRecords(toTable(`Date,Workout Name,Exercise Name,Set Order,Weight,Reps
+2026-08-20 18:00:00,Upper,Bench Press,1,100,10
+2026-08-20 18:00:00,Upper,*Bench Press,1,100,10`));
+  const state = mergeRecords(emptyHealthState(new Date("2026-08-21T12:00:00Z")), records);
+  assert.equal(state.workoutSets.length, 2);
+  assert.deepEqual(state.workoutSets.map((entry) => entry.setNumber), [1, 2]);
 });
 
 test("a Strong file imports through the same dialog as everything else", async () => {

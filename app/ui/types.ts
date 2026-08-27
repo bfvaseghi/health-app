@@ -12,7 +12,7 @@ import type { SleepSource } from "../health-model";
  *
  * Anything that is settings rather than a record lives behind the gear.
  */
-export type View = "today" | "sleep" | "fitness" | "mind" | "meds" | "labs" | "summary" | "data";
+export type View = "today" | "sleep" | "fitness" | "mind" | "meds" | "labs" | "summary" | "data" | "more";
 
 /** Fitness is one section with three faces rather than three sections. */
 export type FitnessTab = "coach" | "progress" | "lifting" | "body";
@@ -50,9 +50,11 @@ export const viewLabels: Record<View, string> = {
   labs: "Labs",
   summary: "Summary",
   data: "Data & goals",
+  more: "More",
 };
 
 export const navOrder: View[] = ["today", "sleep", "fitness", "mind", "meds", "labs", "summary"];
+export const mobileNavOrder: View[] = ["today", "sleep", "fitness", "mind", "more"];
 
 export const fitnessTabs: Array<{ tab: FitnessTab; label: string }> = [
   { tab: "coach", label: "Coach" },

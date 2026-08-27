@@ -67,6 +67,15 @@ export async function storedPhotoIds(): Promise<string[]> {
   }
 }
 
+export async function clearAllPhotos(): Promise<void> {
+  try {
+    await run("readwrite", (store) => store.clear());
+  } catch {
+    // The caller still clears synced metadata; inaccessible browser storage
+    // must not make the rest of an erase operation lie about succeeding.
+  }
+}
+
 /**
  * Decodes a photo to something a canvas can draw.
  *

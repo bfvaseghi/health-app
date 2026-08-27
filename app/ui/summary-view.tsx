@@ -19,6 +19,7 @@ export function SummaryView({
 }) {
   const [days, setDays] = useState(30);
   const [showNotes, setShowNotes] = useState(false);
+  const [includeTherapy, setIncludeTherapy] = useState(true);
   const report = useMemo(() => buildHealthReport(state, today, days), [state, today, days]);
 
   return (
@@ -34,7 +35,7 @@ export function SummaryView({
               className="button secondary"
               onClick={async () =>
                 onNotice(
-                  (await copyText(reportToText(report)))
+                  (await copyText(reportToText(report, { includeTherapy, includeNotes: showNotes })))
                     ? "Summary copied as text."
                     : "Copying is blocked in this browser. Print instead.",
                 )
@@ -65,73 +66,28 @@ export function SummaryView({
               label="Report period"
               value={String(days)}
               options={[
-                { value: "7", label: "1W" },
-                { value: "30", label: "1M" },
-                { value: "90", label: "3M" },
+                { value: "7", label: "7 days" },
+                { value: "30", label: "30 days" },
+                { value: "90", label: "90 days" },
               ]}
               onChange={(value) => setDays(Number(value))}
             />
           </div>
         </div>
         <p className="panel-body">
-          {`Recorded in this period: ${report.coverage.sleepNights} ${
-            report.coverage.sleepNights === 1 ? "night" : "nights"
-          } of sleep and ${report.coverage.medicationDays} ${
-            report.coverage.medicationDays === 1 ? "day" : "days"
-          } of medication, out of ${report.days}. Every figure below is drawn only from recorded days.`}
+          {`Coverage in this period: sleep ${report.coverage.sleepNights}/${report.days} nights · medication ${report.coverage.medicationDosesAnswered}/${report.coverage.medicationDosesDue} due doses answered.`}
         </p>
+        <div className="report-inclusions no-print" aria-label="Choose private details to include">
+          <label><input type="checkbox" checked={includeTherapy} onChange={(event) => setIncludeTherapy(event.target.checked)} /> Include therapy topics</label>
+          <label><input type="checkbox" checked={showNotes} onChange={(event) => setShowNotes(event.target.checked)} /> Include daily notes</label>
+        </div>
       </section>
 
-      <div className="report-grid">
-        {groups.map((group) => {
-          const rows = report.rows.filter((row) => row.group === group);
-          // A row reading "No data" over "not recorded" is two ways of saying
-          // nothing. Six of them in a row is a wall between a clinician and the
-          // figures that do exist, so what was not recorded is named once,
-          // which is all a gap in a record needs.
-          const recorded = rows.filter((row) => row.value !== "No data");
-          const missing = rows.filter((row) => row.value === "No data");
-          return (
-            <section className="panel report-block" key={group}>
-              <div className="panel-head">
-                <div>
-                  <p className="kicker">{group}</p>
-                </div>
-              </div>
-              {recorded.length ? (
-                <dl className="report-rows">
-                  {recorded.map((row) => (
-                    <div key={row.id}>
-                      <dt>{row.label}</dt>
-                      <dd>
-                        <b>{row.value}</b>
-                        <small>{row.detail}</small>
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-              ) : null}
-              {missing.length ? (
-                <p className="report-none">
-                  {recorded.length
-                    ? // Medication rows are labelled with the name on the box, and
-                      // a name keeps its capitals.
-                      `Not recorded: ${listWords(
-                        missing.map((row) => (group === "Medication" ? row.label : row.label.toLowerCase())),
-                      )}.`
-                    : "Nothing recorded in this period."}
-                </p>
-              ) : null}
-            </section>
-          );
-        })}
-      </div>
-
-      {report.toRaise.length ? (
-        <section className="panel wide-panel">
+      {includeTherapy && report.toRaise.length ? (
+        <section className="panel wide-panel report-priority therapy-priority">
           <div className="panel-head">
             <div>
-              <p className="kicker">Kept as they came up</p>
+              <p className="kicker">Current concern · not limited to the selected period</p>
               <h2>{`${report.toRaise.length} ${report.toRaise.length === 1 ? "thing" : "things"} for therapy`}</h2>
             </div>
           </div>
@@ -146,10 +102,10 @@ export function SummaryView({
         </section>
       ) : null}
 
-      <section className="panel wide-panel">
+      <section className="panel wide-panel report-priority labs-priority">
         <div className="panel-head">
           <div>
-            <p className="kicker">Lab history</p>
+            <p className="kicker">Current concern · not limited to the selected period</p>
             <h2>Latest result per test, outside its range</h2>
           </div>
         </div>
@@ -183,28 +139,61 @@ export function SummaryView({
         )}
       </section>
 
-      {report.notes.length ? (
-        <section className="panel wide-panel">
+      <div className="report-grid">
+        {groups.map((group) => {
+          const rows = report.rows.filter((row) => row.group === group);
+          const recorded = rows.filter((row) => row.value !== "No data");
+          const missing = rows.filter((row) => row.value === "No data");
+          return (
+            <section className="panel report-block" key={group} aria-labelledby={`report-${group.toLowerCase()}`}>
+              <div className="panel-head">
+                <div>
+                  <h2 className="kicker" id={`report-${group.toLowerCase()}`}>{group}</h2>
+                </div>
+              </div>
+              {recorded.length ? (
+                <dl className="report-rows">
+                  {recorded.map((row) => (
+                    <div key={row.id}>
+                      <dt>{row.label}</dt>
+                      <dd>
+                        <b>{row.value}</b>
+                        <small>{row.detail}</small>
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
+              {missing.length ? (
+                <p className="report-none">
+                  {recorded.length
+                    ? `Not recorded: ${listWords(
+                        missing.map((row) => (group === "Medication" ? row.label : row.label.toLowerCase())),
+                      )}.`
+                    : "Nothing recorded in this period."}
+                </p>
+              ) : null}
+            </section>
+          );
+        })}
+      </div>
+
+      {report.notes.length && showNotes ? (
+        <section className="panel wide-panel report-notes">
           <div className="panel-head wrap">
             <div>
               <h2>{`Notes from ${report.notes.length} ${report.notes.length === 1 ? "day" : "days"}`}</h2>
             </div>
-            <button type="button" className="text-button no-print" onClick={() => setShowNotes((value) => !value)}>
-              {showNotes ? "Hide notes" : "Show notes"} <Icon name="chevron" />
-            </button>
+            <span className="panel-meta">Included in copy and print</span>
           </div>
-          {showNotes ? (
-            <ul className="note-list">
-              {report.notes.map((note) => (
-                <li key={note.date}>
-                  <b>{dateLabel(note.date, { weekday: "short", month: "short", day: "numeric" })}</b>
-                  <p>{note.note}</p>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <p className="panel-body no-print">Hidden until shown, including when printing.</p>
-          )}
+          <ul className="note-list">
+            {report.notes.map((note) => (
+              <li key={note.date}>
+                <b>{dateLabel(note.date, { weekday: "short", month: "short", day: "numeric" })}</b>
+                <p>{note.note}</p>
+              </li>
+            ))}
+          </ul>
         </section>
       ) : null}
 

@@ -5,6 +5,7 @@ import {
   emptyAppleHealthSyncPayload,
   generateAppleHealthSyncToken,
   hashAppleHealthSyncToken,
+  normalizeAppleHealthSyncPayload,
 } from "../../../apple-health-sync";
 import { isBaselineOwner } from "../../../baseline-owner";
 import { getChatGPTUser } from "../../../chatgpt-auth";
@@ -24,7 +25,16 @@ function storageError(error: unknown): Response {
   return Response.json({ error: "Apple Health sync is temporarily unavailable." }, { status: 500, headers: NO_STORE });
 }
 
-/** Returns status only. The bearer token can never be read back. */
+function readOverlay(payload: string | undefined) {
+  if (!payload) return null;
+  try {
+    return normalizeAppleHealthSyncPayload(JSON.parse(payload));
+  } catch {
+    return null;
+  }
+}
+
+/** Returns owner-only status and the read-only overlay. The bearer token can never be read back. */
 export async function GET() {
   const userId = await authenticatedUserId();
   if (!userId) return Response.json({ error: "Sign in with ChatGPT." }, { status: 401, headers: NO_STORE });
@@ -35,13 +45,17 @@ export async function GET() {
       return Response.json({ error: "This is a private record." }, { status: 403, headers: NO_STORE });
     }
     const [row] = await db
-      .select({ lastSyncedAt: appleHealthSyncs.lastSyncedAt })
+      .select({ lastSyncedAt: appleHealthSyncs.lastSyncedAt, payload: appleHealthSyncs.payload })
       .from(appleHealthSyncs)
       .where(eq(appleHealthSyncs.userId, userId))
       .limit(1);
 
     return Response.json(
-      { configured: Boolean(row), lastSyncedAt: row?.lastSyncedAt ?? null },
+      {
+        configured: Boolean(row),
+        lastSyncedAt: row?.lastSyncedAt ?? null,
+        appleOverlay: readOverlay(row?.payload),
+      },
       { headers: NO_STORE },
     );
   } catch (error) {

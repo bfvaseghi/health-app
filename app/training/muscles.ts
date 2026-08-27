@@ -147,6 +147,7 @@ const rules: Rule[] = [
   { test: /rear delt|reverse fly|rear fly|face pull|reverse pec/, direct: ["rearDelts"], indirect: ["back"] },
   // A lateral raise is a side-delt movement; the rear delt barely participates.
   { test: /lateral raise|side raise|lat raise/, direct: ["shoulders"] },
+  { test: /front raise/, direct: ["shoulders"] },
   { test: /upright row/, direct: ["shoulders"], indirect: ["back"] },
   {
     test: /shoulder press|overhead press|military press|arnold press|push press|landmine press|behind neck press/,
@@ -158,6 +159,7 @@ const rules: Rule[] = [
 
   // Legs — the hinge and knee-flexion family before anything that says "curl".
   { test: /glute ham raise|ghr/, direct: ["hamstrings", "glutes"], compound: true },
+  { test: /reverse nordic/, direct: ["quads"] },
   { test: /leg curl|lying curl|nordic|ham curl/, direct: ["hamstrings"] },
   {
     test: /romanian|rdl|stiff.?leg|good morning|pull through|kettlebell swing/,
@@ -173,11 +175,13 @@ const rules: Rule[] = [
   // machine names sit beside each other.
   { test: /hip adduction/, direct: [] },
   {
-    test: /hip thrust|glute bridge|glute kickback|hip abduction/,
+    test: /hip thrust|glute bridge|glute kickback|kickback.*glute|glute.*kickback|hip abduction/,
     direct: ["glutes"],
     indirect: ["hamstrings"],
   },
   { test: /leg extension|knee extension/, direct: ["quads"] },
+  // Specific calf variants must land before the generic leg-press rule.
+  { test: /calf|soleus/, direct: ["calves"] },
   // The hamstring works near-isometrically in a squat pattern; it earns nothing.
   {
     test: /squat|leg press|lunge|step.?up|hack|sissy/,
@@ -185,7 +189,6 @@ const rules: Rule[] = [
     indirect: ["glutes"],
     compound: true,
   },
-  { test: /calf|soleus/, direct: ["calves"] },
 
   // Back. \brow\b, or "narrow" and "rowing machine" would both land here.
   {
@@ -204,7 +207,7 @@ const rules: Rule[] = [
   // Chest.
   { test: /fly|crossover|pec deck/, direct: ["chest"], indirect: ["shoulders"] },
   {
-    test: /incline (bench|chest|press)|incline press/,
+    test: /incline (bench|chest|press)|incline .*press|incline press/,
     direct: ["chest"],
     indirect: ["shoulders", "triceps"],
     compound: true,
@@ -225,7 +228,7 @@ const rules: Rule[] = [
   { test: /curl/, direct: ["biceps"] },
 
   // Core.
-  { test: /crunch|sit.?up|knee raise|leg raise|plank|russian twist|ab wheel|hanging|woodchop|\bab\b/, direct: ["core"] },
+  { test: /crunch|sit.?up|knee raise|leg raise|plank|pallof|russian twist|ab wheel|hanging|wood.?chop|\bab\b/, direct: ["core"] },
 ];
 
 

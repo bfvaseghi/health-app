@@ -19,7 +19,7 @@ export function PageHeading({
     <div className="page-heading">
       <div>
         {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}
-        <h1>{title}</h1>
+        <h1 tabIndex={-1}>{title}</h1>
         {body ? <p className="lede">{body}</p> : null}
       </div>
       {action}
@@ -164,12 +164,14 @@ export function ConfirmButton({
   confirmLabel = "Confirm",
   className = "row-action danger",
   icon = "trash",
+  disabled = false,
   onConfirm,
 }: {
   label: string;
   confirmLabel?: string;
   className?: string;
   icon?: string;
+  disabled?: boolean;
   onConfirm: () => void;
 }) {
   const [armed, setArmed] = useState(false);
@@ -184,9 +186,11 @@ export function ConfirmButton({
     <button
       type="button"
       className={armed ? `${className} armed` : className}
+      disabled={disabled}
       aria-label={armed ? `${confirmLabel}: ${label}` : label}
       title={label}
       onClick={() => {
+        if (disabled) return;
         if (!armed) {
           setArmed(true);
           return;
@@ -336,6 +340,7 @@ export function TextField({
   placeholder,
   type = "text",
   required,
+  max,
   onChange,
 }: {
   name: string;
@@ -344,6 +349,7 @@ export function TextField({
   placeholder?: string;
   type?: "text" | "date" | "time";
   required?: boolean;
+  max?: string;
   onChange?: (value: string) => void;
 }) {
   const id = useId();
@@ -357,6 +363,7 @@ export function TextField({
         name={name}
         placeholder={placeholder}
         required={required}
+        max={max}
         {...(controlled
           ? { value: value ?? "", onChange: (event) => onChange(event.target.value) }
           : { defaultValue: value ?? "" })}

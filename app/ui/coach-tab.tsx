@@ -18,12 +18,13 @@ import {
   weekLabel,
   weekOutlook,
   withAddedSets,
+  trainingAnchorSets,
 } from "../training/coach";
 import type { Muscle } from "../training/muscles";
 import { muscleLabels } from "../training/muscles";
 import { Icon } from "./icons";
 import { copyText, listWords } from "./format";
-import { Empty, Fold } from "./primitives";
+import { ConfirmButton, Empty, Fold } from "./primitives";
 import type { Modal } from "./types";
 
 /**
@@ -128,15 +129,23 @@ export function CoachTab({
             </button>
           ))}
         </div>
+        <div className="block-state">
+          <span><b>{plan.deload ? "Deload" : `Build week ${week + 1}`}</b><small>of a fixed 4-week block</small></span>
+          <ConfirmButton
+            label="Restart block"
+            confirmLabel="Clear choices & restart"
+            className="text-button"
+            icon="undo"
+            onConfirm={() => onGoals((current) => ({
+              ...current,
+              trainingBlockStart: weekStart(today),
+              trainingAnchorSets: trainingAnchorSets(state, today),
+              trainingDays: [],
+              addedSets: [],
+            }))}
+          />
+        </div>
       </section>
-
-      <Balance
-        outlook={outlook}
-        plan={plan}
-        state={state}
-        today={today}
-        onGoals={onGoals}
-      />
 
       <section className="panel wide-panel">
         <div className="panel-head wrap">
@@ -203,6 +212,14 @@ export function CoachTab({
           {!remaining.length ? <p className="row-note">No more training needed this week.</p> : null}
         </div>
       </section>
+
+      <Balance
+        outlook={outlook}
+        plan={plan}
+        state={state}
+        today={today}
+        onGoals={onGoals}
+      />
 
       {/* The rule the whole load column runs on, said once. */}
       <p className="coach-footnote">
@@ -498,7 +515,12 @@ function SessionCard({
               <span
                 className={exercise.stepUp ? "plan-load up" : exercise.stalled ? "plan-load down" : "plan-load"}
               >
-                {exercise.weightLb !== null ? (
+                {exercise.assistanceLb !== null ? (
+                  <>
+                    {exercise.assistanceLb}
+                    <small>lb assist</small>
+                  </>
+                ) : exercise.weightLb !== null ? (
                   <>
                     {exercise.weightLb}
                     <small>lb</small>
@@ -510,7 +532,7 @@ function SessionCard({
                   // dash than a blank that looks like a bug.
                   <span aria-label="no load logged for this yet">—</span>
                 )}
-                {exercise.stepUp ? <i aria-label="up from last time">↑</i> : null}
+                {exercise.stepUp ? <i aria-label={exercise.assistanceLb !== null ? "less assistance than last time" : "up from last time"}>{exercise.assistanceLb !== null ? "↓" : "↑"}</i> : null}
                 {exercise.stalled ? <i aria-label="backed off after a stall">↓</i> : null}
               </span>
               <span className="plan-meta">

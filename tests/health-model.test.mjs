@@ -49,7 +49,13 @@ import {
   removeMedication,
   medicationDosesCsv,
 } from "../app/health-model.ts";
-import { chooseInitialState, mergeConcurrentHealthState } from "../app/state-sync.ts";
+import { createBaselineArchive, parseBackupFile } from "../app/portability.ts";
+import {
+  chooseInitialState,
+  localStateEnvelope,
+  mergeConcurrentHealthState,
+  sameHealthState,
+} from "../app/state-sync.ts";
 
 const fixedNow = new Date("2030-01-15T12:00:00.000Z");
 
@@ -89,7 +95,7 @@ test("date helpers reject impossible dates and cross calendar boundaries safely"
   assert.equal(daysBetween("invalid", "2030-03-12"), 0);
 });
 
-test("a newer offline copy wins initialization and is marked for sync", () => {
+test("startup preserves both legacy recovery and revision-aware offline edits", () => {
   const remote = normalizeHealthState({
     ...emptyHealthState(fixedNow),
     updatedAt: "2030-01-15T10:00:00.000Z",
@@ -100,15 +106,38 @@ test("a newer offline copy wins initialization and is marked for sync", () => {
     dailyEntries: [{ date: "2030-01-15", proteinG: 180 }],
   });
 
-  const newerLocal = chooseInitialState(local, remote, emptyHealthState(fixedNow));
-  assert.equal(newerLocal.state.dailyEntries[0].proteinG, 180);
-  assert.equal(newerLocal.needsSync, true);
+  const legacy = chooseInitialState(local, remote, emptyHealthState(fixedNow));
+  assert.equal(legacy.state.dailyEntries.length, 0, "an unbased cache must not silently replace the server");
+  assert.equal(legacy.recoveryState?.dailyEntries[0].proteinG, 180);
+  assert.equal(legacy.needsSync, false);
 
-  const newerRemote = chooseInitialState(local, { ...remote, updatedAt: "2030-01-15T12:00:00.000Z" }, remote);
-  assert.equal(newerRemote.state.dailyEntries.length, 0);
-  assert.equal(newerRemote.needsSync, false);
+  const envelope = localStateEnvelope(local, remote, 7);
+  const merged = chooseInitialState(envelope, remote, emptyHealthState(fixedNow));
+  assert.equal(merged.state.dailyEntries[0].proteinG, 180);
+  assert.equal(merged.needsSync, true);
+  assert.equal(merged.recoveryState, null);
+
+  assert.equal(sameHealthState(remote, { ...remote, updatedAt: "2030-01-15T12:00:00.000Z" }), true);
 
   assert.equal(chooseInitialState(local, null, remote).needsSync, true, "a first local copy must seed an empty server");
+});
+
+test("the complete archive round-trips while unrelated JSON is rejected", async () => {
+  const state = normalizeHealthState({
+    ...emptyHealthState(fixedNow),
+    dailyEntries: [{ date: "2030-01-15", proteinG: 180, note: "synthetic" }],
+  });
+  const archive = await createBaselineArchive(state, {
+    dailyEntries: [{ date: "2030-01-15", steps: 9000 }],
+  });
+  const parsed = await parseBackupFile(new File([archive], "baseline.zip", { type: "application/zip" }));
+  assert.equal(parsed.state.dailyEntries[0].proteinG, 180);
+  assert.equal(parsed.state.dailyEntries[0].steps, null, "automatic Apple data stays outside the editable backup");
+
+  await assert.rejects(
+    parseBackupFile(new File(["{}"], "unrelated.json", { type: "application/json" })),
+    /not a Baseline backup/i,
+  );
 });
 
 test("a revision conflict keeps independent edits from both devices", () => {
@@ -300,6 +329,8 @@ test("lab and goal normalization produce safe, deterministic records", () => {
     "sleepConsistencyMinutes",
     "sleepHours",
     "trackMedication",
+    "trainingAnchorSets",
+    "trainingBlockStart",
     "trainingDays",
     "weightDirection",
     "weightGoalLb",
@@ -325,7 +356,7 @@ test("lab and goal normalization produce safe, deterministic records", () => {
   assert.deepEqual(normalizeGoals({ addedSets: "no" }).addedSets, []);
   assert.equal(normalizeGoals({ addedSets: Array.from({ length: 200 }, (_, i) => ({
     weekStart: "2030-01-14", session: "Lower A", exercise: `Lift ${i}`, sets: 2,
-  })) }).addedSets.length, 40);
+  })) }).addedSets.length, 200, "valid Coach changes are not silently truncated");
 });
 
 test("state normalization removes invalid records, deduplicates keys, and sorts newest first", () => {
@@ -458,7 +489,15 @@ test("medication adherence counts only the days that were recorded", () => {
   });
 
   const adherence = medicationAdherence(state, "2030-01-15", 14);
-  assert.deepEqual(adherence, { taken: 1, missed: 1, recorded: 2, percent: 50 });
+  assert.deepEqual(adherence, {
+    taken: 1,
+    missed: 1,
+    unanswered: 12,
+    due: 14,
+    recorded: 2,
+    percent: 50,
+    coveragePercent: 14,
+  });
   // Twelve unrecorded days are unknown, not missed.
   assert.equal(medicationAdherence(emptyHealthState(fixedNow), "2030-01-15").percent, null);
 
@@ -653,10 +692,13 @@ test("csv export quotes separators and preserves missing values as empty cells",
     daily({ date: "2030-01-15" }),
   ]);
   const lines = csv.split("\n");
-  assert.equal(lines[0], "date,medication_taken,weight_lb,steps,resting_heart_rate,hrv_ms,note");
-  assert.match(lines[1], /^2030-01-14,yes,,8000,,,/);
+  assert.equal(
+    lines[0],
+    "date,medication_taken,weight_lb,body_fat_percent,steps,resting_heart_rate,hrv_ms,protein_g,calories_kcal,journaled,meditation_minutes,meditation_note,note",
+  );
+  assert.match(lines[1], /^2030-01-14,yes,,,8000,,,,,no,,,/);
   assert.match(csv, /"comma, ""quote"" and\nnewline"/);
-  assert.equal(lines.at(-1), "2030-01-15,,,,,,");
+  assert.equal(lines.at(-1), "2030-01-15,,,,,,,,,no,,,");
 
   assert.match(sleepEntriesCsv([sleep({ bedtime: "23:00", durationHours: 8 })]), /2030-01-15,manual,23:00,,8,/);
   assert.match(

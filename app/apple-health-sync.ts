@@ -1,5 +1,5 @@
-import type { DailyEntry, SleepEntry } from "./health-model";
-import { normalizeDailyEntry, normalizeSleepEntry } from "./health-model";
+import type { DailyEntry, HealthState, SleepEntry } from "./health-model";
+import { normalizeDailyEntry, normalizeHealthState, normalizeSleepEntry } from "./health-model";
 import { isSupportedAutoExportMetric, parseAutoExport } from "./import/index";
 
 const DAILY_FIELDS = ["steps", "weightLb", "bodyFatPercent", "restingHeartRate", "hrvMs"] as const;
@@ -163,6 +163,70 @@ export function mergeAppleHealthSyncPayload(
 
 export function emptyAppleHealthSyncPayload(): AppleHealthSyncPayload {
   return { dailyEntries: [], sleepEntries: [] };
+}
+
+function meaningfulDaily(entry: DailyEntry): boolean {
+  return [
+    entry.weightLb,
+    entry.bodyFatPercent,
+    entry.steps,
+    entry.restingHeartRate,
+    entry.hrvMs,
+    entry.proteinG,
+    entry.caloriesKcal,
+    entry.medicationTaken,
+    entry.meditationMinutes,
+  ].some((value) => value !== null) || entry.journaled || Boolean(entry.meditationNote || entry.note);
+}
+
+function meaningfulSleep(entry: SleepEntry): boolean {
+  return Boolean(entry.bedtime || entry.wakeTime || entry.note) || [
+    entry.durationHours,
+    entry.quality,
+    entry.efficiencyPercent,
+    entry.deepHours,
+    entry.remHours,
+    entry.restingHeartRate,
+    entry.hrvMs,
+  ].some((value) => value !== null);
+}
+
+/**
+ * Version 7 displayed the Apple lane by composing it into the ordinary state,
+ * so a later edit could persist that composed copy. Remove only values that
+ * exactly match the authoritative overlay; a different manual value or note is
+ * preserved. This makes the V8 lane split a migration rather than a promise
+ * that applies only to new records.
+ */
+export function subtractAppleHealthSyncOverlay(state: HealthState, overlayValue: unknown): HealthState {
+  const overlay = normalizeAppleHealthSyncPayload(overlayValue);
+  const dailyByDate = new Map(overlay.dailyEntries.map((entry) => [entry.date, entry]));
+  const sleepByDate = new Map(overlay.sleepEntries.map((entry) => [entry.date, entry]));
+
+  const dailyEntries = state.dailyEntries.flatMap((entry) => {
+    const automatic = dailyByDate.get(entry.date);
+    if (!automatic) return [entry];
+    const cleaned = { ...entry };
+    for (const field of DAILY_FIELDS) {
+      if (automatic[field] !== undefined && cleaned[field] === automatic[field]) cleaned[field] = null;
+    }
+    return meaningfulDaily(cleaned) ? [cleaned] : [];
+  });
+
+  const sleepEntries = state.sleepEntries.flatMap((entry) => {
+    const automatic = entry.source === "apple" ? sleepByDate.get(entry.date) : undefined;
+    if (!automatic) return [entry];
+    const cleaned = { ...entry };
+    for (const field of SLEEP_TEXT_FIELDS) {
+      if (automatic[field] !== undefined && cleaned[field] === automatic[field]) cleaned[field] = "";
+    }
+    for (const field of SLEEP_NUMBER_FIELDS) {
+      if (automatic[field] !== undefined && cleaned[field] === automatic[field]) cleaned[field] = null;
+    }
+    return meaningfulSleep(cleaned) ? [cleaned] : [];
+  });
+
+  return normalizeHealthState({ ...state, dailyEntries, sleepEntries });
 }
 
 export function generateAppleHealthSyncToken(): string {

@@ -43,63 +43,10 @@ export function MindView({
   }
 
   return (
-    <div className="page">
+    <div className="page mind-page">
       <PageHeading title="Mind" />
 
-      <section className="hero-panel">
-        <div className="hero-score">
-          <span className="moon-orb">
-            <Icon name="mind" />
-          </span>
-          <div>
-            <p className="kicker">Last 30 days</p>
-            <strong>{`${summary.meditationDays} ${summary.meditationDays === 1 ? "day" : "days"}`}</strong>
-            <small>meditated</small>
-          </div>
-        </div>
-        <div className="stat-row">
-          <Stat label="Minutes" value={`${summary.meditationMinutes}`} detail="sat in total" />
-          <Stat label="Journaled" value={`${summary.journalDays} / 30`} detail="days written" />
-          <Stat label="To raise" value={`${open.length}`} detail="waiting for a session" />
-          <Stat label="Raised" value={`${raised.length}`} detail="already covered" />
-        </div>
-      </section>
-
-      <section className="panel wide-panel">
-        <div className="panel-head">
-          <div>
-            <h2>Last 14 days</h2>
-          </div>
-        </div>
-        <div className="mind-strip" aria-label="Meditation and journaling, last fourteen days">
-          {week.map((date) => {
-            const entry = state.dailyEntries.find((item) => item.date === date);
-            const minutes = entry?.meditationMinutes ?? 0;
-            return (
-              <button
-                key={date}
-                type="button"
-                className={date === today ? "current" : ""}
-                onClick={() => updateDaily(date, (current) => ({ ...current, journaled: !current.journaled }))}
-                aria-label={`${dateLabel(date, { weekday: "long", month: "long", day: "numeric" })}: ${
-                  minutes ? `${minutes} minutes meditated` : "no meditation"
-                }, ${entry?.journaled ? "journaled" : "not journaled"}. Press to toggle journaled.`}
-              >
-                <small aria-hidden="true">{dateLabel(date, { weekday: "narrow" })}</small>
-                <span aria-hidden="true" className={minutes ? "day-dot strong" : "day-dot"}>
-                  {minutes || "—"}
-                </span>
-                <i aria-hidden="true" className={entry?.journaled ? "med-pip is-taken" : "med-pip"} />
-              </button>
-            );
-          })}
-        </div>
-        <p className="panel-body">
-          The top number is minutes meditated; the bar underneath marks a day you journaled. Tap a day to change it.
-        </p>
-      </section>
-
-      <section className="panel wide-panel">
+      <section className="panel wide-panel mind-agenda">
         <div className="panel-head wrap">
           <div>
             <h2>For therapy</h2>
@@ -141,7 +88,7 @@ export function MindView({
             </button>
             {showRaised ? (
               <ul className="therapy-list raised">
-                {raised.slice(0, 30).map((note) => (
+                {raised.map((note) => (
                   <TherapyRow key={note.id} note={note} onToggle={onToggleNote} onDelete={onDeleteNote} />
                 ))}
               </ul>
@@ -149,7 +96,104 @@ export function MindView({
           </>
         ) : null}
       </section>
+
+      <TodayPractices state={state} today={today} updateDaily={updateDaily} />
+
+      <section className="panel wide-panel mind-history">
+        <div className="panel-head">
+          <div>
+            <h2>Last 14 days</h2>
+          </div>
+        </div>
+        <ol className="mind-strip" aria-label="Meditation and journaling, last fourteen days">
+          {week.map((date) => {
+            const entry = state.dailyEntries.find((item) => item.date === date);
+            const minutes = entry?.meditationMinutes ?? 0;
+            return (
+              <li
+                key={date}
+                className={date === today ? "current" : ""}
+                aria-label={`${dateLabel(date, { weekday: "long", month: "long", day: "numeric" })}: ${
+                  minutes ? `${minutes} minutes meditated` : "no meditation"
+                }, ${entry?.journaled ? "journaled" : "not journaled"}.`}
+              >
+                <small aria-hidden="true">{dateLabel(date, { weekday: "narrow" })}</small>
+                <span aria-hidden="true" className={minutes ? "day-dot strong" : "day-dot"}>
+                  {minutes || "—"}
+                </span>
+                <i aria-hidden="true" className={entry?.journaled ? "med-pip is-taken" : "med-pip"} />
+              </li>
+            );
+          })}
+        </ol>
+        <p className="panel-body">
+          The top number is minutes meditated; the bar underneath marks a day you journaled.
+        </p>
+      </section>
+
+      <section className="hero-panel mind-hero">
+        <div className="hero-score">
+          <span className="moon-orb">
+            <Icon name="mind" />
+          </span>
+          <div>
+            <p className="kicker">Last 30 days</p>
+            <strong>{`${summary.meditationDays} ${summary.meditationDays === 1 ? "day" : "days"}`}</strong>
+            <small>meditated</small>
+          </div>
+        </div>
+        <div className="stat-row">
+          <Stat label="Minutes" value={`${summary.meditationMinutes}`} detail="sat in total" />
+          <Stat label="Journaled" value={`${summary.journalDays} / 30`} detail="days written" />
+          <Stat label="To raise" value={`${open.length}`} detail="waiting for a session" />
+          <Stat label="Raised" value={`${raised.length}`} detail="already covered" />
+        </div>
+      </section>
     </div>
+  );
+}
+
+function TodayPractices({
+  state,
+  today,
+  updateDaily,
+}: {
+  state: HealthState;
+  today: string;
+  updateDaily: (date: string, update: (current: DailyEntry) => DailyEntry) => void;
+}) {
+  const entry = state.dailyEntries.find((item) => item.date === today);
+  const minutes = entry?.meditationMinutes ?? null;
+  return (
+    <section className="panel wide-panel mind-practices">
+      <div className="panel-head wrap">
+        <div><p className="kicker">Today</p><h2>Practices</h2></div>
+        <span className="panel-meta">{minutes ? `${minutes} min meditated` : "Meditation not logged"}</span>
+      </div>
+      <div className="practice-actions">
+        <span role="group" aria-label="Meditation minutes">
+          {[10, 20].map((value) => (
+            <button
+              type="button"
+              key={value}
+              className={minutes === value ? "chip primary" : "chip"}
+              aria-pressed={minutes === value}
+              onClick={() => updateDaily(today, (current) => ({ ...current, meditationMinutes: minutes === value ? null : value }))}
+            >
+              <Icon name="mind" /> {value} min
+            </button>
+          ))}
+        </span>
+        <button
+          type="button"
+          className={entry?.journaled ? "button primary" : "button secondary"}
+          aria-pressed={entry?.journaled === true}
+          onClick={() => updateDaily(today, (current) => ({ ...current, journaled: !current.journaled }))}
+        >
+          <Icon name="journal" /> {entry?.journaled ? "Journaled" : "Mark journaled"}
+        </button>
+      </div>
+    </section>
   );
 }
 

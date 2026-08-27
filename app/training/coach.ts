@@ -299,6 +299,7 @@ export function trainingHabit(sets: WorkoutSet[], asOf = todayLocal(), weeks = 6
   const start = addDays(end, -(span * 7 - 1));
   const window = sets.filter((entry) => entry.date >= start && entry.date <= end);
   const sessions = buildWorkoutSessions(window);
+  const observedWeeks = Math.max(1, new Set(sessions.map((session) => weekStart(session.date))).size);
 
   // Strong repeats the session length on every row, so one row per session.
   const byStart = new Map<string, WorkoutSet[]>();
@@ -312,14 +313,14 @@ export function trainingHabit(sets: WorkoutSet[], asOf = todayLocal(), weeks = 6
     .filter((value): value is number => value !== null && value > 0);
 
   return {
-    daysPerWeek: Math.round((sessions.length / span) * 10) / 10,
+    daysPerWeek: Math.round((sessions.length / observedWeeks) * 10) / 10,
     setsPerSession: sessions.length ? Math.round(window.length / sessions.length) : 0,
     minutesPerSession: durations.length
       ? Math.round(durations.reduce((total, value) => total + value, 0) / durations.length / 60)
       : null,
     sessions: sessions.length,
-    weeks: span,
-    recentLabel: formatDays(sessions.length / span),
+    weeks: observedWeeks,
+    recentLabel: formatDays(sessions.length / observedWeeks),
   };
 }
 
@@ -418,6 +419,8 @@ export type PlannedExercise = {
    * against it — `bodyweight` says which, so the card can too.
    */
   weightLb: number | null;
+  /** Pounds of assistance for assisted movements; lower is harder. */
+  assistanceLb: number | null;
   /** The movement carries no external load, so there is no number to give. */
   bodyweight: boolean;
   /** The load is a step up on what you have been lifting, because you earned it. */
@@ -642,6 +645,9 @@ function workingLoad(
   // a reduction an increase (100 → 110 → 120 used to prescribe 115).
   const working = loads[loads.length - 1] ?? 0;
   if (!working) return held;
+  // A deload holds the latest working load. Rep-range re-anchoring below is a
+  // building-week tool and must never turn an easier week into a heavier one.
+  if (deload) return { weightLb: plate(working), stepUp: false, stalled: false };
 
   // Whether the load suits the range is a question about reps, not about
   // pounds: if the reps you have been getting fall inside the range being
@@ -657,8 +663,6 @@ function workingLoad(
     const middle = (range.low + range.top) / 2;
     return { weightLb: plate(best ? best / (1 + middle / 30) : working), stepUp: false, stalled: false };
   }
-  if (deload) return { weightLb: plate(working), stepUp: false, stalled: false };
-
   // Earned when the most recent session cleared the top of the range at that
   // load on at least two sets — one good set is a good set, not a pattern.
   const cleared = last.filter(
@@ -738,7 +742,27 @@ function repRange(exercise: string, muscle: Muscle, bodyweight: boolean): { labe
 /** A movement that has never carried weight progresses on reps, not on load. */
 function isBodyweight(sets: WorkoutSet[], exercise: string, asOf: string): boolean {
   const own = sets.filter((entry) => entry.exercise === exercise && entry.date <= asOf);
-  return own.length > 0 && own.every((entry) => entry.weightLb === null || entry.weightLb === 0);
+  return own.length > 0 && own.every((entry) => entry.loadMode === "bodyweight" || (!entry.loadMode && (entry.weightLb === null || entry.weightLb === 0)));
+}
+
+function assistedLoad(
+  sets: WorkoutSet[],
+  exercise: string,
+  range: { top: number },
+  deload: boolean,
+  asOf: string,
+): { assistanceLb: number | null; stepUp: boolean } {
+  const own = sets.filter(
+    (entry) => entry.exercise === exercise && entry.date <= asOf && entry.loadMode === "assisted" && entry.assistanceLb !== null,
+  );
+  if (!own.length) return { assistanceLb: null, stepUp: false };
+  const latestStart = own.map((entry) => entry.startedAt).sort().at(-1) as string;
+  const latest = own.filter((entry) => entry.startedAt === latestStart);
+  const assistance = latest[latest.length - 1]?.assistanceLb ?? null;
+  if (assistance === null || deload) return { assistanceLb: assistance, stepUp: false };
+  const cleared = latest.filter((entry) => (entry.reps ?? 0) >= range.top).length;
+  if (cleared < 2) return { assistanceLb: assistance, stepUp: false };
+  return { assistanceLb: Math.max(0, plate(assistance - loadStep(exercise, assistance))), stepUp: true };
 }
 
 /**
@@ -762,11 +786,13 @@ function prescribe(
 ): PlannedExercise {
   const info = classifyExercise(exercise);
   const bodyweight = isBodyweight(state.workoutSets, exercise, asOf);
+  const assisted = state.workoutSets.some((entry) => entry.exercise === exercise && entry.date <= asOf && entry.loadMode === "assisted");
   const range = repRange(exercise, muscle, bodyweight);
   const rest = suggestedRest(range.low, info.compound);
-  const load = bodyweight
+  const load = bodyweight || assisted
     ? { weightLb: null, stepUp: false, stalled: false }
     : workingLoad(state.workoutSets, exercise, range, deload, asOf);
+  const assistance = assistedLoad(state.workoutSets, exercise, range, deload, asOf);
   return {
     exercise,
     sets,
@@ -777,8 +803,9 @@ function prescribe(
     // A deload keeps the load and drops the sets, which is the half of it that
     // matters; cutting both turns a deload into a week off.
     weightLb: load.weightLb,
+    assistanceLb: assistance.assistanceLb,
     bodyweight,
-    stepUp: load.stepUp,
+    stepUp: assisted ? assistance.stepUp : load.stepUp,
     stalled: load.stalled,
     added: false,
     byHand: false,
@@ -795,6 +822,9 @@ export function buildPlan(state: HealthState, asOf = todayLocal(), daysOverride?
   const template = splitTemplates[days];
   const volume = muscleVolume(state.workoutSets, completedHistoryEnd(state.workoutSets, asOf), 4);
   const owned = vocabulary(state.workoutSets, asOf);
+  const frozen = Object.keys(state.goals.trainingAnchorSets).length
+    ? state.goals.trainingAnchorSets
+    : trainingAnchorSets(state, asOf);
 
   // Where each muscle should land next week.
   //
@@ -825,7 +855,8 @@ export function buildPlan(state: HealthState, asOf = todayLocal(), daysOverride?
     // are on is a percentage pretending to be a prescription: it hands someone
     // on fifteen sets an extra five in one step, and someone on two an extra
     // one. Sets are the unit the body answers in, so sets are the unit here.
-    const baseline = Math.max(floor, Math.min(Math.round(entry.direct) + VOLUME_STEP, aim));
+    const calculated = Math.max(floor, Math.min(Math.round(entry.direct) + VOLUME_STEP, aim));
+    const baseline = Math.max(floor, frozen[entry.muscle] ?? calculated);
     // The deload is the one week allowed to go under the floor; that is what a
     // deload is. The building weeks climb from it.
     targetSets.set(
@@ -942,6 +973,17 @@ export function buildPlan(state: HealthState, asOf = todayLocal(), daysOverride?
   return plan;
 }
 
+/** Freezes the direct-set starting line for one four-week block. */
+export function trainingAnchorSets(state: HealthState, asOf = todayLocal()): Record<string, number> {
+  const volume = muscleVolume(state.workoutSets, completedHistoryEnd(state.workoutSets, asOf), 4);
+  return Object.fromEntries(volume.map((entry) => {
+    const carried = INDIRECT_WEIGHT * entry.indirect;
+    const floor = Math.max(minimumDirect(entry.muscle), Math.round(entry.target.min - carried));
+    const aim = Math.max(floor, Math.round(weeklyAim(entry.muscle) - carried));
+    return [entry.muscle, Math.max(floor, Math.min(Math.round(entry.direct) + VOLUME_STEP, aim))];
+  }));
+}
+
 /**
  * The whole block. Each week takes its own number of days, so a week you know
  * is short on time can be two sessions without disturbing the others.
@@ -994,6 +1036,10 @@ const BLOCK_BREAK_WEEKS = 3;
  * is where someone coming back from a long break should be.
  */
 export function currentBlockWeek(state: HealthState, asOf = todayLocal()): number {
+  if (state.goals.trainingBlockStart) {
+    const offset = weeksBetween(state.goals.trainingBlockStart, weekStart(asOf));
+    return ((offset % BLOCK_WEEKS) + BLOCK_WEEKS) % BLOCK_WEEKS;
+  }
   const weeks = [
     ...new Set(state.workoutSets.filter((entry) => entry.date <= asOf).map((entry) => weekStart(entry.date))),
   ].sort();
@@ -1073,13 +1119,45 @@ function sessionVolume(sessions: PlannedSession[]): Map<Muscle, PlannedVolume> {
   return totals;
 }
 
-function loggedSessionsThisWeek(state: HealthState, asOf: string): number {
+function matchedSessionsThisWeek(plan: Plan, state: HealthState, asOf: string): Set<string> {
   const monday = weekStart(asOf);
-  return new Set(
-    state.workoutSets
-      .filter((entry) => entry.date >= monday && entry.date <= asOf)
-      .map((entry) => entry.startedAt),
-  ).size;
+  const groups = new Map<string, WorkoutSet[]>();
+  for (const entry of state.workoutSets.filter((set) => set.date >= monday && set.date <= asOf)) {
+    const group = groups.get(entry.startedAt);
+    if (group) group.push(entry);
+    else groups.set(entry.startedAt, [entry]);
+  }
+  const matched = new Set<string>();
+  const actual = [...groups.values()].sort((a, b) => (a[0]?.startedAt ?? "").localeCompare(b[0]?.startedAt ?? ""));
+
+  for (const sets of actual) {
+    const actualExercises = new Set(sets.map((set) => set.exercise));
+    const actualMuscles = new Set(
+      sets.flatMap((set) => {
+        const info = classifyExercise(set.exercise);
+        return [...info.direct, ...info.indirect];
+      }),
+    );
+    let best: { name: string; score: number; threshold: number } | null = null;
+    for (const session of plan.sessions) {
+      if (matched.has(session.name)) continue;
+      const exact = session.exercises.filter((exercise) => actualExercises.has(exercise.exercise)).length;
+      const plannedMuscles = new Set(
+        session.exercises.flatMap((exercise) => {
+          const info = classifyExercise(exercise.exercise);
+          return [...info.direct, ...info.indirect];
+        }),
+      );
+      const overlap = [...plannedMuscles].filter((muscle) => actualMuscles.has(muscle)).length;
+      const score = exact * 4 + overlap;
+      const threshold = Math.max(3, Math.ceil(session.sets * 0.35));
+      if (score > 0 && (!best || score > best.score)) best = { name: session.name, score, threshold };
+    }
+    // One abandoned warm-up or an unrelated session contributes volume but
+    // does not consume a planned slot.
+    if (best && sets.length >= best.threshold) matched.add(best.name);
+  }
+  return matched;
 }
 
 /**
@@ -1164,10 +1242,9 @@ function trimCoveredWork(
  * work and the arm session comes up next, rather than fourth.
  */
 export function remainingSessions(plan: Plan, state: HealthState, asOf = todayLocal()): PlannedSession[] {
-  const logged = loggedSessionsThisWeek(state, asOf);
-  const left = Math.max(0, plan.sessions.length - Math.min(logged, plan.sessions.length));
+  const matched = matchedSessionsThisWeek(plan, state, asOf);
+  const left = Math.max(0, plan.sessions.length - matched.size);
   if (!left) return [];
-  if (left === plan.sessions.length) return plan.sessions;
 
   // Which sessions the week can least afford to skip.
   //
@@ -1208,7 +1285,7 @@ export function remainingSessions(plan: Plan, state: HealthState, asOf = todayLo
     return score;
   };
 
-  let kept = [...plan.sessions];
+  let kept = plan.sessions.filter((session) => !matched.has(session.name));
   while (kept.length > left) {
     let drop = 0;
     let best = -Infinity;
@@ -1239,9 +1316,10 @@ export function remainingSessions(plan: Plan, state: HealthState, asOf = todayLo
 
 export function nextSession(plan: Plan, state: HealthState, asOf = todayLocal()): NextSession {
   const left = remainingSessions(plan, state, asOf);
+  const matched = matchedSessionsThisWeek(plan, state, asOf);
   return {
     session: left[0] ?? null,
-    done: Math.min(loggedSessionsThisWeek(state, asOf), plan.sessions.length),
+    done: matched.size,
     of: plan.sessions.length,
   };
 }
@@ -1947,7 +2025,9 @@ function sessionLines(session: PlannedSession): string[] {
   return session.exercises.map(
     (exercise) =>
       `  ${exercise.exercise} — ${exercise.sets} × ${exercise.repRange}${
-        exercise.weightLb === null
+        exercise.assistanceLb !== null
+          ? ` @ ${exercise.assistanceLb} lb assistance${exercise.stepUp ? " (less next time)" : ""}`
+          : exercise.weightLb === null
           ? ""
           : ` @ ${exercise.weightLb} lb${exercise.stepUp ? " (up)" : exercise.stalled ? " (back off)" : ""}`
       }, rest ${exercise.restSeconds}s`,

@@ -21,12 +21,14 @@ import { Modal, Period, recoveryMetrics } from "./types";
 
 export function SleepView({
   state,
+  editableState,
   today,
   open,
   onDelete,
   demo,
 }: {
   state: HealthState;
+  editableState: HealthState;
   today: string;
   open: (modal: Modal) => void;
   onDelete: (date: string, source: SleepSource) => void;
@@ -34,6 +36,7 @@ export function SleepView({
 }) {
   const [period, setPeriod] = useState<Period>(30);
   const [scope, setScope] = useState<"preferred" | "all">("preferred");
+  const [showAllNights, setShowAllNights] = useState(false);
 
   const preferred = useMemo(() => preferredSleepEntries(state.sleepEntries), [state.sleepEntries]);
   const listed = useMemo(() => {
@@ -42,6 +45,7 @@ export function SleepView({
   }, [scope, preferred, state.sleepEntries, today, period]);
 
   const recent = entriesInWindow(preferred, today, 7);
+  const recentWithDuration = recent.filter((entry) => entry.durationHours !== null);
   const avg = average(recent.map((entry) => entry.durationHours));
   const atGoal = recent.filter(
     (entry) => entry.durationHours !== null && entry.durationHours >= state.goals.sleepHours,
@@ -58,12 +62,6 @@ export function SleepView({
         title="Sleep"
         action={
           <div className="heading-actions">
-            {!demo ? (
-              <button type="button" className="button secondary" onClick={() => open({ kind: "import" })}>
-                <Icon name="upload" />
-                Import
-              </button>
-            ) : null}
             <button type="button" className="button primary" onClick={() => open({ kind: "sleep", date: today })}>
               <Icon name="plus" />
               Add sleep
@@ -84,7 +82,7 @@ export function SleepView({
           </div>
         </div>
         <div className="stat-row">
-          <Stat label="Nights at goal" value={recent.length ? `${atGoal} / ${recent.length}` : "—"} detail="last 7 recorded" />
+          <Stat label="Nights at goal" value={recentWithDuration.length ? `${atGoal} / ${recentWithDuration.length}` : "—"} detail={`${recentWithDuration.length} of 7 nights recorded`} />
           <Stat
             label="Bedtime range"
             value={regularity === null ? "—" : `${Math.round(regularity)} min`}
@@ -93,7 +91,7 @@ export function SleepView({
           <Stat
             label="Sleep debt"
             value={debt === null ? "—" : `${debt.toFixed(1)} h`}
-            detail="hours below goal this week"
+            detail="shortfall across recorded nights"
           />
           <Stat
             label="Typical window"
@@ -137,7 +135,7 @@ export function SleepView({
         </div>
         {listed.length ? (
           <ul className="record-list">
-            {listed.map((entry) => (
+            {(showAllNights ? listed : listed.slice(0, 7)).map((entry) => (
               <li className="record-row sleep-row" key={`${entry.date}:${entry.source}`}>
                 <div className="date-tile">
                   <b>{dateLabel(entry.date, { weekday: "short" })}</b>
@@ -160,21 +158,25 @@ export function SleepView({
                   <b>{entry.quality ? `${entry.quality} / 5` : "Not rated"}</b>
                 </div>
                 <span className={`source-badge ${entry.source}`}>{entry.source}</span>
-                <div className="row-actions">
-                  <button
-                    type="button"
-                    className="row-action"
-                    onClick={() => open({ kind: "sleep", date: entry.date, source: entry.source })}
-                    aria-label={`Edit ${entry.source} sleep for ${dateLabel(entry.date)}`}
-                  >
-                    <Icon name="pencil" />
-                    <span>Edit</span>
-                  </button>
-                  <ConfirmButton
-                    label={`Delete ${entry.source} sleep for ${dateLabel(entry.date)}`}
-                    onConfirm={() => onDelete(entry.date, entry.source)}
-                  />
-                </div>
+                {editableState.sleepEntries.some((item) => item.date === entry.date && item.source === entry.source) ? (
+                  <div className="row-actions">
+                    <button
+                      type="button"
+                      className="row-action"
+                      onClick={() => open({ kind: "sleep", date: entry.date, source: entry.source })}
+                      aria-label={`Edit ${entry.source} sleep for ${dateLabel(entry.date)}`}
+                    >
+                      <Icon name="pencil" />
+                      <span>Edit</span>
+                    </button>
+                    <ConfirmButton
+                      label={`Delete ${entry.source} sleep for ${dateLabel(entry.date)}`}
+                      onConfirm={() => onDelete(entry.date, entry.source)}
+                    />
+                  </div>
+                ) : (
+                  <span className="readonly-label"><Icon name="lock" /> Automatic</span>
+                )}
               </li>
             ))}
           </ul>
@@ -190,6 +192,11 @@ export function SleepView({
             )}
           />
         )}
+        {listed.length > 7 ? (
+          <button type="button" className="button secondary show-more" onClick={() => setShowAllNights((value) => !value)}>
+            {showAllNights ? "Show recent 7" : `Show all ${listed.length} nights`}
+          </button>
+        ) : null}
       </section>
     </div>
   );

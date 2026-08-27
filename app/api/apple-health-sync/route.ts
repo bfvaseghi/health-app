@@ -67,12 +67,12 @@ export async function POST(request: Request) {
   try {
     const db = getDb();
     const tokenHash = await hashAppleHealthSyncToken(token);
-    const [row] = await db
-      .select({ userId: appleHealthSyncs.userId, payload: appleHealthSyncs.payload })
+    const [connection] = await db
+      .select({ userId: appleHealthSyncs.userId })
       .from(appleHealthSyncs)
       .where(eq(appleHealthSyncs.tokenHash, tokenHash))
       .limit(1);
-    if (!row) return Response.json({ error: "Invalid sync token." }, { status: 401, headers: NO_STORE });
+    if (!connection) return Response.json({ error: "Invalid sync token." }, { status: 401, headers: NO_STORE });
 
     const body = await readLimitedBody(request);
     if ("response" in body) return body.response;
@@ -89,37 +89,58 @@ export async function POST(request: Request) {
       return Response.json({ error: "Sync payload is not a Health Auto Export metric bundle." }, { status: 422, headers: NO_STORE });
     }
 
-    let current: unknown = emptyAppleHealthSyncPayload();
-    try {
-      current = JSON.parse(row.payload);
-    } catch {
-      // A malformed stored payload is replaced by the next valid, normalized
-      // export. It is never returned or logged.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const [row] = await db
+        .select({
+          userId: appleHealthSyncs.userId,
+          payload: appleHealthSyncs.payload,
+          revision: appleHealthSyncs.revision,
+        })
+        .from(appleHealthSyncs)
+        .where(eq(appleHealthSyncs.tokenHash, tokenHash))
+        .limit(1);
+      if (!row) return Response.json({ error: "Sync key was revoked." }, { status: 401, headers: NO_STORE });
+
+      let current: unknown = emptyAppleHealthSyncPayload();
+      try {
+        current = JSON.parse(row.payload);
+      } catch {
+        // The next valid normalized export repairs a malformed stored payload.
+      }
+      const merged = mergeAppleHealthSyncPayload(current, parsed.payload);
+      const payload = JSON.stringify(merged.payload);
+      if (new TextEncoder().encode(payload).byteLength > MAX_SYNC_BYTES) {
+        return Response.json({ error: "Stored Apple Health history is too large." }, { status: 413, headers: NO_STORE });
+      }
+      const now = new Date().toISOString();
+      const written = await db
+        .update(appleHealthSyncs)
+        .set({ payload, updatedAt: now, lastSyncedAt: now, revision: row.revision + 1 })
+        .where(and(
+          eq(appleHealthSyncs.userId, row.userId),
+          eq(appleHealthSyncs.tokenHash, tokenHash),
+          eq(appleHealthSyncs.revision, row.revision),
+        ))
+        .returning({ revision: appleHealthSyncs.revision });
+      if (!written.length) continue;
+
+      return Response.json(
+        {
+          receivedDays: parsed.payload.dailyEntries.length,
+          receivedNights: parsed.payload.sleepEntries.length,
+          changedDays: merged.changedDays,
+          changedNights: merged.changedNights,
+          storedDays: merged.payload.dailyEntries.length,
+          storedNights: merged.payload.sleepEntries.length,
+          ignoredMetricTypes: parsed.ignoredMetricTypes,
+          skippedSamples: parsed.skippedSamples,
+        },
+        { headers: NO_STORE },
+      );
     }
-    const merged = mergeAppleHealthSyncPayload(current, parsed.payload);
-    const now = new Date().toISOString();
-    const changed = merged.changedDays + merged.changedNights;
-    const update = changed
-      ? { payload: JSON.stringify(merged.payload), updatedAt: now, lastSyncedAt: now }
-      : { lastSyncedAt: now };
-
-    await db
-      .update(appleHealthSyncs)
-      .set(update)
-      .where(and(eq(appleHealthSyncs.userId, row.userId), eq(appleHealthSyncs.tokenHash, tokenHash)));
-
     return Response.json(
-      {
-        receivedDays: parsed.payload.dailyEntries.length,
-        receivedNights: parsed.payload.sleepEntries.length,
-        changedDays: merged.changedDays,
-        changedNights: merged.changedNights,
-        storedDays: merged.payload.dailyEntries.length,
-        storedNights: merged.payload.sleepEntries.length,
-        ignoredMetricTypes: parsed.ignoredMetricTypes,
-        skippedSamples: parsed.skippedSamples,
-      },
-      { headers: NO_STORE },
+      { error: "Another sync is still being merged. Retry shortly." },
+      { status: 503, headers: { ...NO_STORE, "Retry-After": "2" } },
     );
   } catch (error) {
     return syncError(error);

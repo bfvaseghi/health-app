@@ -1,10 +1,11 @@
 "use client";
 
-import { ChangeEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DailyEntry,
   GoalSettings,
   HealthState,
+  ImportRecords,
   LabResult,
   Medication,
   ProgressPhoto,
@@ -15,6 +16,7 @@ import {
   emptyDailyEntry,
   emptyHealthState,
   normalizeHealthState,
+  mergeRecords,
   removeDailyEntry,
   recordDose,
   removeLabResult,
@@ -33,7 +35,16 @@ import {
 } from "./health-model";
 import { demoHealthState } from "./demo-state";
 import { applyImport } from "./import";
-import { chooseInitialState, mergeConcurrentHealthState } from "./state-sync";
+import { subtractAppleHealthSyncOverlay } from "./apple-health-sync";
+import {
+  LocalStateEnvelope,
+  chooseInitialState,
+  localStateEnvelope,
+  mergeConcurrentHealthState,
+  parseLocalState,
+  sameHealthState,
+} from "./state-sync";
+import { trainingAnchorSets, weekStart } from "./training/coach";
 import { Icon } from "./ui/icons";
 import { DataView } from "./ui/data-view";
 import { FitnessView } from "./ui/fitness-view";
@@ -42,21 +53,22 @@ import { CheckInModal, LabModal, MedicationModal, ShortcutsModal, SleepModal } f
 import { LabsView } from "./ui/labs-view";
 import { MedsView } from "./ui/meds-view";
 import { MindView } from "./ui/mind-view";
-import { deletePhoto, savePhoto } from "./ui/photo-store";
+import { clearAllPhotos, deletePhoto, savePhoto } from "./ui/photo-store";
+import { MoreView } from "./ui/more-view";
 import { SleepView } from "./ui/sleep-view";
 import { SummaryView } from "./ui/summary-view";
 import { TodayView } from "./ui/today-view";
 import { formatTimestamp } from "./ui/format";
-import { Modal, SaveStatus, Theme, Toast, View, navOrder, viewLabels } from "./ui/types";
+import { Modal, SaveStatus, Theme, Toast, View, mobileNavOrder, navOrder, viewLabels } from "./ui/types";
 
 const THEME_KEY = "bardia-health-theme";
 const initialState = emptyHealthState();
 
 type HealthStateUpdate = (current: HealthState) => HealthState;
 
-function persistLocalState(state: HealthState): boolean {
+function persistLocalState(state: HealthState, base: HealthState | null, revision: number): boolean {
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(localStateEnvelope(state, base, revision)));
     return true;
   } catch {
     return false;
@@ -108,6 +120,7 @@ export default function Home() {
   const [view, setView] = useState<View>("today");
   const [modal, setModal] = useState<Modal>(null);
   const [state, setState] = useState<HealthState>(initialState);
+  const [appleOverlay, setAppleOverlay] = useState<Partial<ImportRecords> | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("loading");
   const [savedAt, setSavedAt] = useState("");
   const [toast, setToast] = useState<Toast | null>(null);
@@ -119,9 +132,51 @@ export default function Home() {
   const skipNextSave = useRef(false);
   const saveVersion = useRef(0);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
+  const destructiveChange = useRef(false);
   const serverRevision = useRef(0);
   const serverBase = useRef<HealthState | null>(null);
-  const today = todayLocal();
+  const [today, setToday] = useState(todayLocal);
+
+  useEffect(() => {
+    const refreshDate = () => setToday(todayLocal());
+    const timer = window.setInterval(refreshDate, 60_000);
+    window.addEventListener("focus", refreshDate);
+    document.addEventListener("visibilitychange", refreshDate);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", refreshDate);
+      document.removeEventListener("visibilitychange", refreshDate);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated || demoMode) return;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const response = await fetch("/api/apple-health-sync/setup", {
+          cache: "no-store",
+          signal: AbortSignal.timeout(8_000),
+        });
+        if (!response.ok || !active) return;
+        const data = (await response.json()) as { appleOverlay?: Partial<ImportRecords> | null };
+        setAppleOverlay(data.appleOverlay ?? null);
+      } catch {
+        // The existing overlay remains visible while a background refresh is unavailable.
+      }
+    };
+    const onFocus = () => void refresh();
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      active = false;
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [demoMode, hydrated]);
 
   /** Keeps event handlers on one live snapshot even when several fire before React paints. */
   const updateState = useCallback((update: HealthStateUpdate): HealthState => {
@@ -149,16 +204,19 @@ export default function Home() {
         return;
       }
 
-      let local: HealthState | null = null;
+      let local: LocalStateEnvelope | HealthState | null = null;
       try {
         const stored = window.localStorage.getItem(STORAGE_KEY);
-        if (stored) local = normalizeHealthState(JSON.parse(stored));
+        if (stored) local = parseLocalState(JSON.parse(stored));
       } catch {
         window.localStorage.removeItem(STORAGE_KEY);
       }
 
       try {
-        const response = await fetch("/api/health-state", { cache: "no-store" });
+        const response = await fetch("/api/health-state", {
+          cache: "no-store",
+          signal: AbortSignal.timeout(8_000),
+        });
         if (response.status === 401) {
           const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
           window.location.replace(`/signin-with-chatgpt?return_to=${encodeURIComponent(returnTo)}`);
@@ -174,32 +232,62 @@ export default function Home() {
           updatedAt?: string;
           revision?: number;
           purged?: { fields: string[]; records: number; snapshots: number };
+          appleOverlay?: Partial<ImportRecords> | null;
         };
         if (!active) return;
 
         const readRemote = data.state ? normalizeHealthState(data.state) : null;
-        const remote = readRemote && data.updatedAt
+        const storedRemote = readRemote && data.updatedAt
           ? normalizeHealthState({ ...readRemote, updatedAt: data.updatedAt })
           : readRemote;
+        const overlay = data.appleOverlay ?? null;
+        const remote = storedRemote && overlay ? subtractAppleHealthSyncOverlay(storedRemote, overlay) : storedRemote;
+        const cleanedLocal = local && overlay
+          ? "format" in local
+            ? localStateEnvelope(
+                subtractAppleHealthSyncOverlay(local.state, overlay),
+                local.acknowledgedBase ? subtractAppleHealthSyncOverlay(local.acknowledgedBase, overlay) : null,
+                local.acknowledgedRevision,
+              )
+            : subtractAppleHealthSyncOverlay(local, overlay)
+          : local;
+        const laneMigrationNeeded = Boolean(storedRemote && remote && !sameHealthState(storedRemote, remote));
         serverRevision.current = Number.isSafeInteger(data.revision) ? data.revision ?? 0 : 0;
-        serverBase.current = remote;
-        const choice = chooseInitialState(local, remote, initialState);
+        setAppleOverlay(overlay);
+        // This is the exact server base, including any V7 Apple contamination.
+        // The first V8 save subtracts that contamination revision-safely.
+        serverBase.current = storedRemote;
+        const choice = chooseInitialState(cleanedLocal, remote, initialState);
         const chosen = choice.state;
+        const needsSync = choice.needsSync || laneMigrationNeeded;
 
         // A server copy is already durable. A newer local copy, or the first
         // local copy against an empty server, must flow through the save effect.
-        skipNextSave.current = !choice.needsSync;
+        skipNextSave.current = !needsSync;
         updateState(() => chosen);
-        persistLocalState(chosen);
-        setSaveStatus(choice.needsSync ? "saving" : "saved");
-        setSavedAt(choice.needsSync ? "" : data.updatedAt ?? "");
-        if (data.purged?.fields.length) setToast({ message: purgeMessage(data.purged) });
+        persistLocalState(chosen, storedRemote, serverRevision.current);
+        setSaveStatus(needsSync ? "saving" : "saved");
+        setSavedAt(needsSync ? "" : data.updatedAt ?? "");
+        if (choice.recoveryState) {
+          const recovery = choice.recoveryState;
+          setToast({
+            message: "An older offline copy differs from private sync. The server copy is shown.",
+            action: {
+              label: "Use offline copy",
+              run: () => updateState(() => recovery),
+            },
+          });
+        } else if (choice.conflicts) {
+          setToast({
+            message: `Kept this device's edits in ${choice.conflicts} startup ${choice.conflicts === 1 ? "conflict" : "conflicts"}.`,
+          });
+        } else if (data.purged?.fields.length) setToast({ message: purgeMessage(data.purged) });
       } catch {
         if (!active) return;
-        const chosen = local ?? initialState;
+        const chosen = local && "format" in local ? local.state : local ?? initialState;
         skipNextSave.current = false;
         updateState(() => chosen);
-        const savedLocally = persistLocalState(chosen);
+        const savedLocally = persistLocalState(chosen, local && "format" in local ? local.acknowledgedBase : null, local && "format" in local ? local.acknowledgedRevision : 0);
         setSaveStatus(savedLocally ? "local" : "error");
       } finally {
         if (active) setHydrated(true);
@@ -215,7 +303,7 @@ export default function Home() {
     // A demo interaction may exercise every state handler, but none of those
     // changes may reach localStorage or the private API.
     if (!hydrated || demoMode) return;
-    const savedLocally = persistLocalState(state);
+    const savedLocally = persistLocalState(state, serverBase.current, serverRevision.current);
     if (skipNextSave.current) {
       skipNextSave.current = false;
       return;
@@ -225,14 +313,19 @@ export default function Home() {
     setSaveStatus("saving");
     const timer = window.setTimeout(() => {
       const save = async () => {
+        if (destructiveChange.current) return;
         try {
+          // Coalesce queued edits: every worker sends the newest live state,
+          // never the snapshot captured when an older timer was created.
+          const desired = stateRef.current;
           const response = await fetch("/api/health-state", {
             method: "PUT",
             headers: {
               "content-type": "application/json",
               "if-match": `"${serverRevision.current}"`,
             },
-            body: JSON.stringify(state),
+            body: JSON.stringify(desired),
+            signal: AbortSignal.timeout(12_000),
           });
           if (response.status === 409) {
             const data = (await response.json()) as { state?: unknown; updatedAt?: string; revision?: number; error?: string };
@@ -243,7 +336,7 @@ export default function Home() {
               ...(data.state as object),
               updatedAt: data.updatedAt ?? new Date().toISOString(),
             });
-            const merged = mergeConcurrentHealthState(serverBase.current, state, remote);
+            const merged = mergeConcurrentHealthState(serverBase.current, stateRef.current, remote);
             serverBase.current = remote;
             serverRevision.current = data.revision ?? 0;
             updateState(() => merged.state);
@@ -259,7 +352,8 @@ export default function Home() {
           if (Number.isSafeInteger(data.revision)) serverRevision.current = data.revision ?? serverRevision.current;
           serverBase.current = data.state
             ? normalizeHealthState(data.state)
-            : normalizeHealthState({ ...state, updatedAt: data.updatedAt ?? new Date().toISOString() });
+            : normalizeHealthState({ ...desired, updatedAt: data.updatedAt ?? new Date().toISOString() });
+          persistLocalState(stateRef.current, serverBase.current, serverRevision.current);
           if (version === saveVersion.current) {
             setSaveStatus("saved");
             setSavedAt(data.updatedAt ?? new Date().toISOString());
@@ -288,7 +382,12 @@ export default function Home() {
 
   const go = useCallback((next: View) => {
     setView(next);
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    // A section change is a new screen. An animated carry-over can leave the
+    // next heading above the viewport for several frames, especially on iOS.
+    window.scrollTo({ top: 0, behavior: "auto" });
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => document.querySelector<HTMLElement>("#main h1")?.focus({ preventScroll: true }));
+    });
   }, []);
 
   const notice = useCallback((message: string) => setToast({ message }), []);
@@ -351,6 +450,19 @@ export default function Home() {
       }),
     );
 
+  useEffect(() => {
+    if (!hydrated || state.workoutSets.length < 10 || state.goals.trainingBlockStart) return;
+    updateState((current) => normalizeHealthState({
+      ...current,
+      updatedAt: new Date().toISOString(),
+      goals: {
+        ...current.goals,
+        trainingBlockStart: weekStart(today),
+        trainingAnchorSets: trainingAnchorSets(current, today),
+      },
+    }));
+  }, [hydrated, state.goals.trainingBlockStart, state.workoutSets.length, today, updateState]);
+
   const deleteDaily = (date: string) => {
     setModal(null);
     commit((current) => removeDailyEntry(current, date), "Check-in deleted.", true);
@@ -363,20 +475,6 @@ export default function Home() {
     setModal(null);
     commit((current) => upsertMedication(current, medication), "Medication saved.", true);
   };
-  // The one-tap offers on the Meds tab. Same shape as the dialog writes, with
-  // a weekly one landing on today so its first dose is the day it is added.
-  const addMedication = (name: string, schedule: "daily" | "weekly") =>
-    commit(
-      (current) => upsertMedication(current, {
-        id: recordId(name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "med"),
-        name,
-        schedule,
-        dueDay: schedule === "weekly" ? new Date(`${today}T12:00:00Z`).getUTCDay() : null,
-        archived: false,
-      }),
-      `${name} added.`,
-      true,
-    );
   const deleteMedication = (id: string) => {
     setModal(null);
     commit((current) => removeMedication(current, id), "Medication deleted.", true);
@@ -477,6 +575,42 @@ export default function Home() {
     if (saveStatus === "error") return "Not saved";
     return "Saved on this device";
   }, [saveStatus, savedAt]);
+  const mobileActive: View = ["meds", "labs", "summary", "data"].includes(view) ? "more" : view;
+  const visibleState = useMemo(
+    () => appleOverlay ? mergeRecords(state, appleOverlay) : state,
+    [state, appleOverlay],
+  );
+
+  const eraseEverything = async () => {
+    if (destructiveChange.current) return;
+    destructiveChange.current = true;
+    try {
+      await saveQueue.current;
+      const response = await fetch("/api/health-state", {
+        method: "DELETE",
+        signal: AbortSignal.timeout(15_000),
+      });
+      const data = (await response.json()) as { state?: unknown; updatedAt?: string; revision?: number; error?: string };
+      if (!response.ok || !data.state || !Number.isSafeInteger(data.revision)) {
+        throw new Error(data.error ?? "The record could not be erased.");
+      }
+      const cleared = normalizeHealthState(data.state);
+      serverRevision.current = data.revision ?? 0;
+      serverBase.current = cleared;
+      setAppleOverlay(null);
+      skipNextSave.current = true;
+      updateState(() => cleared);
+      persistLocalState(cleared, cleared, serverRevision.current);
+      await clearAllPhotos();
+      setSaveStatus("saved");
+      setSavedAt(data.updatedAt ?? cleared.updatedAt);
+      setToast({ message: "Every record, snapshot, photo, and Apple connection was erased." });
+    } catch (error) {
+      setToast({ message: error instanceof Error ? error.message : "The record could not be erased." });
+    } finally {
+      destructiveChange.current = false;
+    }
+  };
 
   // Do not accept edits against the empty module-level state while the local
   // and server copies are still being reconciled.
@@ -537,17 +671,17 @@ export default function Home() {
             </button>
           ))}
         </nav>
+        <button
+          type="button"
+          className={view === "data" ? "nav-item active data-link" : "nav-item data-link"}
+          aria-current={view === "data" ? "page" : undefined}
+          onClick={() => go("data")}
+        >
+          <Icon name="settings" />
+          <span>{viewLabels.data}</span>
+        </button>
         {!demoMode ? (
           <>
-            <button
-              type="button"
-              className={view === "data" ? "nav-item active data-link" : "nav-item data-link"}
-              aria-current={view === "data" ? "page" : undefined}
-              onClick={() => go("data")}
-            >
-              <Icon name="settings" />
-              <span>{viewLabels.data}</span>
-            </button>
             <div className="sidebar-foot">
               <span className={`sync-dot ${saveStatus}`} />
               <span>{syncLabel}</span>
@@ -578,25 +712,21 @@ export default function Home() {
               </span>
               <strong>Baseline</strong>
             </div>
-            <div className="mobile-actions">
-              <button type="button" className="icon-button" onClick={() => go("data")} aria-label="Data and goals">
-                <Icon name="settings" />
-              </button>
-              <button
-                type="button"
-                className="icon-button primary"
-                onClick={() => openModal({ kind: "import" })}
-                aria-label="Import health data"
-              >
-                <Icon name="upload" />
-              </button>
-            </div>
+            <span className={`mobile-save-state ${saveStatus}`} aria-live="polite">{syncLabel}</span>
           </header>
         )}
 
+        {!demoMode && (saveStatus === "local" || saveStatus === "error") ? (
+          <aside className="mobile-sync-alert" role="status">
+            <span><b>{saveStatus === "error" ? "Not saved" : "Saved on this device only"}</b><small>Your latest edit has not reached private sync.</small></span>
+            <button type="button" className="button secondary small" onClick={() => setSaveAttempt((count) => count + 1)}>Retry</button>
+          </aside>
+        ) : null}
+
         {view === "today" && (
           <TodayView
-            state={state}
+            state={visibleState}
+            editableState={state}
             today={today}
             go={go}
             open={openModal}
@@ -607,11 +737,12 @@ export default function Home() {
           />
         )}
         {view === "sleep" && (
-          <SleepView state={state} today={today} open={openModal} onDelete={deleteSleep} demo={demoMode} />
+          <SleepView state={visibleState} editableState={state} today={today} open={openModal} onDelete={deleteSleep} demo={demoMode} />
         )}
         {view === "fitness" && (
           <FitnessView
-            state={state}
+            state={visibleState}
+            editableState={state}
             today={today}
             open={openModal}
             demo={demoMode}
@@ -625,7 +756,7 @@ export default function Home() {
         )}
         {view === "mind" && (
           <MindView
-            state={state}
+            state={visibleState}
             today={today}
             updateDaily={updateDaily}
             onAddNote={addTherapyNote}
@@ -635,19 +766,20 @@ export default function Home() {
         )}
         {view === "meds" && (
           <MedsView
-            state={state}
+            state={visibleState}
             today={today}
             open={openModal}
             onDose={toggleDose}
-            onAddMedication={addMedication}
             onDeleteMedication={deleteMedication}
           />
         )}
-        {view === "labs" && <LabsView state={state} open={openModal} onDeleteLab={deleteLab} />}
-        {view === "summary" && <SummaryView state={state} today={today} onNotice={notice} />}
-        {!demoMode && view === "data" && (
+        {view === "labs" && <LabsView state={visibleState} open={openModal} onDeleteLab={deleteLab} />}
+        {view === "summary" && <SummaryView state={visibleState} today={today} onNotice={notice} />}
+        {view === "more" && <MoreView go={go} demo={demoMode} />}
+        {view === "data" && (
           <DataView
             state={state}
+            appleOverlay={appleOverlay}
             today={today}
             theme={theme}
             onTheme={(next) => {
@@ -656,39 +788,22 @@ export default function Home() {
             }}
             onGoals={saveGoals}
             open={openModal}
-            onRestoreFile={async (event: ChangeEvent<HTMLInputElement>) => {
-              const file = event.target.files?.[0];
-              event.target.value = "";
-              if (!file) return;
-              try {
-                const restored = normalizeHealthState(JSON.parse(await file.text()));
-                commit(() => restored, "Backup restored.", true);
-              } catch {
-                notice("That backup could not be read.");
-              }
-            }}
-            onRestoreState={(restored, message) => commit(() => restored, message, true)}
-            onErase={() =>
-              // Records go; the targets the user set stay, so starting over does
-              // not mean re-entering every goal.
-              commit(
-                (current) => normalizeHealthState({ ...emptyHealthState(), goals: current.goals }),
-                "Every record was erased.",
-                true,
-              )
-            }
+            onRestoreState={(restored, message) => commit(() => restored, message)}
+            onErase={eraseEverything}
+            onAppleChanged={setAppleOverlay}
             onNotice={notice}
+            demo={demoMode}
           />
         )}
       </main>
 
       <nav className="bottom-nav" aria-label="Sections">
-        {navOrder.map((item) => (
+        {mobileNavOrder.map((item) => (
           <button
             key={item}
             type="button"
-            className={view === item ? "active" : ""}
-            aria-current={view === item ? "page" : undefined}
+            className={mobileActive === item ? "active" : ""}
+            aria-current={mobileActive === item ? "page" : undefined}
             onClick={() => go(item)}
           >
             <Icon name={item} />
@@ -704,9 +819,9 @@ export default function Home() {
           onClose={() => setModal(null)}
           onDose={setDose}
           onSave={(entry) => {
-            saveDaily(entry);
+            if (entry) saveDaily(entry);
             setModal(null);
-            notice(entry.date === today ? "Today is saved." : `Saved for ${entry.date}.`);
+            notice(entry ? (entry.date === today ? "Today is saved." : `Saved for ${entry.date}.`) : "Medication answers saved.");
           }}
           onDelete={deleteDaily}
         />

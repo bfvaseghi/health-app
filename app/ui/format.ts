@@ -45,8 +45,7 @@ export function formatBytes(bytes: number): string {
   return `${(bytes / (1_024 * 1_024)).toFixed(1)} MB`;
 }
 
-function download(name: string, type: string, contents: string) {
-  const blob = new Blob([contents], { type });
+export function downloadBlob(name: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -55,6 +54,10 @@ function download(name: string, type: string, contents: string) {
   anchor.click();
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 2_000);
+}
+
+function download(name: string, type: string, contents: string) {
+  downloadBlob(name, new Blob([contents], { type }));
 }
 
 export function downloadJson(name: string, value: unknown) {

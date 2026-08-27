@@ -1,6 +1,7 @@
-import { asc } from "drizzle-orm";
+import { env } from "cloudflare:workers";
+import { eq } from "drizzle-orm";
 import { getDb } from "../db";
-import { healthStates } from "../db/schema";
+import { baselineOwner } from "../db/schema";
 
 type Database = ReturnType<typeof getDb>;
 
@@ -12,9 +13,27 @@ type Database = ReturnType<typeof getDb>;
  */
 export async function isBaselineOwner(db: Database, userId: string): Promise<boolean> {
   const [owner] = await db
-    .select({ userId: healthStates.userId })
-    .from(healthStates)
-    .orderBy(asc(healthStates.updatedAt))
+    .select({ userId: baselineOwner.userId })
+    .from(baselineOwner)
+    .where(eq(baselineOwner.singleton, 1))
     .limit(1);
-  return !owner || owner.userId === userId;
+  if (owner) return owner.userId === userId;
+
+  // A fresh/reset database fails closed unless deployment explicitly names the
+  // owner by a one-way hash. The public shell can therefore never be claimed by
+  // whichever signed-in visitor happens to arrive first.
+  const configured = (env as unknown as Record<string, string | undefined>).BASELINE_OWNER_HASH;
+  if (!configured) return false;
+  const digest = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(userId.trim().toLowerCase())))]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  if (digest !== configured) return false;
+
+  await db.insert(baselineOwner).values({ singleton: 1, userId, createdAt: new Date().toISOString() }).onConflictDoNothing();
+  const [claimed] = await db
+    .select({ userId: baselineOwner.userId })
+    .from(baselineOwner)
+    .where(eq(baselineOwner.singleton, 1))
+    .limit(1);
+  return claimed?.userId === userId;
 }

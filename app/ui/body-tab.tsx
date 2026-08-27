@@ -17,6 +17,7 @@ const PAGE = 20;
  */
 export function BodyTab({
   state,
+  editableState,
   today,
   open,
   demo,
@@ -26,6 +27,7 @@ export function BodyTab({
   onNotice,
 }: {
   state: HealthState;
+  editableState: HealthState;
   today: string;
   open: (modal: Modal) => void;
   demo: boolean;
@@ -78,21 +80,25 @@ export function BodyTab({
                     label="Steps"
                     value={entry.steps === null ? "—" : Math.round(entry.steps).toLocaleString("en-US")}
                   />
-                  <div className="row-actions">
-                    <button
-                      type="button"
-                      className="row-action"
-                      onClick={() => open({ kind: "checkin", date: entry.date })}
-                      aria-label={`Edit ${dateLabel(entry.date)}`}
-                    >
-                      <Icon name="pencil" />
-                      <span>Edit</span>
-                    </button>
-                    <ConfirmButton
-                      label={`Delete the record for ${dateLabel(entry.date)}`}
-                      onConfirm={() => onDeleteDay(entry.date)}
-                    />
-                  </div>
+                  {editableState.dailyEntries.some((item) => item.date === entry.date) ? (
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="row-action"
+                        onClick={() => open({ kind: "checkin", date: entry.date })}
+                        aria-label={`Edit manual values for ${dateLabel(entry.date)}`}
+                      >
+                        <Icon name="pencil" />
+                        <span>Edit</span>
+                      </button>
+                      <ConfirmButton
+                        label={`Delete the manual values for ${dateLabel(entry.date)}`}
+                        onConfirm={() => onDeleteDay(entry.date)}
+                      />
+                    </div>
+                  ) : (
+                    <span className="readonly-label"><Icon name="lock" /> Automatic</span>
+                  )}
                 </li>
               ))}
             </ul>

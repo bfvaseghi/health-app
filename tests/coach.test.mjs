@@ -1069,12 +1069,15 @@ test("which session is next is the one that covers what is missing", () => {
     plan.sessions.map((session) => session.name),
   );
 
-  // A day of pressing spent: what is left is ranked by what it closes, not by
-  // where it sat in the list, so the sessions carrying the untouched muscles
-  // come up rather than the next index.
+  // Four bench sets bank useful work and trim redundant pressing, but do not
+  // falsely claim an entire mixed session was completed.
   const pressed = afterDoing(["Bench Press (Barbell)"]);
   const left = remainingSessions(plan, pressed, AS_OF);
-  assert.equal(left.length, plan.sessions.length - 1, "one session is spent");
+  assert.equal(left.length, plan.sessions.length, "partial pressing does not consume a session");
+  assert.ok(
+    left.reduce((sum, session) => sum + session.sets, 0) < plan.sessions.reduce((sum, session) => sum + session.sets, 0),
+    "completed sets remove redundant work from what remains",
+  );
   const covered = (sessions) => {
     const total = new Map();
     for (const session of sessions) {
@@ -1095,8 +1098,19 @@ test("which session is next is the one that covers what is missing", () => {
     `picked ${left.map((s) => s.name).join(", ")} over ${plan.sessions.slice(1).map((s) => s.name).join(", ")}`,
   );
 
-  // Every session done is a week finished, not a fifth session invented.
-  const finished = afterDoing(plan.sessions.map(() => "Bench Press (Barbell)"));
+  // Completing each prescribed session is a finished week, not a fifth
+  // session invented. Exact names and enough work are required to spend a slot.
+  const finished = stateFrom(FIXTURE, {
+    workoutSets: plan.sessions.flatMap((session, day) =>
+      session.exercises.flatMap((exercise) =>
+        Array.from({ length: exercise.sets }, (_, index) => set(exercise.exercise, {
+          date: addDays(monday, day),
+          startedAt: `${addDays(monday, day)} 18:00:00`,
+          setNumber: index + 1,
+        })),
+      ),
+    ),
+  });
   assert.equal(nextSession(plan, finished, AS_OF).session, null);
   assert.equal(remainingSessions(plan, finished, AS_OF).length, 0);
 });
@@ -1867,7 +1881,13 @@ test("a muscle can be moved a set at a time, in either direction", () => {
   // A week is a suggestion. Wanting a bit more chest than the middle of a range
   // is not a mistake to be protected from — what makes moving it safe is that
   // the number goes on saying what the change did.
-  const state = stateFrom(FIXTURE);
+  const state = stateFrom(FIXTURE, {
+    workoutSets: stateFrom(FIXTURE).workoutSets.map((entry) => ({
+      ...entry,
+      date: "2026-04-11",
+      startedAt: entry.startedAt.replace(/^\d{4}-\d{2}-\d{2}/, "2026-04-11"),
+    })),
+  });
   const plan = buildPlan(state, AS_OF, 4);
   const monday = weekStart(AS_OF);
   const withChange = (entries) => withAddedSets(plan, { ...state, goals: { ...state.goals, addedSets: entries } }, AS_OF);
@@ -1933,8 +1953,8 @@ test("a known lift you add reduces the gap", () => {
   const monday = weekStart(AS_OF);
   const state = stateFrom(FIXTURE, {
     workoutSets: [set("Bench Press (Barbell)", {
-      date: addDays(monday, -2),
-      startedAt: `${addDays(monday, -2)} 18:00:00`,
+      date: addDays(monday, -8),
+      startedAt: `${addDays(monday, -8)} 18:00:00`,
     })],
   });
   const plan = {
@@ -1943,8 +1963,8 @@ test("a known lift you add reduces the gap", () => {
     deload: false,
     split: "Synthetic",
     sessions: [
-      { name: "A", shape: "upper", exercises: [], sets: 0 },
-      { name: "B", shape: "upper", exercises: [], sets: 0 },
+      { name: "A", shape: "upper", exercises: [{ exercise: "Cable Row", sets: 2, muscle: "back" }], sets: 2 },
+      { name: "B", shape: "upper", exercises: [{ exercise: "Biceps Curl", sets: 2, muscle: "biceps" }], sets: 2 },
     ],
     missing: [],
     shortfall: [],
@@ -1974,7 +1994,7 @@ test("a known lift you add reduces the gap", () => {
   const theirs = after.sessions.flatMap((entry) => entry.exercises).filter((entry) => entry.byHand);
   assert.equal(theirs.length, 1, `${theirs.length} lifts marked as added by hand`);
   for (const entry of plan.sessions.flatMap((one) => one.exercises)) {
-    assert.equal(entry.byHand, false, `${entry.exercise} claims to be yours in a plan you did not touch`);
+    assert.equal(entry.byHand ?? false, false, `${entry.exercise} claims to be yours in a plan you did not touch`);
   }
   // Prescribed like anything else: a rep range, a rest, and a load off your own
   // history rather than a blank.

@@ -5,21 +5,95 @@ export type InitialStateChoice = {
   state: HealthState;
   /** The chosen copy has changes the server does not yet hold. */
   needsSync: boolean;
+  /** A pre-envelope browser copy that differed from the server. */
+  recoveryState: HealthState | null;
+  /** Same-record edits made on both sides since their acknowledged base. */
+  conflicts: number;
 };
+
+export type LocalStateEnvelope = {
+  format: "baseline-local";
+  cacheVersion: 2;
+  state: HealthState;
+  acknowledgedBase: HealthState | null;
+  acknowledgedRevision: number;
+};
+
+export function localStateEnvelope(
+  state: HealthState,
+  acknowledgedBase: HealthState | null,
+  acknowledgedRevision: number,
+): LocalStateEnvelope {
+  return {
+    format: "baseline-local",
+    cacheVersion: 2,
+    state: normalizeHealthState(state),
+    acknowledgedBase: acknowledgedBase ? normalizeHealthState(acknowledgedBase) : null,
+    acknowledgedRevision: Number.isSafeInteger(acknowledgedRevision) ? Math.max(0, acknowledgedRevision) : 0,
+  };
+}
+
+export function parseLocalState(value: unknown): LocalStateEnvelope | HealthState | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (record.format === "baseline-local" && record.cacheVersion === 2 && record.state) {
+    return localStateEnvelope(
+      normalizeHealthState(record.state),
+      record.acknowledgedBase ? normalizeHealthState(record.acknowledgedBase) : null,
+      typeof record.acknowledgedRevision === "number" ? record.acknowledgedRevision : 0,
+    );
+  }
+  return normalizeHealthState(value);
+}
+
+/** Server timestamps describe transport, not a health-record edit. */
+export function sameHealthState(left: HealthState, right: HealthState): boolean {
+  return equal({ ...left, updatedAt: "" }, { ...right, updatedAt: "" });
+}
 
 /**
  * Chooses one whole-state copy without letting an older server response erase
  * a newer offline edit. HealthState normalization guarantees valid timestamps.
  */
 export function chooseInitialState(
-  local: HealthState | null,
+  local: LocalStateEnvelope | HealthState | null,
   remote: HealthState | null,
   fallback: HealthState,
 ): InitialStateChoice {
-  if (local && (!remote || local.updatedAt > remote.updatedAt)) {
-    return { state: local, needsSync: true };
+  if (local && "format" in local) {
+    if (remote) {
+      if (sameHealthState(local.state, remote)) {
+        return { state: remote, needsSync: false, recoveryState: null, conflicts: 0 };
+      }
+      const merged = mergeConcurrentHealthState(local.acknowledgedBase, local.state, remote);
+      return {
+        state: merged.state,
+        needsSync: !sameHealthState(merged.state, remote),
+        recoveryState: null,
+        conflicts: merged.conflicts,
+      };
+    }
+    const base = local.acknowledgedBase;
+    return {
+      state: local.state,
+      needsSync: !base || !sameHealthState(local.state, base),
+      recoveryState: null,
+      conflicts: 0,
+    };
   }
-  return { state: remote ?? local ?? fallback, needsSync: false };
+  if (local && remote) {
+    if (sameHealthState(local, remote)) {
+      return { state: remote, needsSync: false, recoveryState: null, conflicts: 0 };
+    }
+    // Legacy caches have no common base, so automatically choosing either side
+    // can erase an edit or resurrect a deletion. The server remains live and
+    // the offline copy is surfaced as an explicit one-time recovery choice.
+    return { state: remote, needsSync: false, recoveryState: local, conflicts: 0 };
+  }
+  if (local) {
+    return { state: local, needsSync: true, recoveryState: null, conflicts: 0 };
+  }
+  return { state: remote ?? fallback, needsSync: false, recoveryState: null, conflicts: 0 };
 }
 
 export type ConcurrentMerge = {

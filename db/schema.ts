@@ -14,9 +14,19 @@ export const healthStateBackups = sqliteTable(
     userId: text("user_id").notNull(),
     payload: text("payload").notNull(),
     createdAt: text("created_at").notNull(),
+    replacedRevision: integer("replaced_revision"),
   },
-  (table) => [index("health_state_backups_user_created_idx").on(table.userId, table.createdAt)],
+  (table) => [
+    index("health_state_backups_user_created_idx").on(table.userId, table.createdAt),
+    uniqueIndex("health_state_backups_user_revision_uidx").on(table.userId, table.replacedRevision),
+  ],
 );
+
+export const baselineOwner = sqliteTable("baseline_owner", {
+  singleton: integer("singleton").primaryKey(),
+  userId: text("user_id").notNull().unique(),
+  createdAt: text("created_at").notNull(),
+});
 
 /**
  * Apple Health stays separate from the user-edited record. The public ingest
@@ -32,6 +42,7 @@ export const appleHealthSyncs = sqliteTable(
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),
     lastSyncedAt: text("last_synced_at"),
+    revision: integer("revision").notNull().default(0),
   },
   (table) => [uniqueIndex("apple_health_syncs_token_hash_uidx").on(table.tokenHash)],
 );

@@ -1,6 +1,7 @@
 export type ScaleValue = 1 | 2 | 3 | 4 | 5;
 export type SleepSource = "manual" | "apple" | "oura" | "whoop" | "other";
 export type WeightDirection = "lose" | "maintain" | "gain";
+export type ExerciseLoadMode = "loaded" | "bodyweight" | "assisted";
 
 /** One day: what the devices reported, plus the few things worth a tap. */
 export type DailyEntry = {
@@ -28,6 +29,9 @@ export type WorkoutSet = {
   exercise: string;
   setNumber: number;
   weightLb: number | null;
+  /** Explicit load meaning. Assistance gets easier as this number rises. */
+  loadMode?: ExerciseLoadMode;
+  assistanceLb?: number | null;
   reps: number | null;
   distance: number | null;
   seconds: number | null;
@@ -142,6 +146,10 @@ export type GoalSettings = {
    * one.
    */
   addedSets: AddedSet[];
+  /** Monday the current four-week training block was deliberately anchored. */
+  trainingBlockStart: string;
+  /** Frozen direct-set baseline by muscle for this block. */
+  trainingAnchorSets: Record<string, number>;
 };
 
 /** One change you made to one lift in one session of one week. */
@@ -194,6 +202,8 @@ export const defaultGoals: GoalSettings = {
   bodyFatTargetPercent: null,
   trainingDays: [],
   addedSets: [],
+  trainingBlockStart: "",
+  trainingAnchorSets: {},
 };
 
 export function emptyHealthState(now = new Date()): HealthState {
@@ -263,6 +273,48 @@ export function validIsoDate(value: unknown): value is string {
     parsed.getUTCMonth() === month - 1 &&
     parsed.getUTCDate() === day
   );
+}
+
+/** Manual health entry is rejected, never silently clamped into a different fact. */
+export function validateDailyEntry(entry: DailyEntry, asOf = todayLocal()): string | null {
+  if (!validIsoDate(entry.date) || entry.date > asOf) return "Choose today or an earlier date.";
+  if (entry.weightLb !== null && (entry.weightLb < 40 || entry.weightLb > 1_000)) return "Weight must be between 40 and 1,000 lb.";
+  if (entry.bodyFatPercent !== null && (entry.bodyFatPercent < 3 || entry.bodyFatPercent > 60)) return "Body fat must be between 3% and 60%.";
+  if (entry.proteinG !== null && (entry.proteinG < 0 || entry.proteinG > 500)) return "Protein must be between 0 and 500 g.";
+  const meaningful = entry.weightLb !== null || entry.bodyFatPercent !== null || entry.proteinG !== null || entry.note.trim() !== "";
+  return meaningful ? null : "Add at least one value or note before saving this check-in.";
+}
+
+export function validateSleepEntry(entry: SleepEntry, asOf = todayLocal()): string | null {
+  if (!validIsoDate(entry.date) || entry.date > asOf) return "Choose today or an earlier wake date.";
+  if (entry.durationHours === null && (!entry.bedtime || !entry.wakeTime)) return "Add a duration or both bedtime and wake time.";
+  if (entry.bedtime && entry.wakeTime && entry.bedtime === entry.wakeTime) return "Bedtime and wake time cannot be the same.";
+  if (entry.durationHours !== null && (entry.durationHours < 1 || entry.durationHours > 18)) return "Sleep duration must be between 1 and 18 hours.";
+  if (entry.deepHours !== null && (entry.deepHours < 0 || entry.deepHours > 12)) return "Deep sleep must be between 0 and 12 hours.";
+  if (entry.remHours !== null && (entry.remHours < 0 || entry.remHours > 12)) return "REM sleep must be between 0 and 12 hours.";
+  if (entry.durationHours !== null && (entry.deepHours ?? 0) + (entry.remHours ?? 0) > entry.durationHours) {
+    return "Deep and REM sleep cannot add up to more than total sleep.";
+  }
+  return null;
+}
+
+export function validateMedication(medication: Medication): string | null {
+  if (!medication.name.trim()) return "Enter a medication name.";
+  if (medication.name.trim().length > 80) return "Medication name must be 80 characters or fewer.";
+  if (medication.schedule === "weekly" && (medication.dueDay === null || medication.dueDay < 0 || medication.dueDay > 6)) {
+    return "Choose the day this medication is due.";
+  }
+  return null;
+}
+
+export function validateLabResult(result: LabResult, asOf = todayLocal()): string | null {
+  if (!result.name.trim()) return "Enter the test name.";
+  if (!validIsoDate(result.date) || result.date > asOf) return "Choose today or an earlier result date.";
+  if (result.value === null) return "Enter the result value.";
+  if (result.referenceLow !== null && result.referenceHigh !== null && result.referenceLow > result.referenceHigh) {
+    return "The reference low cannot be greater than the reference high.";
+  }
+  return null;
 }
 
 export function addDays(value: string, amount: number): string {
@@ -407,13 +459,28 @@ export function normalizeWorkoutSet(value: unknown): WorkoutSet | null {
   if (!exercise) return null;
   const setNumber = finiteNumber(entry.setNumber, 1, 200);
   if (setNumber === null) return null;
+  const rawWeight = finiteNumber(entry.weightLb, -2_000, 2_000);
+  const explicitMode = entry.loadMode === "assisted" || entry.loadMode === "bodyweight" || entry.loadMode === "loaded"
+    ? entry.loadMode
+    : null;
+  const loadMode: ExerciseLoadMode = explicitMode ?? (
+    /assisted/i.test(exercise) || (rawWeight !== null && rawWeight < 0)
+      ? "assisted"
+      : rawWeight === null || rawWeight === 0
+        ? "bodyweight"
+        : "loaded"
+  );
+  const assistance = finiteNumber(entry.assistanceLb, 0, 2_000)
+    ?? (loadMode === "assisted" && rawWeight !== null ? Math.abs(rawWeight) : null);
   return {
     date: entry.date,
     startedAt: safeText(entry.startedAt, 40) || entry.date,
     workoutName: safeText(entry.workoutName, 120),
     exercise,
     setNumber: Math.round(setNumber),
-    weightLb: finiteNumber(entry.weightLb, 0, 2_000),
+    weightLb: loadMode === "loaded" ? finiteNumber(rawWeight, 0, 2_000) : null,
+    loadMode,
+    assistanceLb: loadMode === "assisted" ? assistance : null,
     reps: finiteNumber(entry.reps, 0, 1_000),
     distance: finiteNumber(entry.distance, 0, 1_000_000),
     seconds: finiteNumber(entry.seconds, 0, 86_400),
@@ -480,18 +547,24 @@ export function normalizeGoals(value: unknown): GoalSettings {
         })
       : [],
     addedSets: normalizeAddedSets(goals.addedSets),
+    trainingBlockStart: validIsoDate(goals.trainingBlockStart) ? goals.trainingBlockStart : "",
+    trainingAnchorSets: Object.fromEntries(
+      Object.entries(recordValue(goals.trainingAnchorSets))
+        .map(([key, value]) => [key, finiteNumber(value, 0, 30)] as const)
+        .filter((entry): entry is [string, number] => entry[1] !== null),
+    ),
   };
 }
 
 /**
  * Changes made by hand, cleaned up on the way in.
  *
- * Bounded and de-duplicated, because this is the one part of the goals a
- * button writes to rather than a settings form: without a cap, a fast finger
- * on a plus is a record that grows forever. A change of nothing is dropped
- * rather than stored, so pressing plus and then minus leaves no trace.
+ * De-duplicated because this is the one part of the goals a button writes to
+ * rather than a settings form. A change of nothing is dropped rather than
+ * stored, so pressing plus and then minus leaves no trace. We intentionally do
+ * not cap the list: silently losing the 41st deliberate adjustment is worse
+ * than retaining a few extra small records.
  */
-const MAX_ADDED_SETS = 40;
 function normalizeAddedSets(value: unknown): AddedSet[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
@@ -507,7 +580,6 @@ function normalizeAddedSets(value: unknown): AddedSet[] {
     if (seen.has(key)) continue;
     seen.add(key);
     found.push({ weekStart, session, exercise, sets: Math.round(sets) });
-    if (found.length >= MAX_ADDED_SETS) break;
   }
   return found;
 }
@@ -525,7 +597,6 @@ const LEGACY_MEDICATION: Medication = {
 };
 
 /** A medication a person would recognise, or nothing. */
-const MAX_MEDICATIONS = 20;
 function slug(name: string): string {
   return name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60) || "med";
 }
@@ -601,7 +672,6 @@ function normalizeMedications(value: unknown): Medication[] {
     if (!medication || seen.has(medication.id)) continue;
     seen.add(medication.id);
     found.push(medication);
-    if (found.length >= MAX_MEDICATIONS) break;
   }
   return found;
 }
@@ -803,6 +873,8 @@ export type ImportRecords = {
   sleepEntries: unknown[];
   labResults: unknown[];
   workoutSets: unknown[];
+  /** A complete Strong export owns lifting history and replaces older imports. */
+  replaceWorkoutHistory?: boolean;
 };
 
 /** Keys an import did not actually provide, so a partial file cannot blank a field. */
@@ -849,7 +921,9 @@ export function mergeRecords(state: HealthState, records: Partial<ImportRecords>
   }
 
   const workouts = new Map(
-    state.workoutSets.map((entry) => [`${entry.startedAt}:${entry.exercise}:${entry.setNumber}`, entry]),
+    records.replaceWorkoutHistory
+      ? []
+      : state.workoutSets.map((entry) => [`${entry.startedAt}:${entry.exercise}:${entry.setNumber}`, entry]),
   );
   for (const value of records.workoutSets ?? []) {
     const merged = normalizeWorkoutSet(value);
@@ -935,6 +1009,10 @@ export type MedicationStatus = {
   /** Over the days it was due in the window. */
   taken: number;
   missed: number;
+  /** Doses expected in the selected window, whether answered or not. */
+  due: number;
+  /** Due doses that still have no answer. */
+  unanswered: number;
   recorded: number;
   percent: number | null;
   /** Consecutive due days taken, ending at the last one that has been answered. */
@@ -989,6 +1067,8 @@ export function medicationStatus(
     today: answers.get(asOf) ?? null,
     taken,
     missed: recorded.length - taken,
+    due: due.length,
+    unanswered: due.length - recorded.length,
     recorded: recorded.length,
     percent: recorded.length ? Math.round((taken / recorded.length) * 100) : null,
     streak,
@@ -1022,18 +1102,23 @@ export function medicationAdherence(
   state: HealthState,
   asOf = todayLocal(),
   days = 14,
-): { taken: number; missed: number; recorded: number; percent: number | null } {
+): { taken: number; missed: number; unanswered: number; due: number; recorded: number; percent: number | null; coveragePercent: number | null } {
   let taken = 0;
   let recorded = 0;
+  let due = 0;
   for (const status of medicationStatuses(state, asOf, days)) {
     taken += status.taken;
     recorded += status.recorded;
+    due += status.due;
   }
   return {
     taken,
     missed: recorded - taken,
+    unanswered: due - recorded,
+    due,
     recorded,
     percent: recorded ? Math.round((taken / recorded) * 100) : null,
+    coveragePercent: due ? Math.round((recorded / due) * 100) : null,
   };
 }
 
@@ -1073,6 +1158,9 @@ export function latestRecordDate(state: HealthState): string | null {
     // So does a medication answered. Someone who has only ticked off today's
     // tablets has a record, and Today should be the day, not the import screen.
     state.medicationDoses[0]?.date,
+    state.labResults[0]?.date,
+    state.therapyNotes[0]?.date,
+    state.progressPhotos[0]?.date,
   ].filter((date): date is string => Boolean(date));
   return dates.length ? dates.sort().at(-1)! : null;
 }
@@ -1105,6 +1193,8 @@ export type LabTrend = {
 export type CoverageSummary = {
   days: number;
   medicationDays: number;
+  medicationDosesDue: number;
+  medicationDosesAnswered: number;
   sleepNights: number;
   medicationPercent: number;
   sleepPercent: number;
@@ -1264,7 +1354,9 @@ export function labKey(name: string): string {
 export function buildLabTrends(results: LabResult[]): LabTrend[] {
   const groups = new Map<string, LabResult[]>();
   for (const result of results) {
-    const key = labKey(result.name);
+    // Units are part of a measurement's identity. A raw mg/dL value cannot be
+    // compared with a mmol/L value unless an explicit conversion exists.
+    const key = `${labKey(result.name)}::${result.unit.trim().toLowerCase()}`;
     const group = groups.get(key);
     if (group) group.push(result);
     else groups.set(key, [result]);
@@ -1303,15 +1395,21 @@ export function loggingCoverage(state: HealthState, asOf = todayLocal(), days = 
   // A day counts as covered when every medication due that day was answered.
   const answered = new Set(state.medicationDoses.map((dose) => `${dose.medicationId}:${dose.date}`));
   let medicationDays = 0;
+  let medicationDosesDue = 0;
+  let medicationDosesAnswered = 0;
   for (let back = 0; back < safeDays; back += 1) {
     const date = addDays(asOf, -back);
     const due = state.medications.filter((medication) => isDue(medication, date));
+    medicationDosesDue += due.length;
+    medicationDosesAnswered += due.filter((medication) => answered.has(`${medication.id}:${date}`)).length;
     if (due.length && due.every((medication) => answered.has(`${medication.id}:${date}`))) medicationDays += 1;
   }
   const sleepNights = entriesInWindow(preferredSleepEntries(state.sleepEntries), asOf, safeDays).length;
   return {
     days: safeDays,
     medicationDays,
+    medicationDosesDue,
+    medicationDosesAnswered,
     sleepNights,
     medicationPercent: Math.round((medicationDays / safeDays) * 100),
     sleepPercent: Math.round((sleepNights / safeDays) * 100),
@@ -1534,13 +1632,13 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
     rows,
     // The most recent result for each test only: a marker corrected two years ago
     // is history, not something to raise at this appointment.
-    flaggedLabs: buildLabTrends(state.labResults)
+    flaggedLabs: buildLabTrends(state.labResults.filter((result) => result.date <= asOf))
       .map((trend) => trend.latest)
       .filter((result) => {
         const status = labRangeStatus(result);
         return status === "low" || status === "high";
       }),
-    toRaise: state.therapyNotes.filter((note) => !note.shared),
+    toRaise: state.therapyNotes.filter((note) => !note.shared && note.date <= asOf),
     notes: daily
       .filter((entry) => entry.note !== "")
       .sort((a, b) => b.date.localeCompare(a.date))
@@ -1549,10 +1647,13 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
 }
 
 /** Plain text version of the report, for pasting into a message or a visit note. */
-export function reportToText(report: HealthReport): string {
+export function reportToText(
+  report: HealthReport,
+  options: { includeTherapy?: boolean; includeNotes?: boolean } = { includeTherapy: true, includeNotes: true },
+): string {
   const lines: string[] = [
     `Health summary: ${report.start} to ${report.end} (${report.days} days)`,
-    `Recorded: ${report.coverage.sleepNights} nights of sleep, ${report.coverage.medicationDays} days of medication.`,
+    `Recorded: ${report.coverage.sleepNights} nights of sleep, ${report.coverage.medicationDosesAnswered} of ${report.coverage.medicationDosesDue} due medication doses answered.`,
     "",
   ];
 
@@ -1574,15 +1675,15 @@ export function reportToText(report: HealthReport): string {
     lines.push("");
   }
 
-  if (report.toRaise.length) {
+  if (options.includeTherapy !== false && report.toRaise.length) {
     lines.push("To raise");
-    for (const note of report.toRaise.slice(0, 30)) lines.push(`  ${note.text}`);
+    for (const note of report.toRaise) lines.push(`  ${note.text}`);
     lines.push("");
   }
 
-  if (report.notes.length) {
+  if (options.includeNotes !== false && report.notes.length) {
     lines.push("Notes");
-    for (const note of report.notes.slice(0, 20)) lines.push(`  ${note.date}: ${note.note}`);
+    for (const note of report.notes) lines.push(`  ${note.date}: ${note.note}`);
     lines.push("");
   }
 
@@ -1620,18 +1721,96 @@ export function medicationDosesCsv(state: HealthState): string {
 
 export function dailyEntriesCsv(entries: DailyEntry[]): string {
   return toCsv(
-    ["date", "medication_taken", "weight_lb", "steps", "resting_heart_rate", "hrv_ms", "note"],
+    [
+      "date",
+      "medication_taken",
+      "weight_lb",
+      "body_fat_percent",
+      "steps",
+      "resting_heart_rate",
+      "hrv_ms",
+      "protein_g",
+      "calories_kcal",
+      "journaled",
+      "meditation_minutes",
+      "meditation_note",
+      "note",
+    ],
     [...entries]
       .sort((a, b) => a.date.localeCompare(b.date))
       .map((entry) => [
         entry.date,
         entry.medicationTaken,
         entry.weightLb,
+        entry.bodyFatPercent,
         entry.steps,
         entry.restingHeartRate,
         entry.hrvMs,
+        entry.proteinG,
+        entry.caloriesKcal,
+        entry.journaled,
+        entry.meditationMinutes,
+        entry.meditationNote,
         entry.note,
       ]),
+  );
+}
+
+export function workoutSetsCsv(entries: WorkoutSet[]): string {
+  return toCsv(
+    [
+      "date", "started_at", "workout", "exercise", "set_number", "weight_lb", "reps",
+      "load_mode", "assistance_lb", "distance", "seconds", "rpe", "rest_timer_seconds", "workout_duration_seconds",
+    ],
+    [...entries]
+      .sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.exercise.localeCompare(b.exercise) || a.setNumber - b.setNumber)
+      .map((entry) => [
+        entry.date, entry.startedAt, entry.workoutName, entry.exercise, entry.setNumber, entry.weightLb,
+        entry.reps, entry.loadMode ?? "", entry.assistanceLb ?? null, entry.distance, entry.seconds, entry.rpe, entry.restSeconds, entry.durationSeconds,
+      ]),
+  );
+}
+
+export function medicationsCsv(entries: Medication[]): string {
+  return toCsv(
+    ["id", "name", "schedule", "due_day", "archived"],
+    entries.map((entry) => [entry.id, entry.name, entry.schedule, entry.dueDay, entry.archived]),
+  );
+}
+
+export function therapyNotesCsv(entries: TherapyNote[]): string {
+  return toCsv(
+    ["id", "date", "text", "raised", "raised_date"],
+    [...entries].sort((a, b) => a.date.localeCompare(b.date)).map((entry) => [
+      entry.id, entry.date, entry.text, entry.shared, entry.sharedDate,
+    ]),
+  );
+}
+
+export function progressPhotosCsv(entries: ProgressPhoto[]): string {
+  return toCsv(
+    ["id", "date", "weight_lb", "body_fat_percent", "note", "image_file"],
+    [...entries].sort((a, b) => a.date.localeCompare(b.date)).map((entry) => [
+      entry.id, entry.date, entry.weightLb, entry.bodyFatPercent, entry.note, `photos/${entry.id}.jpg`,
+    ]),
+  );
+}
+
+export function goalsCsv(goals: GoalSettings): string {
+  return toCsv(
+    ["setting", "value"],
+    [
+      ["sleep_hours", goals.sleepHours],
+      ["sleep_consistency_minutes", goals.sleepConsistencyMinutes],
+      ["track_medication", goals.trackMedication],
+      ["weight_goal_lb", goals.weightGoalLb],
+      ["weight_direction", goals.weightDirection],
+      ["protein_target_g", goals.proteinTargetG],
+      ["body_fat_target_percent", goals.bodyFatTargetPercent],
+      ["training_days_by_block_week", goals.trainingDays.join("|")],
+      ["training_block_start", goals.trainingBlockStart],
+      ["training_anchor_sets", JSON.stringify(goals.trainingAnchorSets)],
+    ],
   );
 }
 

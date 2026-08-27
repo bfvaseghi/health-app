@@ -27,6 +27,7 @@ import type { Modal, View } from "./types";
  */
 export function TodayView({
   state,
+  editableState,
   today,
   go,
   open,
@@ -36,6 +37,7 @@ export function TodayView({
   onNotice,
 }: {
   state: HealthState;
+  editableState: HealthState;
   today: string;
   go: (view: View) => void;
   open: (modal: Modal) => void;
@@ -51,32 +53,11 @@ export function TodayView({
   const entry = state.dailyEntries.find((item) => item.date === today);
   const week = Array.from({ length: 7 }, (_, index) => addDays(today, index - 6));
 
-  if (latestRecordDate(state) === null) {
-    return (
-      <div className="page">
-        <PageHeading eyebrow={dateLabel(today, { weekday: "long", month: "long", day: "numeric" })} title="Today" />
-        <section className="panel wide-panel">
-          <Empty
-            icon="upload"
-            title="No data yet"
-            body="Import an export from Oura, Whoop, Apple Health, Strong, or MyFitnessPal — zip, CSV, or JSON."
-            action={demo ? undefined : (
-              <button type="button" className="button primary" onClick={() => open({ kind: "import" })}>
-                <Icon name="upload" />
-                Import health data
-              </button>
-            )}
-          />
-        </section>
-
-        {/* Nothing imported does not mean nothing to do: a medication added is
-            still a question the day asks. */}
-        {state.goals.trackMedication && medications.length ? (
-          <Medication statuses={medications} today={today} go={go} onDose={onDose} />
-        ) : null}
-      </div>
-    );
-  }
+  const isEmpty = latestRecordDate(state) === null;
+  const hasPriority = (state.goals.trackMedication && medications.length > 0) || state.workoutSets.filter((set) => set.date <= today).length >= 10;
+  const lastNightEditable = Boolean(lastNight && editableState.sleepEntries.some(
+    (entry) => entry.date === lastNight.date && entry.source === lastNight.source,
+  ));
 
   return (
     <div className="page">
@@ -85,21 +66,27 @@ export function TodayView({
         title="Today"
         action={
           <div className="heading-actions">
-            {!demo ? (
-              <button type="button" className="button secondary" onClick={() => open({ kind: "import" })}>
-                <Icon name="upload" />
-                Import
-              </button>
-            ) : null}
             <button type="button" className="button primary" onClick={() => open({ kind: "sleep", date: today })}>
               <Icon name="plus" />
-              Add a night
+              Add sleep
             </button>
           </div>
         }
       />
 
-      <section className="today-card solo" aria-label="Last night">
+      {hasPriority ? (
+        <section className="today-priority" aria-labelledby="do-today-title">
+          <div className="section-head compact">
+            <div><p className="kicker">Action first</p><h2 id="do-today-title">Do today</h2></div>
+          </div>
+          {state.goals.trackMedication && medications.length ? (
+            <Medication statuses={medications} today={today} go={go} onDose={onDose} />
+          ) : null}
+          <NextUp state={state} today={today} go={go} onNotice={onNotice} />
+        </section>
+      ) : null}
+
+      <section className="today-card solo compact-sleep" aria-label={lastNight?.date === today ? "Last night" : "Latest recorded sleep"}>
         <div className="today-main">
           <span className="moon-orb">
             <Icon name="moon" />
@@ -107,7 +94,7 @@ export function TodayView({
           <div>
             <p className="kicker">
               {lastNight
-                ? dateLabel(lastNight.date, { weekday: "long", month: "short", day: "numeric" })
+                ? `${lastNight.date === today ? "Last night" : "Latest recorded"} · ${dateLabel(lastNight.date, { weekday: "short", month: "short", day: "numeric" })}`
                 : "No nights yet"}
             </p>
             <h2>{lastNight?.durationHours != null ? `${lastNight.durationHours.toFixed(1)} hours` : "Not recorded"}</h2>
@@ -123,12 +110,18 @@ export function TodayView({
                   <span className="source-name">{lastNight.source}</span>
                 </>
               ) : (
-                "Import a file or add a night by hand"
+                "Add a night by hand or connect Apple Health"
               )}
             </p>
           </div>
         </div>
-
+        <button
+          type="button"
+          className="text-button"
+          onClick={() => lastNight && !lastNightEditable ? go("sleep") : open({ kind: "sleep", date: lastNight?.date ?? today, source: lastNight?.source })}
+        >
+          {lastNight ? lastNightEditable ? "Edit" : "View history" : "Add sleep"} <Icon name="arrow" />
+        </button>
       </section>
 
       <section className="week-strip" aria-label="Last seven days">
@@ -163,16 +156,21 @@ export function TodayView({
 
       <ThisWeek state={state} today={today} go={go} />
 
-      {state.goals.trackMedication ? (
-        <Medication statuses={medications} today={today} go={go} onDose={onDose} />
+      {isEmpty && !demo ? (
+        <section className="panel wide-panel setup-card">
+          <Empty
+            icon="upload"
+            title="Bring in your history when you are ready"
+            body="Manual logging already works. Import Oura, Whoop, Apple Health, Strong, or a dated table to add context."
+            action={<button type="button" className="button secondary" onClick={() => open({ kind: "import" })}><Icon name="upload" />Import history</button>}
+          />
+        </section>
       ) : null}
-
-      <NextUp state={state} today={today} go={go} onNotice={onNotice} />
     </div>
   );
 }
 
-/** The four numbers a day actually needs from you. Everything else is imported. */
+/** Three lightweight daily actions. Body measurements belong in the full check-in. */
 function LogToday({
   state,
   today,
@@ -205,32 +203,20 @@ function LogToday({
           title="Protein"
           detail={
             entry?.proteinG != null
-              ? `${Math.round(entry.proteinG)} g${target ? ` of ${target} g` : ""}`
+              ? `${Math.round(entry.proteinG)} g${target ? entry.proteinG >= target ? " · target reached" : ` · ${Math.round(target - entry.proteinG)} g below target` : " · logged"}`
               : "Not logged — MyFitnessPal fills this in"
           }
-          done={target !== null && (entry?.proteinG ?? 0) >= target}
+          done={entry?.proteinG != null}
         >
           <NumberEntry
+            key={`protein:${entry?.proteinG ?? ""}`}
             label="Grams of protein today"
             suffix="g"
             value={entry?.proteinG ?? null}
             presets={target ? [target] : []}
+            min={0}
+            max={500}
             onSet={(value) => updateDaily(today, (current) => ({ ...current, proteinG: value }))}
-          />
-        </LogRow>
-
-        <LogRow
-          icon="body"
-          title="Body fat"
-          detail={entry?.bodyFatPercent != null ? `${entry.bodyFatPercent}%` : "Not logged — a smart scale fills this in"}
-          done={entry?.bodyFatPercent != null}
-        >
-          <NumberEntry
-            label="Body fat percent today"
-            suffix="%"
-            value={entry?.bodyFatPercent ?? null}
-            presets={[]}
-            onSet={(value) => updateDaily(today, (current) => ({ ...current, bodyFatPercent: value }))}
           />
         </LogRow>
 
@@ -241,10 +227,13 @@ function LogToday({
           done={Boolean(entry?.meditationMinutes)}
         >
           <NumberEntry
+            key={`meditation:${entry?.meditationMinutes ?? ""}`}
             label="Minutes meditated today"
             suffix="min"
             value={entry?.meditationMinutes ?? null}
             presets={[10, 20]}
+            min={1}
+            max={240}
             onSet={(value) => updateDaily(today, (current) => ({ ...current, meditationMinutes: value }))}
           />
         </LogRow>
@@ -303,44 +292,39 @@ function NumberEntry({
   suffix,
   value,
   presets,
+  min,
+  max,
   onSet,
 }: {
   label: string;
   suffix: string;
   value: number | null;
   presets: number[];
+  min: number;
+  max: number;
   onSet: (value: number | null) => void;
 }) {
-  const [draft, setDraft] = useState("");
-
-  if (value !== null) {
-    return (
-      <button type="button" className="row-action" onClick={() => onSet(null)} aria-label={`Clear ${label}`}>
-        <Icon name="close" />
-        <span>Clear</span>
-      </button>
-    );
-  }
+  const [draft, setDraft] = useState(value === null ? "" : String(value));
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const parsed = Number(draft);
-    if (!Number.isFinite(parsed) || parsed <= 0) return;
+    if (!Number.isFinite(parsed) || parsed < min || parsed > max) return;
     onSet(parsed);
-    setDraft("");
+    setDraft(String(parsed));
   }
 
   return (
     <form className="minute-form" onSubmit={submit}>
       {presets.map((preset) => (
-        <button key={preset} type="button" className="chip" onClick={() => onSet(preset)}>
+        <button key={preset} type="button" className="chip" onClick={() => { setDraft(String(preset)); onSet(preset); }}>
           {`${preset}${suffix === "min" ? "m" : suffix}`}
         </button>
       ))}
       <input
         type="number"
-        min="1"
-        max="1000"
+        min={min}
+        max={max}
         step="any"
         inputMode="decimal"
         value={draft}
@@ -351,6 +335,11 @@ function NumberEntry({
       <button type="submit" className="chip primary" aria-label={`Save ${label}`}>
         <Icon name="check" />
       </button>
+      {value !== null ? (
+        <button type="button" className="chip clear-chip" onClick={() => { setDraft(""); onSet(null); }} aria-label={`Clear ${label}`}>
+          <Icon name="close" />
+        </button>
+      ) : null}
     </form>
   );
 }
@@ -385,7 +374,8 @@ function Medication({
     .map((status) => status.nextDue)
     .filter((date): date is string => date !== null)
     .sort()[0];
-  const [open, setOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState<boolean | null>(null);
+  const open = manualOpen ?? !settled;
 
   const line =
     due.length === 0
@@ -420,7 +410,7 @@ function Medication({
         title={<b>Meds today</b>}
         summary={<small className={settled ? undefined : "is-open"}>{line}</small>}
         open={open}
-        onToggle={() => setOpen((was) => !was)}
+        onToggle={() => setManualOpen(!open)}
       >
         <ul className="med-tick-list">
           {due.map((status) => (
@@ -482,18 +472,22 @@ function NextUp({
   go: (view: View) => void;
   onNotice: (message: string) => void;
 }) {
-  const week = useMemo(() => currentBlockWeek(state, today), [state, today]);
+  const eligibleState = useMemo(
+    () => ({ ...state, workoutSets: state.workoutSets.filter((set) => set.date <= today) }),
+    [state, today],
+  );
+  const week = useMemo(() => currentBlockWeek(eligibleState, today), [eligibleState, today]);
   // Whatever you added to this week on the coach is part of this week here
   // too. One week, one answer, wherever you happen to be looking at it.
   const plan = useMemo(
-    () => withAddedSets(buildPlan(state, today, state.goals.trainingDays[week] || undefined, week), state, today),
-    [state, today, week],
+    () => withAddedSets(buildPlan(eligibleState, today, state.goals.trainingDays[week] || undefined, week), eligibleState, today),
+    [eligibleState, state.goals.trainingDays, today, week],
   );
-  const next = useMemo(() => nextSession(plan, state, today), [plan, state, today]);
+  const next = useMemo(() => nextSession(plan, eligibleState, today), [plan, eligibleState, today]);
 
   // Nothing lifted yet means nothing to recommend from, and the empty state on
   // Fitness says that better than a card here could.
-  if (!state.workoutSets.length) return null;
+  if (eligibleState.workoutSets.length < 10 || (next.session && next.session.sets === 0)) return null;
 
   const trains = [...new Set((next.session?.exercises ?? []).map((exercise) => muscleLabels[exercise.muscle]))];
 
@@ -557,7 +551,7 @@ function NextUp({
 /** Four numbers, four destinations: the summary is also the table of contents. */
 function ThisWeek({ state, today, go }: { state: HealthState; today: string; go: (view: View) => void }) {
   const sleepHours = average(entriesInWindow(preferredSleepEntries(state.sleepEntries), today, 7).map((n) => n.durationHours));
-  const workouts = buildWorkoutSessions(state.workoutSets.filter((set) => set.date > addDays(today, -7))).length;
+  const workouts = buildWorkoutSessions(state.workoutSets.filter((set) => set.date > addDays(today, -7) && set.date <= today)).length;
   const protein = proteinSummary(state, today, 7);
   const mind = mindSummary(state, today, 7);
 
@@ -605,7 +599,7 @@ function ThisWeek({ state, today, go }: { state: HealthState; today: string; go:
     <section className="section-block">
       <div className="section-head">
         <div>
-          <h2>This week</h2>
+          <h2>Last 7 days</h2>
         </div>
       </div>
       <div className="week-grid">
