@@ -43,7 +43,7 @@ export function FitnessView({
   const [tab, setTab] = useState<FitnessTab>("coach");
 
   return (
-    <div className="page">
+    <div className="page fitness-page">
       <PageHeading
         title="Fitness"
         action={

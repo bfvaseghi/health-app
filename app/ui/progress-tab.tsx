@@ -209,9 +209,18 @@ function Spark({ lift }: { lift: LiftTrend }) {
     // The numbers either side of it say the same thing in words.
     <svg className="lift-spark" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
       <polyline points={line} />
-      {/* A zero-length segment with a round cap: a circle would come out oval
-          once the box is stretched to the width of the row. */}
-      <line x1={x(last)} y1={y(values[last])} x2={x(last)} y2={y(values[last])} />
+      {/* Zero-length segments keep their round shape when the box stretches.
+          Every session remains visible; the larger final mark says "now". */}
+      {values.map((value, index) => (
+        <line
+          key={lift.points[index].date}
+          className={index === last ? "current" : undefined}
+          x1={x(index)}
+          y1={y(value)}
+          x2={x(index)}
+          y2={y(value)}
+        />
+      ))}
     </svg>
   );
 }

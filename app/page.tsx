@@ -127,16 +127,16 @@ export default function Home() {
   const [demoMode] = useState(requestedDemoMode);
   const [view, setView] = useState<View>("today");
   const [modal, setModal] = useState<Modal>(null);
-  const [state, setState] = useState<HealthState>(initialState);
+  const [state, setState] = useState<HealthState>(() => demoMode ? demoHealthState(todayLocal()) : initialState);
   const [appleOverlay, setAppleOverlay] = useState<Partial<ImportRecords> | null>(null);
-  const [saveStatus, setSaveStatus] = useState<SaveStatus>("loading");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>(() => demoMode ? "demo" : "loading");
   const [savedAt, setSavedAt] = useState("");
   const [toast, setToast] = useState<Toast | null>(null);
   const [theme, setTheme] = useState<Theme>(() => demoMode ? "system" : storedTheme());
   const [saveAttempt, setSaveAttempt] = useState(0);
   const [hydrated, setHydrated] = useState(false);
   const [accessDenied, setAccessDenied] = useState(false);
-  const stateRef = useRef(initialState);
+  const stateRef = useRef(state);
   const skipNextSave = useRef(false);
   const saveVersion = useRef(0);
   const saveQueue = useRef<Promise<void>>(Promise.resolve());
@@ -622,7 +622,7 @@ export default function Home() {
     if (saveStatus === "error") return "Not saved";
     return "Saved on this device";
   }, [saveStatus, savedAt]);
-  const mobileActive: View = ["meds", "labs", "summary", "data"].includes(view) ? "more" : view;
+  const mobileActive: View = ["labs", "summary", "data"].includes(view) ? "more" : view;
   const visibleState = useMemo(
     () => appleOverlay ? mergeRecords(state, appleOverlay) : state,
     [state, appleOverlay],
@@ -689,7 +689,7 @@ export default function Home() {
   }
 
   return (
-    <div className="app-shell">
+    <div className={view === "fitness" ? "app-shell view-fitness" : "app-shell"}>
       <a className="skip-link" href="#main">
         Skip to content
       </a>

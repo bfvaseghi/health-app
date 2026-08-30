@@ -2,11 +2,12 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { demoHealthState } from "../app/demo-state.ts";
-import { buildWorkoutSessions } from "../app/health-model.ts";
+import { addDays, buildWorkoutSessions } from "../app/health-model.ts";
 import {
   buildBlock,
   currentBlockWeek,
   nextSession,
+  workoutWeekStreak,
   weekOutlook,
   weekStart,
 } from "../app/training/coach.ts";
@@ -20,10 +21,10 @@ test("demo data is populated, date-relative, and normalized", () => {
   assert.equal(state.dailyEntries[0].date, AS_OF, "the newest daily entry appears first");
   assert.equal(state.sleepEntries.length, 65);
   assert.equal(state.labResults.length, 10);
-  assert.equal(state.workoutSets.length, 74);
+  assert.equal(state.workoutSets.length, 144);
   assert.equal(state.thoughtJournal.length, 3);
   assert.ok(state.thoughtJournal.some((entry) => entry.source === "apple-notes"));
-  assert.equal(buildWorkoutSessions(state.workoutSets).length, 7);
+  assert.equal(buildWorkoutSessions(state.workoutSets).length, 18);
   assert.equal(state.progressPhotos.length, 0, "the demo never invents or loads private photos");
 
   const monday = weekStart(AS_OF);
@@ -31,6 +32,12 @@ test("demo data is populated, date-relative, and normalized", () => {
     state.workoutSets.every((entry) => entry.date < monday),
     "the demo opens before this week's first session so every Coach action is available",
   );
+  assert.deepEqual(
+    [...new Set(state.workoutSets.map((entry) => weekStart(entry.date)))].sort(),
+    Array.from({ length: 6 }, (_, index) => addDays(monday, (index - 6) * 7)),
+    "the demo contains six consecutive completed training weeks",
+  );
+  assert.deepEqual(workoutWeekStreak(state, AS_OF), { weeks: 6, currentWeek: false });
 });
 
 test("demo training history drives a useful four-day Coach week", () => {
@@ -43,7 +50,7 @@ test("demo training history drives a useful four-day Coach week", () => {
   assert.equal(week, 0);
   assert.equal(plan.days, 4);
   assert.equal(plan.split, "Upper / lower");
-  assert.deepEqual(plan.sessions.map((session) => session.sets), [16, 13, 16, 15]);
+  assert.deepEqual(plan.sessions.map((session) => session.sets), [19, 12, 19, 13]);
   assert.deepEqual(plan.shortfall, []);
   assert.equal(next.done, 0);
   assert.equal(next.of, 4);
@@ -67,5 +74,5 @@ test("each demo state is a fresh in-memory record", () => {
   first.goals.trainingDays[0] = 2;
 
   assert.notEqual(second.dailyEntries[0].steps, 1);
-  assert.deepEqual(second.goals.trainingDays, []);
+  assert.deepEqual(second.goals.trainingDays, [4, 4, 4, 4]);
 });

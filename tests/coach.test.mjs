@@ -37,6 +37,7 @@ import {
   weekLabel,
   weekOutlook,
   weekStart,
+  workoutWeekStreak,
   withAddedSets,
 } from "../app/training/coach.ts";
 import { toTable } from "../app/import/csv.ts";
@@ -985,6 +986,55 @@ test("a load never floats between plates", () => {
 });
 
 /* ------------------------------------------------------- knowing where you are */
+
+test("a calendar-week workout streak survives the new week until its first session", () => {
+  const monday = "2026-04-20";
+  const weeklySession = (weeksAgo, day = 2, startedAt = "18:00:00") => {
+    const date = addDays(monday, -(weeksAgo * 7) + day);
+    return set("Bench Press (Barbell)", {
+      date,
+      startedAt: `${date} ${startedAt}`,
+    });
+  };
+  const state = stateFrom(FIXTURE, {
+    workoutSets: [
+      weeklySession(6),
+      weeklySession(5),
+      weeklySession(4),
+      weeklySession(3),
+      weeklySession(2),
+      weeklySession(1),
+      // A second session in the same week must not count as another week.
+      weeklySession(1, 4, "07:00:00"),
+      // A future row in the current week must not start the week early.
+      weeklySession(0, 5),
+    ],
+  });
+
+  assert.deepEqual(
+    workoutWeekStreak(state, monday),
+    { weeks: 6, currentWeek: false },
+    "Monday morning preserves the six-week run through last week",
+  );
+
+  const trainedThisWeek = stateFrom(FIXTURE, {
+    workoutSets: [...state.workoutSets, weeklySession(0, 0, "07:00:00")],
+  });
+  assert.deepEqual(
+    workoutWeekStreak(trainedThisWeek, monday),
+    { weeks: 7, currentWeek: true },
+    "this week's first session extends the run exactly once",
+  );
+
+  const missedLastWeek = stateFrom(FIXTURE, {
+    workoutSets: [weeklySession(3), weeklySession(2)],
+  });
+  assert.deepEqual(
+    workoutWeekStreak(missedLastWeek, monday),
+    { weeks: 0, currentWeek: false },
+    "a fully missed previous week ends the live streak",
+  );
+});
 
 test("the block turns over by itself, one week at a time", () => {
   // Training every week from a Monday. Each following Monday is the next week

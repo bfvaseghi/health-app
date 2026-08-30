@@ -2,11 +2,20 @@
 
 import { useMemo, useState } from "react";
 import type { AddedSet, GoalSettings, HealthState } from "../health-model";
-import type { FixChoice, MuscleDetail, MuscleOutlook, Plan, PlannedSession } from "../training/coach";
+import type {
+  FixChoice,
+  MuscleDetail,
+  MuscleOutlook,
+  Plan,
+  PlannedExercise,
+  PlannedSession,
+  WorkoutWeekStreak,
+} from "../training/coach";
 import {
   DAY_CHOICES,
   buildBlock,
   currentBlockWeek,
+  minimumDirect,
   planToText,
   recommendDays,
   unclassifiedExercises,
@@ -19,6 +28,7 @@ import {
   weekOutlook,
   withAddedSets,
   trainingAnchorSets,
+  workoutWeekStreak,
 } from "../training/coach";
 import type { Muscle } from "../training/muscles";
 import { muscleLabels } from "../training/muscles";
@@ -60,6 +70,7 @@ export function CoachTab({
   const advice = useMemo(() => recommendDays(state, today), [state, today]);
   const block = useMemo(() => buildBlock(state, today, state.goals.trainingDays), [state, today]);
   const unknown = useMemo(() => unclassifiedExercises(state.workoutSets), [state.workoutSets]);
+  const streak = useMemo(() => workoutWeekStreak(state, today), [state, today]);
 
   // What the coach wrote, plus whatever you added to it yourself.
   const plan = useMemo(
@@ -114,6 +125,8 @@ export function CoachTab({
 
   return (
     <>
+      <TrainingStreak streak={streak} />
+
       <section className="coach-head">
         <div className="coach-days" role="group" aria-label="Sessions this week">
           {DAY_CHOICES.map((value) => (
@@ -213,6 +226,10 @@ export function CoachTab({
         </div>
       </section>
 
+      <WeeklyProgression plan={plan} />
+
+      {plan.deload ? <ProgramReview plan={block[2] ?? plan} /> : null}
+
       <Balance
         outlook={outlook}
         plan={plan}
@@ -235,6 +252,153 @@ export function CoachTab({
         />
       ) : null}
     </>
+  );
+}
+
+/**
+ * A streak is motivation, not another dashboard. It says only how long the
+ * run is and whether this week has been banked yet.
+ */
+function TrainingStreak({ streak }: { streak: WorkoutWeekStreak }) {
+  const label = streak.weeks === 1 ? "week" : "weeks";
+  return (
+    <section className="training-streak" aria-label={`${streak.weeks} ${label} of consecutive training`}>
+      <span className="streak-mark" aria-hidden="true"><Icon name="trophy" /></span>
+      <span className="streak-copy">
+        {streak.weeks ? (
+          <strong><span className="streak-count">{streak.weeks}</span>-week streak</strong>
+        ) : (
+          <strong>Start the streak</strong>
+        )}
+        <small>
+          {streak.currentWeek
+            ? "This week counts."
+            : streak.weeks
+              ? "One lift keeps it going."
+              : "Your next workout is week one."}
+        </small>
+      </span>
+    </section>
+  );
+}
+
+type ProgressionAction = "increase" | "hold" | "reduce";
+
+type ProgressionLine = {
+  exercise: PlannedExercise;
+  action: ProgressionAction;
+};
+
+/** One decision per Strong exercise, even when a split uses it twice. */
+function progressionLines(plan: Plan): ProgressionLine[] {
+  const byExercise = new Map<string, PlannedExercise>();
+  for (const session of plan.sessions) {
+    for (const exercise of session.exercises) {
+      const seen = byExercise.get(exercise.exercise);
+      // A back-off takes precedence over an increase, and an increase over a
+      // hold, should one exercise appear in more than one session.
+      if (!seen || exercise.stalled || (exercise.stepUp && !seen.stalled)) {
+        byExercise.set(exercise.exercise, exercise);
+      }
+    }
+  }
+  return [...byExercise.values()].map((exercise) => ({
+    exercise,
+    action: exercise.stalled ? "reduce" : exercise.stepUp ? "increase" : "hold",
+  }));
+}
+
+function progressionLoad(exercise: PlannedExercise): string {
+  if (exercise.assistanceLb !== null) return `${exercise.assistanceLb} lb assistance`;
+  if (exercise.weightLb !== null) return `${exercise.weightLb} lb`;
+  if (exercise.bodyweight) return "Bodyweight";
+  return "No load yet";
+}
+
+/**
+ * The same load decisions already printed on the session cards, gathered into
+ * one weekly check. This is an explanation of the plan, not another engine
+ * that can disagree with it.
+ */
+function WeeklyProgression({ plan }: { plan: Plan }) {
+  const [open, setOpen] = useState(false);
+  const lines = progressionLines(plan);
+  const increases = lines.filter((line) => line.action === "increase").length;
+  const reductions = lines.filter((line) => line.action === "reduce").length;
+  const holds = lines.length - increases - reductions;
+
+  return (
+    <section className="panel wide-panel coach-recommendations">
+      <Fold
+        title={<h2>Weekly progression</h2>}
+        summary={
+          <span className="fold-line">
+            {`${increases} increase · ${holds} hold · ${reductions} reduce`}
+          </span>
+        }
+        open={open}
+        onToggle={() => setOpen((current) => !current)}
+      >
+        <ul className="recommendation-list">
+          {lines.map(({ exercise, action }) => (
+            <li key={exercise.exercise}>
+              <span>{exercise.exercise}</span>
+              <b>{action.charAt(0).toUpperCase() + action.slice(1)}</b>
+              <small>{progressionLoad(exercise)}</small>
+            </li>
+          ))}
+        </ul>
+      </Fold>
+    </section>
+  );
+}
+
+/**
+ * After the three building weeks, say which existing Strong lifts have earned
+ * another block and which ones deserve a look. Recommendations only: exercise
+ * selection still changes in Strong and arrives through the next import.
+ */
+function ProgramReview({ plan }: { plan: Plan }) {
+  const [open, setOpen] = useState(false);
+  const lines = progressionLines(plan);
+  const review = lines.filter((line) => line.action === "reduce");
+  const keep = lines.filter((line) => line.action !== "reduce");
+
+  return (
+    <section className="panel wide-panel coach-recommendations program-review">
+      <Fold
+        title={<h2>Program review</h2>}
+        summary={
+          <span className={review.length ? "fold-line warn" : "fold-line"}>
+            {review.length
+              ? `${review.length} ${review.length === 1 ? "lift needs" : "lifts need"} a look after this block.`
+              : "Keep the same exercise roster next block."}
+          </span>
+        }
+        open={open}
+        onToggle={() => setOpen((current) => !current)}
+      >
+        <>
+          <p className="review-lead">Nothing changes automatically. Make any swap in Strong, then import it.</p>
+          <ul className="recommendation-list">
+            {review.map(({ exercise }) => (
+              <li key={exercise.exercise}>
+                <span>{exercise.exercise}</span>
+                <b>Review</b>
+                <small>Stalled across recent sessions</small>
+              </li>
+            ))}
+            {keep.length ? (
+              <li>
+                <span>{`${keep.length} ${keep.length === 1 ? "lift" : "lifts"}`}</span>
+                <b>Keep</b>
+                <small>Still holding or progressing</small>
+              </li>
+            ) : null}
+          </ul>
+        </>
+      </Fold>
+    </section>
   );
 }
 
@@ -281,6 +445,9 @@ function Balance({
   const [row, setRow] = useState<Muscle | null>(null);
 
   const short = outlook.filter((entry) => entry.status === "under");
+  const allThresholdsPass = outlook.every(
+    (entry) => entry.projected >= entry.target.min && entry.direct >= minimumDirect(entry.muscle),
+  );
   const ceiling = Math.max(...outlook.map((entry) => Math.max(entry.target.max, entry.projected)), 1);
 
   // Only the open row is itemised. Working out every muscle's week to draw one
@@ -337,7 +504,9 @@ function Balance({
               ? sentence(
                   `${listWords(short.map((entry) => entry.label.toLowerCase()))} ${short.length === 1 ? "falls" : "fall"} short this week.`,
                 )
-              : `All ${outlook.length} get enough this week.`}
+              : allThresholdsPass
+                ? `All ${outlook.length} pass the weekly guide and direct minimum.`
+                : `All ${outlook.length} get enough this week.`}
           </span>
         }
         open={open}
@@ -351,6 +520,17 @@ function Balance({
             {outlook.map((entry) => {
               const width = (value: number) => `${Math.min(100, (value / ceiling) * 100)}%`;
               const status = entry.status === "under" ? "low" : entry.status === "over" ? "high" : "ok";
+              const directShort = entry.direct < minimumDirect(entry.muscle);
+              const totalShort = entry.projected < entry.target.min;
+              const statusLabel = directShort && totalShort
+                ? "needs both"
+                : directShort
+                  ? "needs direct"
+                  : totalShort
+                    ? "below guide"
+                    : entry.projected > entry.target.max
+                      ? "above guide"
+                      : "on target";
               const isOpen = row === entry.muscle;
               const canRemove = isOpen && Boolean(adjustChoice(plan, state, entry.muscle, -1, today));
               const canAdd = isOpen && Boolean(adjustChoice(plan, state, entry.muscle, 1, today));
@@ -379,7 +559,10 @@ function Balance({
                       <span className={`bar-coming is-${status}`} style={{ width: width(entry.projected) }} />
                       <span className={`bar-direct is-${status}`} style={{ width: width(entry.done) }} />
                     </span>
-                    <span className="balance-sets">{sets(entry.projected)}</span>
+                    <span className="balance-sets">
+                      <b>{sets(entry.projected)}</b>
+                      <small className={`balance-status is-${status}`}>{statusLabel}</small>
+                    </span>
                   </button>
                   {isOpen && detail ? (
                     <Detail
@@ -423,8 +606,20 @@ function Detail({
   canAdd: boolean;
   onAdjust: (direction: 1 | -1) => void;
 }) {
+  const directFloor = minimumDirect(row.muscle);
+  const directPass = row.direct >= directFloor;
+  const guidePass = row.projected >= row.target.min && row.projected <= row.target.max;
   return (
     <div className="row-detail">
+      <div className="threshold-equation">
+        <b>{`${sets(row.direct)} direct + ${sets(row.indirect)} indirect × ½ = ${sets(row.projected)} effective`}</b>
+        <span className={directPass ? "threshold-check is-pass" : "threshold-check is-fail"}>
+          {`Direct minimum ${directFloor} ${directPass ? "✓" : "✕"}`}
+        </span>
+        <span className={guidePass ? "threshold-check is-pass" : "threshold-check is-fail"}>
+          {`Weekly guide ${row.target.min}–${row.target.max} ${guidePass ? "✓" : "✕"}`}
+        </span>
+      </div>
       {/* A week is a suggestion. Wanting a bit more chest than the middle of a
           range is not a mistake to be protected from, and the number above goes
           on saying what the change did — which is the only thing that makes

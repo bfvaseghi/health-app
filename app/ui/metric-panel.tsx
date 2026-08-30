@@ -10,6 +10,15 @@ import type { DailyMetric, Period } from "./types";
 
 type Definition = { metric: DailyMetric; label: string; unit: string };
 
+const CHART_RULES: Record<DailyMetric, { maximumGap: number; minimumSpan: number }> = {
+  weightLb: { maximumGap: 6, minimumSpan: 5 },
+  bodyFatPercent: { maximumGap: 13, minimumSpan: 2 },
+  proteinG: { maximumGap: 2, minimumSpan: 30 },
+  steps: { maximumGap: 1, minimumSpan: 3_000 },
+  restingHeartRate: { maximumGap: 2, minimumSpan: 10 },
+  hrvMs: { maximumGap: 2, minimumSpan: 20 },
+};
+
 /**
  * One panel drives every set of daily numbers: pick a metric, pick a period,
  * read the line and the week-on-week change. Sleep and Fitness both use it, so
@@ -66,7 +75,13 @@ export function MetricPanel({
         <h2>{recorded.length ? `${period}-day view` : "Nothing recorded yet"}</h2>
       </div>
 
-      <LineChart data={series} label={definition.label} empty={emptyHint} />
+      <LineChart
+        data={series}
+        label={definition.label}
+        empty={emptyHint}
+        maximumGap={CHART_RULES[metric].maximumGap}
+        minimumSpan={CHART_RULES[metric].minimumSpan}
+      />
 
       {/* A card per metric reading "— / not enough days" is four ways of saying
           nothing, stacked. The ones with a number are the row; if none have

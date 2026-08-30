@@ -1273,7 +1273,8 @@ td .range-badge { justify-self: auto; display: inline-block; }
    the stroke even and the end dot round. */
 .lift-spark { display: block; width: 100%; height: 30px; overflow: visible; }
 .lift-spark polyline { fill: none; stroke: var(--line-strong); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.lift-spark line { stroke: var(--line-strong); stroke-width: 5.5; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.lift-spark line { stroke: var(--line-strong); stroke-width: 3.5; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.lift-spark line.current { stroke-width: 6; }
 .trend-row.up .lift-spark polyline, .trend-row.up .lift-spark line { stroke: var(--accent); }
 .trend-row.down .lift-spark polyline, .trend-row.down .lift-spark line { stroke: var(--warn); }
 .trend-percent { text-align: right; font-size: 13px; font-weight: 660; font-variant-numeric: tabular-nums; }
@@ -2366,6 +2367,412 @@ kbd {
   .week-grid { grid-template-columns: 1fr; }
   .input-grid { grid-template-columns: 1fr; }
   .demo-banner-detail { display: none; }
+}
+
+/* Fitness — Deep Water
+   The training area is intentionally its own instrument rather than another
+   pale dashboard. The palette and component refinements are scoped to the
+   active Fitness shell, so Today, Sleep, Mind, Meds and More keep their own
+   visual language. */
+.view-fitness {
+  --ink: #f0f7f5;
+  --muted: #b7c8c6;
+  --faint: #8fa7a6;
+  --line: rgba(164, 205, 200, 0.15);
+  --line-strong: rgba(164, 205, 200, 0.27);
+  --paper: #0b2631;
+  --canvas: #061a23;
+  --soft: #12343d;
+  --raised: #0e2b36;
+
+  --accent: #72c6b1;
+  --accent-strong: #90d8c5;
+  --accent-ink: #06251f;
+  --accent-pale: #173f43;
+  --accent-pale-ink: #a8e3d2;
+
+  --warn: #e2b477;
+  --warn-pale: #3a3025;
+  --danger: #e69c94;
+  --danger-pale: #3b2828;
+  --info-pale: #102f38;
+
+  --chart-line: #79d0b9;
+  --chart-grid: rgba(177, 215, 211, 0.13);
+  --chart-bar: #42676a;
+  --chart-bar-goal: #7ccab7;
+  --chart-bar-missing: #14333d;
+  --shadow: 0 22px 54px rgba(0, 8, 13, 0.34);
+  --shadow-soft: 0 10px 30px rgba(0, 8, 13, 0.2);
+  --focus: 0 0 0 3px rgba(114, 198, 177, 0.34);
+
+  min-height: 100vh;
+  min-height: 100dvh;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 84% -8%, rgba(72, 139, 137, 0.2), transparent 29rem),
+    linear-gradient(180deg, #061c25 0%, var(--canvas) 58%, #05171f 100%);
+  color-scheme: dark;
+}
+
+.view-fitness .main-content { background: transparent; }
+.view-fitness .fitness-page { max-width: 1040px; }
+.view-fitness .fitness-page .page-heading { margin-bottom: 24px; }
+.view-fitness .fitness-page .page-heading h1 {
+  font-size: clamp(34px, 4vw, 48px);
+  font-weight: 650;
+  letter-spacing: -0.055em;
+}
+.view-fitness .fitness-heading-actions .segmented,
+.view-fitness .range-picker {
+  border: 1px solid var(--line);
+  background: rgba(2, 18, 25, 0.38);
+}
+.view-fitness .fitness-heading-actions .segmented button.active,
+.view-fitness .range-picker button.active {
+  background: var(--soft);
+  color: var(--ink);
+  box-shadow: none;
+}
+.view-fitness .fitness-page .panel,
+.view-fitness .fitness-page .wide-panel {
+  background: rgba(11, 38, 49, 0.88);
+  border-color: var(--line);
+  box-shadow: none;
+}
+
+/* Frequency remains the first, unmistakable decision. */
+.view-fitness .coach-days {
+  min-width: 250px;
+  padding: 5px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: rgba(2, 18, 25, 0.42);
+}
+.view-fitness .coach-days button {
+  width: auto;
+  min-height: 56px;
+  padding: 6px 10px;
+  border-color: transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--muted);
+}
+.view-fitness .coach-days button b { font-size: 23px; line-height: 1; }
+.view-fitness .coach-days button small { margin-top: 3px; color: inherit; }
+.view-fitness .coach-days button.active {
+  background: var(--accent-strong);
+  color: var(--accent-ink);
+  box-shadow: 0 7px 18px rgba(1, 18, 22, 0.26);
+}
+.view-fitness .block-state {
+  border-color: var(--line);
+  background: rgba(15, 45, 55, 0.74);
+}
+
+/* Motivating, not gamified: one mark, one number and one supporting line. */
+.view-fitness .training-streak {
+  margin-top: 14px;
+  min-height: 86px;
+  padding: 16px 18px;
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  border: 1px solid rgba(137, 216, 196, 0.28);
+  border-radius: 18px;
+  background:
+    linear-gradient(108deg, rgba(32, 83, 82, 0.72), rgba(12, 46, 57, 0.88)),
+    var(--paper);
+}
+.view-fitness .streak-mark {
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  background: rgba(144, 216, 197, 0.14);
+  color: var(--accent-pale-ink);
+}
+.view-fitness .streak-mark svg { width: 23px; height: 23px; }
+.view-fitness .streak-copy { min-width: 0; }
+.view-fitness .streak-copy b,
+.view-fitness .streak-copy strong { display: block; font-size: 16px; line-height: 1.25; }
+.view-fitness .streak-copy small,
+.view-fitness .streak-copy span { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; line-height: 1.4; }
+.view-fitness .streak-count {
+  display: inline;
+  margin-right: 3px;
+  color: var(--accent-pale-ink);
+  font-family: var(--font-data);
+  font-size: 28px;
+  line-height: 1;
+  font-weight: 720;
+  letter-spacing: -0.05em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Weekly load calls and three-week programme review are folds, not competing
+   dashboard tiles. */
+.view-fitness .coach-recommendations,
+.view-fitness .program-review { overflow: hidden; }
+.view-fitness .recommendation-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+}
+.view-fitness .recommendation-list > li {
+  min-width: 0;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 14px;
+  align-items: baseline;
+}
+.view-fitness .recommendation-list > li:first-child { border-top: 0; }
+.view-fitness .recommendation-list > li > span { min-width: 0; font-size: 14px; overflow-wrap: anywhere; }
+.view-fitness .recommendation-list b {
+  color: var(--accent-pale-ink);
+  font-family: var(--font-data);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.view-fitness .recommendation-list small,
+.view-fitness .recommendation-list p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.view-fitness .review-lead { margin: 0 0 4px; color: var(--muted); font-size: 13px; line-height: 1.55; }
+
+/* Balance reads as a threshold check. The number and its plain-English status
+   stay visible at the end of every row. */
+.view-fitness .balance-row { grid-template-columns: 104px minmax(0, 1fr) 112px; }
+.view-fitness .balance-track { height: 18px; background: rgba(3, 19, 26, 0.55); }
+.view-fitness .balance-sets {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  color: var(--ink);
+}
+.view-fitness .balance-status {
+  display: block;
+  max-width: 100%;
+  color: var(--muted);
+  font-family: var(--font-ui);
+  font-size: 9px;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.view-fitness .balance-status.is-ok { color: var(--accent-pale-ink); }
+.view-fitness .balance-status.is-low { color: var(--warn); }
+.view-fitness .balance-status.is-high { color: var(--danger); }
+.view-fitness .balance-item.is-open { background: rgba(20, 55, 64, 0.34); }
+.view-fitness .balance-item.is-open .balance-row { padding-inline: 10px; }
+.view-fitness .balance-item.is-open .row-detail { padding-right: 10px; }
+.view-fitness .threshold-equation {
+  margin: 11px 0 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.view-fitness .threshold-equation > span,
+.view-fitness .threshold-equation > b,
+.view-fitness .threshold-check {
+  min-height: 28px;
+  padding: 5px 9px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(3, 19, 26, 0.42);
+}
+.view-fitness .threshold-equation > b {
+  flex: 1 1 100%;
+  border-radius: 10px;
+  color: var(--ink);
+  font-weight: 680;
+  line-height: 1.4;
+}
+.view-fitness .threshold-check { color: var(--accent-pale-ink); border-color: rgba(114, 198, 177, 0.3); }
+.view-fitness .threshold-check.is-pass { color: var(--accent-pale-ink); }
+.view-fitness .threshold-check.warn,
+.view-fitness .threshold-check.is-low,
+.view-fitness .threshold-check.is-fail { color: var(--warn); border-color: rgba(226, 180, 119, 0.32); }
+
+.view-fitness .plan-card { background: rgba(14, 43, 54, 0.72); }
+.view-fitness .plan-card.is-open { background: rgba(12, 38, 49, 0.96); border-color: var(--line-strong); }
+.view-fitness .line-chart .chart-scroll {
+  background: linear-gradient(180deg, rgba(26, 70, 76, 0.42), rgba(7, 28, 37, 0.68));
+}
+
+@media (max-width: 760px) {
+  .view-fitness .mobile-head {
+    border-bottom-color: var(--line);
+    background: rgba(6, 26, 35, 0.9);
+    box-shadow: 0 8px 24px rgba(0, 9, 14, 0.14);
+  }
+  .view-fitness .mobile-head .brand-mark { background: var(--accent-strong); color: var(--accent-ink); }
+  .view-fitness .fitness-page {
+    padding-top: 20px;
+    padding-right: max(14px, env(safe-area-inset-right));
+    padding-bottom: calc(106px + env(safe-area-inset-bottom));
+    padding-left: max(14px, env(safe-area-inset-left));
+  }
+  .view-fitness .fitness-page .page-heading { gap: 18px; margin-bottom: 18px; }
+  .view-fitness .fitness-page .page-heading h1 { font-size: 34px; }
+  .view-fitness .fitness-heading-actions { gap: 9px; }
+  .view-fitness .fitness-heading-actions .segmented {
+    width: 100%;
+    padding: 4px;
+    border-radius: 14px;
+  }
+  .view-fitness .fitness-heading-actions .segmented button {
+    padding-inline: 5px;
+    border-radius: 10px;
+    font-size: 12px;
+  }
+  .view-fitness .fitness-page .panel,
+  .view-fitness .fitness-page .wide-panel { padding: 17px; border-radius: 17px; }
+
+  .view-fitness .coach-head { gap: 10px; }
+  .view-fitness .coach-days { width: 100%; min-width: 0; }
+  .view-fitness .coach-days button { min-height: 60px; }
+  .view-fitness .block-state { width: 100%; padding: 9px 12px; }
+
+  .view-fitness .training-streak {
+    min-height: 80px;
+    padding: 14px;
+    grid-template-columns: 42px minmax(0, 1fr);
+    gap: 11px;
+  }
+  .view-fitness .streak-mark { width: 42px; height: 42px; border-radius: 13px; }
+  .view-fitness .streak-count { font-size: 25px; }
+  .view-fitness .streak-copy b,
+  .view-fitness .streak-copy strong { font-size: 15px; }
+  .view-fitness .streak-copy small,
+  .view-fitness .streak-copy span { font-size: 11px; }
+
+  .view-fitness .recommendation-list > li { padding: 11px 0; }
+
+  .view-fitness .balance-row {
+    grid-template-columns: 78px minmax(62px, 1fr) 94px;
+    gap: 8px;
+  }
+  .view-fitness .balance-name { font-size: 12px; }
+  .view-fitness .balance-sets { font-size: 14px; }
+  .view-fitness .balance-status { font-size: 8px; letter-spacing: 0.02em; }
+  .view-fitness .balance-item.is-open .balance-row { padding-inline: 7px; }
+  .view-fitness .threshold-equation { gap: 6px; }
+  .view-fitness .threshold-equation > span,
+  .view-fitness .threshold-equation > b,
+  .view-fitness .threshold-check { padding-inline: 8px; font-size: 10px; }
+
+  /* Three answers, one compact verdict strip. */
+  .view-fitness .verdict-row {
+    gap: 0;
+    overflow: hidden;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    background: rgba(11, 38, 49, 0.88);
+  }
+  .view-fitness .verdict {
+    min-height: 104px;
+    padding: 13px 11px;
+    border: 0;
+    border-left: 1px solid var(--line);
+    border-radius: 0;
+    background: transparent;
+  }
+  .view-fitness .verdict:first-child { border-left: 0; }
+  .view-fitness .verdict-label { font-size: 10px; }
+  .view-fitness .verdict strong { margin-top: 7px; font-size: 22px; }
+  .view-fitness .verdict strong small { font-size: 11px; }
+  .view-fitness .verdict > small { margin-top: 5px; font-size: 9px; line-height: 1.25; }
+
+  /* The graph is the row, not a decorative squiggle between tiny numbers. */
+  .view-fitness .trend-row {
+    padding: 16px 0;
+    gap: 9px 12px;
+  }
+  .view-fitness .trend-name { font-size: 14px; }
+  .view-fitness .trend-percent { font-size: 14px; }
+  .view-fitness .trend-row .lift-spark {
+    height: 54px;
+    padding: 6px 0;
+    border-radius: 10px;
+    background: linear-gradient(180deg, rgba(35, 83, 86, 0.18), rgba(3, 19, 26, 0.08));
+  }
+  .view-fitness .lift-spark polyline { stroke-width: 2; }
+  .view-fitness .trend-value { color: var(--muted); font-size: 12px; }
+
+  /* Body-composition charts fit the phone instead of becoming a 520px strip
+     hidden behind horizontal scrolling. */
+  .view-fitness .fitness-page .line-chart .chart-scroll { overflow-x: hidden; }
+  .view-fitness .fitness-page .line-chart .chart-scroll svg {
+    width: 100%;
+    min-width: 100%;
+  }
+
+  /* Six primary destinations fit above the home indicator without abbreviating
+     Sleep, Fitness or Meds. */
+  .view-fitness .bottom-nav {
+    padding: 5px max(4px, env(safe-area-inset-right)) calc(5px + env(safe-area-inset-bottom))
+      max(4px, env(safe-area-inset-left));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-auto-flow: row;
+    grid-auto-columns: auto;
+    border-top-color: var(--line);
+    background: rgba(5, 23, 31, 0.93);
+    box-shadow: 0 -12px 30px rgba(0, 9, 14, 0.26);
+  }
+  .view-fitness .bottom-nav button {
+    position: relative;
+    min-height: 51px;
+    gap: 2px;
+    border-radius: 10px;
+  }
+  .view-fitness .bottom-nav button.active { background: transparent; color: var(--accent-pale-ink); }
+  .view-fitness .bottom-nav button.active::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 50%;
+    width: 22px;
+    height: 2px;
+    border-radius: 999px;
+    background: var(--accent);
+    transform: translateX(-50%);
+  }
+  .view-fitness .bottom-nav svg { width: 18px; height: 18px; }
+  .view-fitness .bottom-nav span { font-size: 9.5px; font-weight: 670; letter-spacing: -0.01em; }
+}
+
+@media (max-width: 380px) {
+  .view-fitness .fitness-page {
+    padding-right: max(12px, env(safe-area-inset-right));
+    padding-left: max(12px, env(safe-area-inset-left));
+  }
+  .view-fitness .training-streak { grid-template-columns: 38px minmax(0, 1fr); padding-inline: 12px; }
+  .view-fitness .streak-mark { width: 38px; height: 38px; }
+  .view-fitness .balance-row { grid-template-columns: 72px minmax(52px, 1fr) 88px; gap: 6px; }
+  .view-fitness .balance-status { font-size: 8.5px; }
+  .view-fitness .bottom-nav span { font-size: 9px; }
 }
 
 @media print {

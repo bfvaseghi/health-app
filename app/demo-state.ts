@@ -134,55 +134,55 @@ function demoWorkoutSets(today: string): WorkoutSet[] {
     }
   };
 
-  // A light first week gives the block a clean anchor and a complete movement
-  // vocabulary without pretending the demo user arrived with years of data.
-  addSession(-4, 0, "07:00", "Full body", 3_900, [
-    { exercise: "Incline Bench Press (Dumbbell)", sets: 1, weightLb: 60, reps: 8, restSeconds: 150 },
-    { exercise: "Lat Pulldown (Cable)", sets: 1, weightLb: 125, reps: 8, restSeconds: 150 },
-    { exercise: "Overhead Press (Barbell)", sets: 1, weightLb: 100, reps: 7, restSeconds: 180 },
-    { exercise: "Lateral Raise (Dumbbell)", sets: 1, weightLb: 17.5, reps: 10, restSeconds: 90 },
-    { exercise: "Face Pull (Cable)", sets: 1, weightLb: 45, reps: 12, restSeconds: 90 },
-    { exercise: "Bicep Curl (Dumbbell)", sets: 1, weightLb: 27.5, reps: 9, restSeconds: 90 },
-    { exercise: "Triceps Pushdown (Cable)", sets: 1, weightLb: 45, reps: 9, restSeconds: 90 },
-    { exercise: "Squat (Barbell)", sets: 1, weightLb: 215, reps: 7, restSeconds: 180 },
-    { exercise: "Romanian Deadlift (Barbell)", sets: 1, weightLb: 195, reps: 7, restSeconds: 180 },
-    { exercise: "Standing Calf Raise (Machine)", sets: 1, weightLb: 130, reps: 10, restSeconds: 90 },
-    { exercise: "Hanging Leg Raise", sets: 1, weightLb: null, reps: 12, restSeconds: 75 },
-  ]);
+  // Six completed calendar weeks make the demo streak and progress views feel
+  // lived-in without placing anything in the current week. Each week has the
+  // same three-session template and 24 hard sets: 18 sessions / 144 sets in
+  // total. Every movement is a literal Strong-style name the Coach may reuse.
+  for (let relativeWeek = -6; relativeWeek <= -1; relativeWeek += 1) {
+    const buildWeek = relativeWeek + 6;
+    const upperReps = Math.min(10, 8 + Math.floor(buildWeek / 2));
+    const isolationReps = Math.min(12, 9 + Math.floor(buildWeek / 2));
 
-  for (const relativeWeek of [-2, -1]) {
-    const newer = relativeWeek === -1;
     addSession(relativeWeek, 0, "07:00", "Upper", 3_300, [
-      { exercise: "Bench Press (Barbell)", sets: 2, weightLb: 185, reps: newer ? 9 : 8, restSeconds: 180 },
+      {
+        exercise: "Incline Bench Press (Dumbbell)",
+        sets: 2,
+        weightLb: 65,
+        reps: upperReps,
+        restSeconds: 150,
+      },
+      // Holding this row steady for the last three sessions gives the demo a
+      // believable stall recommendation alongside Bench's earned step up.
       { exercise: "Bent Over Row (Barbell)", sets: 2, weightLb: 155, reps: 8, restSeconds: 150 },
-      { exercise: "Overhead Press (Barbell)", sets: 2, weightLb: 105, reps: newer ? 8 : 7, restSeconds: 180 },
-      { exercise: "Bicep Curl (Dumbbell)", sets: 2, weightLb: 30, reps: newer ? 9 : 8, restSeconds: 90 },
-      { exercise: "Triceps Pushdown (Cable)", sets: 2, weightLb: 50, reps: newer ? 9 : 8, restSeconds: 90 },
+      { exercise: "Overhead Press (Barbell)", sets: 1, weightLb: 105, reps: upperReps, restSeconds: 180 },
+      { exercise: "Bicep Curl (Dumbbell)", sets: 1, weightLb: 30, reps: isolationReps, restSeconds: 90 },
+      { exercise: "Triceps Pushdown (Cable)", sets: 1, weightLb: 50, reps: isolationReps, restSeconds: 90 },
+      { exercise: "Face Pull (Cable)", sets: 1, weightLb: 45, reps: isolationReps, restSeconds: 90 },
     ]);
-    addSession(relativeWeek, 2, "07:00", "Lower", 3_600, [
-      { exercise: "Squat (Barbell)", sets: 3, weightLb: 225, reps: 8, restSeconds: 180 },
-      { exercise: "Romanian Deadlift (Barbell)", sets: 3, weightLb: 205, reps: 8, restSeconds: 180 },
-      { exercise: "Standing Calf Raise (Machine)", sets: 2, weightLb: 140, reps: newer ? 11 : 10, restSeconds: 90 },
-      { exercise: "Hanging Leg Raise", sets: 2, weightLb: null, reps: 14, restSeconds: 75 },
+
+    addSession(relativeWeek, 2, "07:00", "Lower", 3_450, [
+      { exercise: "Squat (Barbell)", sets: 2, weightLb: 225, reps: 8, restSeconds: 180 },
+      { exercise: "Romanian Deadlift (Barbell)", sets: 2, weightLb: 205, reps: 8, restSeconds: 180 },
+      { exercise: "Standing Calf Raise (Machine)", sets: 2, weightLb: 140, reps: isolationReps, restSeconds: 90 },
+      { exercise: "Hanging Leg Raise", sets: 2, weightLb: null, reps: Math.min(15, 12 + buildWeek), restSeconds: 75 },
+    ]);
+
+    addSession(relativeWeek, 4, "07:00", "Full", 3_600, [
+      {
+        exercise: "Bench Press (Barbell)",
+        sets: 2,
+        weightLb: 185,
+        reps: relativeWeek === -1 ? [10, 10] : upperReps,
+        restSeconds: 180,
+      },
+      { exercise: "Lat Pulldown (Cable)", sets: 1, weightLb: 130, reps: upperReps, restSeconds: 150 },
+      { exercise: "Leg Press (Machine)", sets: 1, weightLb: 300, reps: upperReps, restSeconds: 180 },
+      { exercise: "Seated Leg Curl (Machine)", sets: 1, weightLb: 100, reps: isolationReps, restSeconds: 90 },
+      { exercise: "Lateral Raise (Dumbbell)", sets: 1, weightLb: 20, reps: isolationReps, restSeconds: 90 },
+      { exercise: "Face Pull (Cable)", sets: 1, weightLb: 45, reps: isolationReps, restSeconds: 90 },
+      { exercise: "Hanging Leg Raise", sets: 1, weightLb: null, reps: Math.min(15, 12 + buildWeek), restSeconds: 75 },
     ]);
   }
-
-  addSession(-2, 4, "07:00", "Full", 3_900, [
-    { exercise: "Incline Bench Press (Dumbbell)", sets: 2, weightLb: 65, reps: 9, restSeconds: 150 },
-    { exercise: "Lat Pulldown (Cable)", sets: 2, weightLb: 130, reps: 9, restSeconds: 150 },
-    { exercise: "Leg Press (Machine)", sets: 2, weightLb: 300, reps: 8, restSeconds: 180 },
-    { exercise: "Seated Leg Curl (Machine)", sets: 2, weightLb: 100, reps: 10, restSeconds: 90 },
-    { exercise: "Romanian Deadlift (Barbell)", sets: 2, weightLb: 205, reps: 8, restSeconds: 150 },
-    { exercise: "Lateral Raise (Dumbbell)", sets: 2, weightLb: 20, reps: 10, restSeconds: 90 },
-  ]);
-  addSession(-1, 4, "07:00", "Full", 3_900, [
-    { exercise: "Bench Press (Barbell)", sets: 2, weightLb: 185, reps: [10, 10], restSeconds: 180 },
-    { exercise: "Bent Over Row (Barbell)", sets: 1, weightLb: 155, reps: 8, restSeconds: 150 },
-    { exercise: "Leg Press (Machine)", sets: 2, weightLb: 300, reps: 9, restSeconds: 180 },
-    { exercise: "Seated Leg Curl (Machine)", sets: 2, weightLb: 100, reps: 10, restSeconds: 90 },
-    { exercise: "Romanian Deadlift (Barbell)", sets: 2, weightLb: 205, reps: 8, restSeconds: 150 },
-    { exercise: "Lateral Raise (Dumbbell)", sets: 2, weightLb: 20, reps: 11, restSeconds: 90 },
-  ]);
 
   return sets;
 }
@@ -273,10 +273,25 @@ export function demoHealthState(today: string): HealthState {
       weightDirection: "lose",
       proteinTargetG: 180,
       bodyFatTargetPercent: 16,
-      trainingDays: [],
+      trainingDays: [4, 4, 4, 4],
       addedSets: [],
-      trainingBlockStart: "",
-      trainingAnchorSets: {},
+      // The demo always opens on build week one. Its anchor is frozen exactly
+      // as a real block's would be, so browsing or editing the sample does not
+      // make the four-week ramp move underneath the screenshots.
+      trainingBlockStart: weekStart(today),
+      trainingAnchorSets: {
+        chest: 8,
+        back: 8,
+        shoulders: 6,
+        rearDelts: 4,
+        biceps: 5,
+        triceps: 5,
+        quads: 6,
+        hamstrings: 5,
+        glutes: 4,
+        calves: 4,
+        core: 8,
+      },
     },
   });
 }

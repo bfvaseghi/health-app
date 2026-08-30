@@ -54,7 +54,7 @@ export const viewLabels: Record<View, string> = {
 };
 
 export const navOrder: View[] = ["today", "sleep", "fitness", "mind", "meds", "labs", "summary"];
-export const mobileNavOrder: View[] = ["today", "sleep", "fitness", "mind", "more"];
+export const mobileNavOrder: View[] = ["today", "sleep", "fitness", "mind", "meds", "more"];
 
 export const fitnessTabs: Array<{ tab: FitnessTab; label: string }> = [
   { tab: "coach", label: "Coach" },

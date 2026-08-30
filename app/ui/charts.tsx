@@ -1,6 +1,6 @@
 "use client";
 
-import { KeyboardEvent, useEffect, useId, useMemo, useRef, useState } from "react";
+import { KeyboardEvent, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { HealthState, addDays, dateLabel, preferredSleepEntries } from "../health-model";
 import { Icon } from "./icons";
 import { formatMetric } from "./format";
@@ -84,10 +84,33 @@ function useSeriesCursor(indexes: number[], fallback: number) {
 
 /** Keeps the keyboard/readout cursor in the visible part of a horizontally scrolling phone chart. */
 function useCursorScroll(active: number, points: number) {
-  const ref = useRef<HTMLDivElement>(null);
+  const nodeRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(760);
+  const ref = useCallback((node: HTMLDivElement | null) => {
+    nodeRef.current = node;
+    const next = Math.round(node?.clientWidth ?? 0);
+    if (next > 0) setWidth((current) => current === next ? current : next);
+  }, []);
 
   useEffect(() => {
-    const node = ref.current;
+    const update = () => {
+      const next = Math.round(nodeRef.current?.clientWidth ?? 0);
+      if (next > 0) setWidth((current) => current === next ? current : next);
+    };
+    window.addEventListener("resize", update);
+    if (typeof ResizeObserver === "undefined" || !nodeRef.current) {
+      return () => window.removeEventListener("resize", update);
+    }
+    const observer = new ResizeObserver(update);
+    observer.observe(nodeRef.current);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", update);
+    };
+  }, []);
+
+  useEffect(() => {
+    const node = nodeRef.current;
     if (!node || node.scrollWidth <= node.clientWidth) return;
     const position = (active / Math.max(1, points - 1)) * node.scrollWidth;
     const edge = 44;
@@ -97,10 +120,24 @@ function useCursorScroll(active: number, points: number) {
     }
   }, [active, points]);
 
-  return ref;
+  return [ref, width] as const;
 }
 
-export function LineChart({ data, label, empty }: { data: DataPoint[]; label: string; empty: string }) {
+export function LineChart({
+  data,
+  label,
+  empty,
+  maximumGap = 1,
+  minimumSpan,
+}: {
+  data: DataPoint[];
+  label: string;
+  empty: string;
+  /** Number of missing daily slots a sparse measurement may safely bridge. */
+  maximumGap?: number;
+  /** Smallest useful vertical range, in this metric's own unit. */
+  minimumSpan?: number;
+}) {
   const gradientId = useId().replace(/:/g, "");
   const valid = useMemo(
     () =>
@@ -113,7 +150,7 @@ export function LineChart({ data, label, empty }: { data: DataPoint[]; label: st
     valid.map((point) => point.index),
     valid.at(-1)?.index ?? 0,
   );
-  const scroll = useCursorScroll(cursor.active, data.length);
+  const [scrollRef, chartWidth] = useCursorScroll(cursor.active, data.length);
 
   if (!valid.length) {
     return (
@@ -124,17 +161,29 @@ export function LineChart({ data, label, empty }: { data: DataPoint[]; label: st
     );
   }
 
-  const width = 760;
-  const height = 250;
+  // Draw in the same coordinate space the reader sees. Scaling a 760px chart
+  // down to a phone made 11px labels render below 5px and made every point
+  // nearly untappable.
+  const width = Math.max(280, chartWidth);
+  const height = width < 520 ? 210 : 250;
   const right = 18;
   const top = 26;
   const bottom = 38;
   const values = valid.map((point) => point.value);
   const minValue = Math.min(...values);
   const maxValue = Math.max(...values);
-  const pad = Math.max((maxValue - minValue) * 0.22, Math.abs(maxValue) * 0.06, 1);
-  const min = Math.max(0, minValue - pad);
-  const max = maxValue + pad;
+  // The axis follows the change, not the absolute size of the measurement.
+  // Weight around 195 lb should not receive ~12 lb of padding on each side.
+  const observedSpan = maxValue - minValue;
+  const spanFloor = minimumSpan ?? Math.max(1, Math.abs(maxValue) * 0.04);
+  const visibleSpan = Math.max(observedSpan * 1.35, spanFloor);
+  const midpoint = (minValue + maxValue) / 2;
+  let min = midpoint - visibleSpan / 2;
+  let max = midpoint + visibleSpan / 2;
+  if (min < 0) {
+    max -= min;
+    min = 0;
+  }
   const gridlines = [0, 0.5, 1];
   const axisLabels = gridlines.map((portion) => formatMetric(label, max - portion * (max - min)));
   // A gutter fixed in advance clips five-figure volumes; size it to the labels
@@ -142,11 +191,12 @@ export function LineChart({ data, label, empty }: { data: DataPoint[]; label: st
   const left = Math.max(46, Math.max(...axisLabels.map((text) => text.length)) * 6.2 + 10);
   const x = (index: number) => left + (index / Math.max(1, data.length - 1)) * (width - left - right);
   const y = (value: number) => top + ((max - value) / Math.max(0.001, max - min)) * (height - top - bottom);
-  // A missing day is a gap, not a straight line between two readings. Keep the
-  // runs separate so the picture says exactly what the table beneath it says.
+  // A missing day is normally a gap. Sparse measurements such as weight and
+  // body fat can explicitly bridge their expected cadence without pretending
+  // that a months-long absence is continuous.
   const runs = valid.reduce<Array<typeof valid>>((groups, point) => {
     const current = groups.at(-1);
-    if (!current || point.index !== current.at(-1)!.index + 1) groups.push([point]);
+    if (!current || point.index - current.at(-1)!.index > maximumGap + 1) groups.push([point]);
     else current.push(point);
     return groups;
   }, []);
@@ -167,7 +217,7 @@ export function LineChart({ data, label, empty }: { data: DataPoint[]; label: st
         <b>{format(selectedPoint.value)}</b>
         <span>{dateLabel(selectedPoint.date, { weekday: "short", month: "short", day: "numeric" })}</span>
       </div>
-      <div className="chart-scroll" ref={scroll}>
+      <div className="chart-scroll" ref={scrollRef}>
         <svg
           className="chart-plot"
           viewBox={`0 0 ${width} ${height}`}
@@ -243,7 +293,7 @@ export function SleepChart({ data, goal }: { data: DataPoint[]; goal: number }) 
     recorded.map((point) => point.index),
     recorded.at(-1)?.index ?? 0,
   );
-  const scroll = useCursorScroll(cursor.active, data.length);
+  const [scrollRef, chartWidth] = useCursorScroll(cursor.active, data.length);
 
   if (!recorded.length) {
     return (
@@ -254,8 +304,8 @@ export function SleepChart({ data, goal }: { data: DataPoint[]; goal: number }) 
     );
   }
 
-  const width = 760;
-  const height = 250;
+  const width = Math.max(280, chartWidth);
+  const height = width < 520 ? 210 : 250;
   const left = 40;
   const right = 18;
   const top = 26;
@@ -284,7 +334,7 @@ export function SleepChart({ data, goal }: { data: DataPoint[]; goal: number }) 
             : "Select a night"}
         </span>
       </div>
-      <div className="chart-scroll" ref={scroll}>
+      <div className="chart-scroll" ref={scrollRef}>
         <svg
           className="chart-plot"
           viewBox={`0 0 ${width} ${height}`}

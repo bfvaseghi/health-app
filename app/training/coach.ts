@@ -1011,6 +1011,42 @@ export function weekStart(date: string): string {
   return addDays(date, -((day + 6) % 7));
 }
 
+export type WorkoutWeekStreak = {
+  /** Consecutive calendar weeks with at least one logged workout. */
+  weeks: number;
+  /** Whether this week's first workout has already been logged. */
+  currentWeek: boolean;
+};
+
+/**
+ * Consecutive Monday-to-Sunday weeks containing at least one workout.
+ *
+ * A new week is still available to train, so arriving on Monday (or later in
+ * the week) before its first session does not erase the streak earned through
+ * Sunday. Once this week has a workout it becomes the end of the same run.
+ * Older runs are not presented as current after a whole calendar week was
+ * missed, and future-dated rows never extend today's streak.
+ */
+export function workoutWeekStreak(state: HealthState, asOf = todayLocal()): WorkoutWeekStreak {
+  const here = weekStart(asOf);
+  const trainedWeeks = new Set(
+    state.workoutSets
+      .filter((entry) => entry.date <= asOf)
+      .map((entry) => weekStart(entry.date)),
+  );
+  const currentWeek = trainedWeeks.has(here);
+  let cursor = currentWeek ? here : addDays(here, -7);
+
+  if (!trainedWeeks.has(cursor)) return { weeks: 0, currentWeek };
+
+  let weeks = 0;
+  while (trainedWeeks.has(cursor)) {
+    weeks += 1;
+    cursor = addDays(cursor, -7);
+  }
+  return { weeks, currentWeek };
+}
+
 /** Whole weeks from one Monday to another. */
 function weeksBetween(from: string, to: string): number {
   return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / (7 * 86_400_000));
