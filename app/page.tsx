@@ -95,25 +95,6 @@ function requestedDemoMode(): boolean {
   return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1";
 }
 
-/** Says what the server removed, so a one-off cleanup is not a silent one. */
-function purgeMessage({
-  fields,
-  records,
-  snapshots,
-}: {
-  fields: string[];
-  records: number;
-  snapshots: number;
-}): string {
-  const named = fields.slice(0, 3).join(", ");
-  const rest = fields.length > 3 ? ` and ${fields.length - 3} more` : "";
-  const places = [
-    records ? `${records} ${records === 1 ? "record" : "records"}` : "",
-    snapshots ? `${snapshots} ${snapshots === 1 ? "snapshot" : "snapshots"}` : "",
-  ].filter(Boolean);
-  return `Purged ${named}${rest} from ${places.join(" and ") || "your saved record"}.`;
-}
-
 /** The inline bootstrap in the layout already applied this; read it back on mount. */
 function storedTheme(): Theme {
   if (typeof window === "undefined") return "system";
@@ -263,7 +244,6 @@ export default function Home() {
           state?: unknown;
           updatedAt?: string;
           revision?: number;
-          purged?: { fields: string[]; records: number; snapshots: number };
           appleOverlay?: Partial<ImportRecords> | null;
         };
         if (!active) return;
@@ -313,7 +293,7 @@ export default function Home() {
           setToast({
             message: `Kept this device's edits in ${choice.conflicts} startup ${choice.conflicts === 1 ? "conflict" : "conflicts"}.`,
           });
-        } else if (data.purged?.fields.length) setToast({ message: purgeMessage(data.purged) });
+        }
       } catch {
         if (!active) return;
         const chosen = local && "format" in local ? local.state : local ?? initialState;
@@ -825,7 +805,7 @@ export default function Home() {
         )}
         {view === "labs" && <LabsView state={visibleState} open={openModal} onDeleteLab={deleteLab} />}
         {view === "summary" && <SummaryView state={visibleState} today={today} onNotice={notice} />}
-        {view === "more" && <MoreView go={go} demo={demoMode} />}
+        {view === "more" && <MoreView go={go} />}
         {view === "data" && (
           <DataView
             state={state}

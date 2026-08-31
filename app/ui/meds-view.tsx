@@ -1,8 +1,8 @@
 "use client";
 
 import { useMemo } from "react";
-import type { HealthState } from "../health-model";
-import { dateLabel, medicationStatuses } from "../health-model";
+import type { HealthState, Medication } from "../health-model";
+import { addDays, dateLabel, isDue, medicationStatuses } from "../health-model";
 import { Icon } from "./icons";
 import { ConfirmButton, Empty, PageHeading } from "./primitives";
 import type { Modal } from "./types";
@@ -103,20 +103,23 @@ export function MedsView({
                 </p>
               )}
 
+              <MedHistory state={state} medicationId={status.medication.id} medication={status.medication} today={today} />
+
               <div className="med-stats">
                 <span>
                   <b>{`${status.recorded} / ${status.due}`}</b>
-                  <small>due doses answered</small>
+                  <small>answered</small>
                 </span>
                 <span>
                   <b>{status.percent === null ? "—" : `${status.percent}%`}</b>
-                  <small>taken of answered</small>
+                  <small>taken</small>
                 </span>
                 <span>
-                  <b>{status.unanswered}</b>
-                  <small>not logged</small>
+                  <b>{status.streak}</b>
+                  <small>in a row</small>
                 </span>
               </div>
+              <p className="med-window">Last 30 days{status.unanswered ? ` · ${status.unanswered} not logged` : ""}</p>
             </li>
           ))}
         </ul>
@@ -125,10 +128,53 @@ export function MedsView({
           <Empty
             icon="medication"
             title="Nothing added yet"
-            body="Add what you are on and how often it is due. A weekly injection is not missed on the six days it is not due, so it is only ever asked about on the day it is."
+            body="Add what you are on and how often. Each medication is only asked about on the days it is due."
           />
         </section>
       )}
     </div>
+  );
+}
+
+/**
+ * Fourteen days of one medication, oldest first: taken, missed, unlogged, or
+ * simply not due. This is the history the More screen promises — enough to see
+ * a lapse without opening a report.
+ */
+function MedHistory({
+  state,
+  medicationId,
+  medication,
+  today,
+}: {
+  state: HealthState;
+  medicationId: string;
+  medication: Medication;
+  today: string;
+}) {
+  const answers = new Map(
+    state.medicationDoses
+      .filter((dose) => dose.medicationId === medicationId)
+      .map((dose) => [dose.date, dose.taken] as const),
+  );
+  const days = Array.from({ length: 14 }, (_, index) => {
+    const date = addDays(today, index - 13);
+    const due = isDue(medication, date);
+    const answer = answers.get(date);
+    const kind = !due ? "off" : answer === true ? "taken" : answer === false ? "missed" : "open";
+    return { date, kind };
+  });
+  return (
+    <ol className="med-history" aria-label={`${medication.name}, last 14 days`}>
+      {days.map((day) => (
+        <li
+          key={day.date}
+          className={`is-${day.kind}`}
+          title={`${dateLabel(day.date, { weekday: "short", month: "short", day: "numeric" })}: ${
+            day.kind === "off" ? "not due" : day.kind === "open" ? "not logged" : day.kind
+          }`}
+        />
+      ))}
+    </ol>
   );
 }

@@ -206,10 +206,16 @@ const paths: Record<string, ReactNode> = {
   ),
 };
 
+// View ids double as icon names in the navigation, so views whose glyph is
+// filed under a different key resolve here instead of falling to the sparkle.
+const aliases: Record<string, keyof typeof paths> = {
+  meds: "medication",
+};
+
 export function Icon({ name }: { name: string }) {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      {paths[name] ?? paths.spark}
+      {paths[name] ?? paths[aliases[name] ?? "spark"]}
     </svg>
   );
 }

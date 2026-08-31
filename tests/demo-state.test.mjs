@@ -21,23 +21,23 @@ test("demo data is populated, date-relative, and normalized", () => {
   assert.equal(state.dailyEntries[0].date, AS_OF, "the newest daily entry appears first");
   assert.equal(state.sleepEntries.length, 65);
   assert.equal(state.labResults.length, 10);
-  assert.equal(state.workoutSets.length, 144);
+  assert.equal(state.workoutSets.length, 157);
   assert.equal(state.thoughtJournal.length, 3);
   assert.ok(state.thoughtJournal.some((entry) => entry.source === "apple-notes"));
-  assert.equal(buildWorkoutSessions(state.workoutSets).length, 18);
+  assert.equal(buildWorkoutSessions(state.workoutSets).length, 19);
   assert.equal(state.progressPhotos.length, 0, "the demo never invents or loads private photos");
 
   const monday = weekStart(AS_OF);
   assert.ok(
-    state.workoutSets.every((entry) => entry.date < monday),
-    "the demo opens before this week's first session so every Coach action is available",
+    state.workoutSets.every((entry) => entry.date <= AS_OF),
+    "nothing in the demo is dated in the future",
   );
   assert.deepEqual(
     [...new Set(state.workoutSets.map((entry) => weekStart(entry.date)))].sort(),
-    Array.from({ length: 6 }, (_, index) => addDays(monday, (index - 6) * 7)),
-    "the demo contains six consecutive completed training weeks",
+    Array.from({ length: 7 }, (_, index) => addDays(monday, (index - 6) * 7)),
+    "six completed weeks plus one session already banked this week",
   );
-  assert.deepEqual(workoutWeekStreak(state, AS_OF), { weeks: 6, currentWeek: false });
+  assert.deepEqual(workoutWeekStreak(state, AS_OF), { weeks: 7, currentWeek: true });
 });
 
 test("demo training history drives a useful four-day Coach week", () => {
@@ -52,7 +52,7 @@ test("demo training history drives a useful four-day Coach week", () => {
   assert.equal(plan.split, "Upper / lower");
   assert.deepEqual(plan.sessions.map((session) => session.sets), [19, 12, 19, 13]);
   assert.deepEqual(plan.shortfall, []);
-  assert.equal(next.done, 0);
+  assert.equal(next.done, 1);
   assert.equal(next.of, 4);
   assert.equal(next.session?.name, "Upper A");
   assert.ok(next.session?.exercises.some((exercise) => exercise.stepUp), "one lift demonstrates progression");

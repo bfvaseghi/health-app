@@ -111,8 +111,7 @@ export function ProgressTab({ state, today }: { state: HealthState; today: strin
               </div>
             ) : null}
             <p className="balance-legend">
-              Estimated one-rep max from each session&rsquo;s best set, except bodyweight movements, which are compared
-              on reps. The direction is the slope across every session, not the first against the last.
+              Each point is the estimated one-rep max of that session&rsquo;s best set — reps, for bodyweight moves.
             </p>
           </section>
         </>
@@ -121,7 +120,7 @@ export function ProgressTab({ state, today }: { state: HealthState; today: strin
           <Empty
             icon="dumbbell"
             title="Not enough sessions yet"
-            body="A lift needs three sessions in the period before it can be said to be going anywhere. Import a Strong export or widen the period."
+            body="Three sessions of a lift are needed before a direction means anything. Widen the period, or import more."
           />
         </section>
       )}

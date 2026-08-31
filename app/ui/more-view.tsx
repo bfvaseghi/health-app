@@ -11,11 +11,11 @@ const destinations: Array<{ view: View; detail: string }> = [
   { view: "data", detail: "Imports, automatic sync, goals, backups, and source code" },
 ];
 
-export function MoreView({ go }: { go: (view: View) => void; demo?: boolean }) {
+export function MoreView({ go }: { go: (view: View) => void }) {
   return (
     <div className="page more-page">
       <PageHeading title="More" />
-      <p className="page-intro">The health record and the controls that do not need to occupy the everyday navigation.</p>
+      <p className="page-intro">The rest of the record.</p>
       <div className="more-list">
         {destinations.map((item) => (
           <button type="button" key={item.view} className="more-row" onClick={() => go(item.view)}>

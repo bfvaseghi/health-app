@@ -6,7 +6,9 @@ import {
   addDays,
   buildWorkoutSessions,
   dateLabel,
+  averageBedtime,
   entriesInWindow,
+  formatClock,
   latestRecordDate,
   medicationStatuses,
   mindSummary,
@@ -83,6 +85,7 @@ export function TodayView({
             <Medication statuses={medications} today={today} go={go} onDose={onDose} />
           ) : null}
           <NextUp state={state} today={today} go={go} onNotice={onNotice} />
+          <Tonight state={state} today={today} />
         </section>
       ) : null}
 
@@ -545,6 +548,25 @@ function NextUp({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * The evening's one number, computed from your own recent nights: the usual
+ * bedtime. "What should I do today" ends at lights-out, so the answer card
+ * carries it — a cue, not a control.
+ */
+function Tonight({ state, today }: { state: HealthState; today: string }) {
+  const recent = entriesInWindow(preferredSleepEntries(state.sleepEntries), today, 14);
+  const usual = averageBedtime(recent);
+  const clock = usual ? formatClock(usual) : null;
+  if (!clock) return null;
+  return (
+    <p className="tonight-line">
+      <Icon name="moon" />
+      {`Tonight: in bed around ${clock}`}
+      <span>{` · your usual, over the last two weeks`}</span>
+    </p>
   );
 }
 

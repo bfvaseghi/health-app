@@ -135,9 +135,9 @@ function demoWorkoutSets(today: string): WorkoutSet[] {
   };
 
   // Six completed calendar weeks make the demo streak and progress views feel
-  // lived-in without placing anything in the current week. Each week has the
-  // same three-session template and 24 hard sets: 18 sessions / 144 sets in
-  // total. Every movement is a literal Strong-style name the Coach may reuse.
+  // lived-in. Each week has the
+  // same three-session template and 24 hard sets — plus one session already
+  // logged in the current week: 19 sessions / 157 sets in total. Every movement is a literal Strong-style name the Coach may reuse.
   for (let relativeWeek = -6; relativeWeek <= -1; relativeWeek += 1) {
     const buildWeek = relativeWeek + 6;
     const upperReps = Math.min(10, 8 + Math.floor(buildWeek / 2));
@@ -183,6 +183,19 @@ function demoWorkoutSets(today: string): WorkoutSet[] {
       { exercise: "Hanging Leg Raise", sets: 1, weightLb: null, reps: Math.min(15, 12 + buildWeek), restSeconds: 75 },
     ]);
   }
+
+  // One session already banked in the current week — Monday's lower day, at
+  // the sizes the Coach itself plans — so the demo's Today reads "1 of 4
+  // done", the streak says this week counts, and the squat's ten-rep top set
+  // registers a fresh personal record instead of a Records view with nothing
+  // in it. Monday is never in the future, whatever weekday the demo opens on;
+  // Upper A stays untouched so its step-up and stall demonstrations hold.
+  addSession(0, 0, "07:00", "Lower", 3_450, [
+    { exercise: "Squat (Barbell)", sets: 4, weightLb: 225, reps: [8, 8, 8, 10], restSeconds: 180 },
+    { exercise: "Romanian Deadlift (Barbell)", sets: 3, weightLb: 205, reps: 8, restSeconds: 180 },
+    { exercise: "Standing Calf Raise (Machine)", sets: 2, weightLb: 140, reps: 12, restSeconds: 90 },
+    { exercise: "Hanging Leg Raise", sets: 4, weightLb: null, reps: 15, restSeconds: 75 },
+  ]);
 
   return sets;
 }

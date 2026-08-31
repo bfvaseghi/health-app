@@ -608,7 +608,8 @@ function Detail({
 }) {
   const directFloor = minimumDirect(row.muscle);
   const directPass = row.direct >= directFloor;
-  const guidePass = row.projected >= row.target.min && row.projected <= row.target.max;
+  const underGuide = row.projected < row.target.min;
+  const overGuide = row.projected > row.target.max;
   return (
     <div className="row-detail">
       <div className="threshold-equation">
@@ -616,8 +617,12 @@ function Detail({
         <span className={directPass ? "threshold-check is-pass" : "threshold-check is-fail"}>
           {`Direct minimum ${directFloor} ${directPass ? "✓" : "✕"}`}
         </span>
-        <span className={guidePass ? "threshold-check is-pass" : "threshold-check is-fail"}>
-          {`Weekly guide ${row.target.min}–${row.target.max} ${guidePass ? "✓" : "✕"}`}
+        <span
+          className={
+            underGuide ? "threshold-check is-fail" : overGuide ? "threshold-check is-over" : "threshold-check is-pass"
+          }
+        >
+          {`Weekly guide ${row.target.min}–${row.target.max} ${underGuide ? "✕" : overGuide ? "over" : "✓"}`}
         </span>
       </div>
       {/* A week is a suggestion. Wanting a bit more chest than the middle of a

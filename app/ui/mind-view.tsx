@@ -271,7 +271,7 @@ function ThoughtJournal({
         </button>
       ) : null}
       <p className="thought-shortcut-note">
-        Want one-tap transfer? Use the Apple Notes Shortcut URL and private key shown in Data &amp; goals.
+        One-tap from Apple Notes: set up the Shortcut in Data & goals.
       </p>
     </section>
   );

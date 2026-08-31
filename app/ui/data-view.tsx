@@ -140,8 +140,7 @@ export function DataView({
             <p className="kicker">No lock-in</p>
             <h2 id="portability-title">Take everything with you</h2>
             <p className="panel-body">
-              One data archive contains a restorable record, spreadsheet tables, the separate automatic Apple lane,
-              and every available progress photo. The full app source is beside it.
+              One archive: your restorable record, spreadsheet tables, Apple sync data, and every progress photo.
             </p>
           </div>
           <button type="button" className="button primary export-everything" disabled={exporting} onClick={exportEverything}>
@@ -321,8 +320,8 @@ export function DataView({
           <ConfirmButton label="Erase all data" confirmLabel="Erase everything" className="button danger" onConfirm={onErase} />
         </div>
         <p className="panel-body">
-          Permanently clears every record, progress photo, recovery snapshot, and Apple sync connection from this
-          dashboard and its private storage. Goals are kept. This cannot be undone, so export a backup first.
+          Clears every record, photo, snapshot, and sync connection. Goals stay. There is no undo — download a backup
+          first.
         </p>
       </section> : null}
     </div>
@@ -505,7 +504,7 @@ function AppleHealthSyncPanel({
           </div>
         </div>
       ) : status.configured ? (
-        <p className="panel-body">The shared key is hidden. To add Send to Mind now, replace it and update Health Auto Export with the new key too.</p>
+        <p className="panel-body">The key shows only once. Need it again? Replace it, then paste the new one everywhere it is used.</p>
       ) : null}
 
       {!status.configured && !demo ? (
@@ -527,12 +526,12 @@ function AppleHealthSyncPanel({
               <li>Get Text from Shortcut Input, then POST JSON to the Notes URL</li>
               <li>Send a JSON field named “text” and use the same Authorization header above</li>
             </ol>
-            <p className="panel-body">In Notes, choose Share → Send Copy → Send to Mind. A “Thought Journal” folder or #thought-journal tag keeps selected notes easy to find. Re-sending identical text on the same date is safely ignored.</p>
+            <p className="panel-body">Then in Notes: Share → Send Copy → Send to Mind. Sending the same note twice is safely ignored.</p>
           </div>
       </div>
       <Note icon="lock">{demo
         ? "This is a setup preview. Open your real record to create the private URLs and key."
-        : "The Health URL accepts only approved wellness metrics. The Notes URL accepts only thought text and optional metadata; neither URL can read your record. Replacing or turning off the shared key affects both connections, but thoughts already saved in Mind remain."}</Note>
+        : "These URLs can only write — never read your record. One key serves both; replacing or turning it off affects both."}</Note>
     </section>
   );
 }
