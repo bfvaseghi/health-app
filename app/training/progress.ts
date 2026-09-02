@@ -245,3 +245,31 @@ export function buildProgress(state: HealthState, asOf = todayLocal(), weeks = 1
     volume: volumeChange(state.workoutSets, start, end, halfway(start, end)),
   };
 }
+
+/**
+ * Strength as one line: the typical lift, week by week, indexed to the first
+ * week of the window. Each lift contributes its best estimated max in each
+ * week it was trained, relative to its own first week; the point is the median
+ * of those ratios across lifts, so one movement cannot carry or sink the line.
+ * Bodyweight movements index on reps instead. Weeks with no training are null.
+ */
+export function strengthIndex(state: HealthState, asOf = todayLocal(), weeks = 12): Array<{ date: string; value: number | null }> {
+  const span = Math.max(4, Math.trunc(weeks));
+  const end = lastRecorded(state, asOf);
+  const start = addDays(end, -(span * 7 - 1));
+  const lifts = liftTrends(state.workoutSets, start, end);
+
+  return Array.from({ length: span }, (_, index) => {
+    const weekEnd = addDays(start, index * 7 + 6);
+    const weekStart = addDays(weekEnd, -6);
+    const ratios: number[] = [];
+    for (const lift of lifts) {
+      const base = lift.points[0]?.value;
+      if (!base) continue;
+      const inWeek = lift.points.filter((point) => point.date >= weekStart && point.date <= weekEnd);
+      if (!inWeek.length) continue;
+      ratios.push((Math.max(...inWeek.map((point) => point.value)) / base) * 100);
+    }
+    return { date: weekEnd, value: round(median(ratios)) };
+  });
+}

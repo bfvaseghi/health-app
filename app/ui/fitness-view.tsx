@@ -7,7 +7,6 @@ import { CoachTab } from "./coach-tab";
 import { Icon } from "./icons";
 import { LiftingTab } from "./lifting-tab";
 import { ProgressTab } from "./progress-tab";
-import { PageHeading, Segmented } from "./primitives";
 import { fitnessTabs, type FitnessTab, type Modal } from "./types";
 
 /**
@@ -44,25 +43,29 @@ export function FitnessView({
 
   return (
     <div className="page fitness-page">
-      <PageHeading
-        title="Fitness"
-        action={
-          <div className="heading-actions fitness-heading-actions">
-            <Segmented
-              label="Section"
-              value={tab}
-              options={fitnessTabs.map((entry) => ({ value: entry.tab, label: entry.label }))}
-              onChange={(value) => setTab(value as FitnessTab)}
-            />
-            {!demo ? (
-              <button type="button" className="button secondary" onClick={() => open({ kind: "import" })}>
-                <Icon name="upload" />
-                Import
-              </button>
-            ) : null}
-          </div>
-        }
-      />
+      <div className="tl-section-head fitness-head">
+        <h1 className="tl-caps" tabIndex={-1}>Fitness</h1>
+        <div className="tl-tabs" role="tablist" aria-label="Section">
+          {fitnessTabs.map((entry) => (
+            <button
+              key={entry.tab}
+              type="button"
+              role="tab"
+              aria-selected={tab === entry.tab}
+              className={tab === entry.tab ? "active" : ""}
+              onClick={() => setTab(entry.tab)}
+            >
+              {entry.label}
+            </button>
+          ))}
+        </div>
+        {!demo ? (
+          <button type="button" className="text-button" onClick={() => open({ kind: "import" })}>
+            <Icon name="upload" />
+            Import
+          </button>
+        ) : null}
+      </div>
 
       {tab === "coach" && (
         <CoachTab state={state} today={today} open={open} demo={demo} onGoals={onGoals} onNotice={onNotice} />

@@ -4,24 +4,19 @@ const paths: Record<string, ReactNode> = {
   pulse: <path d="M3 12h4l2-6 4 12 2-6h6" />,
   today: (
     <>
-      <path d="M4 5h16v14H4z" />
-      <path d="M8 9h8M8 13h5" />
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
     </>
   ),
-  fitness: (
-    <>
-      <path d="M4 9v6M20 9v6M7 7v10M17 7v10" />
-      <path d="M7 12h10" />
-    </>
-  ),
+  fitness: <path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11" />,
   overview: (
     <>
-      <path d="M4 5h16v14H4z" />
-      <path d="M8 9h8M8 13h5" />
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" />
     </>
   ),
-  sleep: <path d="M20 15.5A8 8 0 0 1 8.5 4 8 8 0 1 0 20 15.5Z" />,
-  moon: <path d="M20 15.5A8 8 0 0 1 8.5 4 8 8 0 1 0 20 15.5Z" />,
+  sleep: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />,
+  moon: <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z" />,
   records: (
     <>
       <path d="M6 3h9l3 3v15H6z" />
@@ -46,18 +41,8 @@ const paths: Record<string, ReactNode> = {
       <path d="M8.6 14h6.8" />
     </>
   ),
-  lifting: (
-    <>
-      <path d="M4 9v6M20 9v6M7 7v10M17 7v10" />
-      <path d="M7 12h10" />
-    </>
-  ),
-  dumbbell: (
-    <>
-      <path d="M4 9v6M20 9v6M7 7v10M17 7v10" />
-      <path d="M7 12h10" />
-    </>
-  ),
+  lifting: <path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11" />,
+  dumbbell: <path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11" />,
   trophy: (
     <>
       <path d="M7 4h10v5a5 5 0 0 1-10 0V4Z" />
@@ -73,8 +58,8 @@ const paths: Record<string, ReactNode> = {
   ),
   mind: (
     <>
-      <path d="M12 4a4 4 0 0 0-4 4 3 3 0 0 0-1 5.8V16a3 3 0 0 0 3 3h4a3 3 0 0 0 3-3v-2.2A3 3 0 0 0 16 8a4 4 0 0 0-4-4Z" />
-      <path d="M12 8v6" />
+      <circle cx="12" cy="12" r="9" />
+      <circle cx="12" cy="12" r="3.5" />
     </>
   ),
   journal: (
@@ -96,10 +81,12 @@ const paths: Record<string, ReactNode> = {
     </>
   ),
   plus: <path d="M12 5v14M5 12h14" />,
+  up: <path d="M12 19V5M5 12l7-7 7 7" />,
+  down: <path d="M12 5v14M19 12l-7 7-7-7" />,
   medication: (
     <>
-      <path d="m7 17 10-10a3 3 0 1 0-4-4L3 13a3 3 0 0 0 4 4Z" />
-      <path d="m9 7 8 8" />
+      <path d="m10.5 20.5 10-10a4.95 4.95 0 1 0-7-7l-10 10a4.95 4.95 0 1 0 7 7Z" />
+      <path d="m8.5 8.5 7 7" />
     </>
   ),
   weight: (
@@ -108,7 +95,7 @@ const paths: Record<string, ReactNode> = {
       <path d="M9 9a3 3 0 0 1 6 0" />
     </>
   ),
-  check: <path d="m5 12 4 4L19 6" />,
+  check: <path d="M20 6 9 17l-5-5" />,
   alert: (
     <>
       <path d="M12 3 2 20h20L12 3Z" />
@@ -116,7 +103,7 @@ const paths: Record<string, ReactNode> = {
     </>
   ),
   spark: <path d="m12 3 1.5 5.5L19 10l-5.5 1.5L12 17l-1.5-5.5L5 10l5.5-1.5L12 3Z" />,
-  arrow: <path d="M5 12h14M14 7l5 5-5 5" />,
+  arrow: <path d="M5 12h14M12 5l7 7-7 7" />,
   info: (
     <>
       <circle cx="12" cy="12" r="9" />
@@ -134,8 +121,8 @@ const paths: Record<string, ReactNode> = {
   close: <path d="m6 6 12 12M18 6 6 18" />,
   copy: (
     <>
-      <rect x="8" y="8" width="11" height="12" rx="2" />
-      <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h2" />
+      <rect width="14" height="14" x="8" y="8" rx="2" />
+      <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
     </>
   ),
   shield: (

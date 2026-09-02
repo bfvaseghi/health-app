@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { HealthState, ReportRow, buildHealthReport, dateLabel, reportToText } from "../health-model";
 import { Icon } from "./icons";
-import { Note, PageHeading, Segmented } from "./primitives";
+import { Note, Segmented } from "./primitives";
 import { copyText, listWords } from "./format";
 
 const groups: Array<ReportRow["group"]> = ["Sleep", "Medication", "Body", "Training", "Mind"];
@@ -24,35 +24,39 @@ export function SummaryView({
 
   return (
     <div className="page report-page">
-      <PageHeading
-        eyebrow="For an appointment"
-        title="Summary"
-        body="A dated page to print or paste into a message."
-        action={
-          <div className="heading-actions no-print">
-            <button
-              type="button"
-              className="button secondary"
-              onClick={async () =>
-                onNotice(
-                  (await copyText(reportToText(report, { includeTherapy, includeNotes: showNotes })))
-                    ? "Summary copied as text."
-                    : "Copying is blocked in this browser. Print instead.",
-                )
-              }
-            >
-              <Icon name="copy" />
-              Copy as text
-            </button>
-            <button type="button" className="button primary" onClick={() => window.print()}>
-              <Icon name="printer" />
-              Print
-            </button>
-          </div>
-        }
-      />
+      <span className="tl-caps">{`For your doctor · last ${days} days`}</span>
+      <h1 className="tl-hero" tabIndex={-1}>Ready to bring along.</h1>
+      <p className="tl-lede">
+        {`${dateLabel(report.start, { month: "short", day: "numeric" })} – ${dateLabel(report.end, { month: "short", day: "numeric" })} · `}
+        <b>{`${report.coverage.sleepNights} of ${report.days}`}</b>
+        {" nights · "}
+        <b>{`${report.coverage.medicationDosesAnswered} of ${report.coverage.medicationDosesDue}`}</b>
+        {" due doses answered"}
+        {report.flaggedLabs.length ? <>{" · "}<b>{report.flaggedLabs.length}</b>{` ${report.flaggedLabs.length === 1 ? "result" : "results"} outside range`}</> : null}
+        {includeTherapy && report.toRaise.length ? <>{" · "}<b>{report.toRaise.length}</b>{" to raise"}</> : null}
+      </p>
+      <div className="tl-actions no-print">
+        <button
+          type="button"
+          className="button primary"
+          onClick={async () =>
+            onNotice(
+              (await copyText(reportToText(report, { includeTherapy, includeNotes: showNotes })))
+                ? "Summary copied as text."
+                : "Copying is blocked in this browser. Print instead.",
+            )
+          }
+        >
+          <Icon name="copy" />
+          Copy as text
+        </button>
+        <button type="button" className="button secondary" onClick={() => window.print()}>
+          <Icon name="printer" />
+          Print
+        </button>
+      </div>
 
-      <section className="panel wide-panel report-header">
+      <section className="panel wide-panel report-header" style={{ marginTop: 26 }}>
         <div className="panel-head wrap">
           <div>
             <p className="kicker">Period</p>

@@ -9,7 +9,6 @@ import type {
   Plan,
   PlannedExercise,
   PlannedSession,
-  WorkoutWeekStreak,
 } from "../training/coach";
 import {
   DAY_CHOICES,
@@ -24,7 +23,7 @@ import {
   nextSession,
   remainingSessions,
   weekStart,
-  weekLabel,
+  sessionToText,
   weekOutlook,
   withAddedSets,
   trainingAnchorSets,
@@ -32,9 +31,11 @@ import {
 } from "../training/coach";
 import type { Muscle } from "../training/muscles";
 import { muscleLabels } from "../training/muscles";
+import { strengthIndex } from "../training/progress";
 import { Icon } from "./icons";
 import { copyText, listWords } from "./format";
 import { ConfirmButton, Empty, Fold } from "./primitives";
+import { Tide } from "./tide";
 import type { Modal } from "./types";
 
 /**
@@ -71,19 +72,16 @@ export function CoachTab({
   const block = useMemo(() => buildBlock(state, today, state.goals.trainingDays), [state, today]);
   const unknown = useMemo(() => unclassifiedExercises(state.workoutSets), [state.workoutSets]);
   const streak = useMemo(() => workoutWeekStreak(state, today), [state, today]);
+  const strength = useMemo(() => strengthIndex(state, today, 12), [state, today]);
 
   // What the coach wrote, plus whatever you added to it yourself.
   const plan = useMemo(
     () => withAddedSets(block[Math.min(week, block.length - 1)], state, today),
     [block, week, state, today],
   );
-  // Whichever session you are about to do is the one already open. Choosing a
-  // different day, or finishing one, moves it without being asked. After that
-  // the folds are independent: opening one is not a reason to close another,
-  // and wanting to see two sessions at once is not an unusual thing to want.
+  // The session you are about to do is the hero of the page. The others fold,
+  // and opening one is not a reason to close another.
   const [opened, setOpened] = useState<Set<string> | null>(null);
-  // What is banked this week and what the rest of the plan adds — the two
-  // halves of the only question the panel is for.
   const outlook = useMemo(() => weekOutlook(plan, state, today), [plan, state, today]);
   // A Strong import changes the cards themselves, not just the muscle bars:
   // completed direct work is worth one set, indirect work is worth half, and
@@ -121,29 +119,136 @@ export function CoachTab({
 
   const setsLeft = remaining.reduce((total, session) => total + session.sets, 0);
   const next = nextSession(plan, state, today);
-  const shown = opened ?? new Set(next.session ? [next.session.name] : []);
+  const hero = next.session ?? null;
+  const others = remaining.filter((session) => session.name !== hero?.name);
+  const shown = opened ?? new Set<string>();
+  // Minutes a session takes at the rests it prescribes, plus the set itself.
+  const minutes = hero
+    ? Math.round(hero.exercises.reduce((total, exercise) => total + exercise.sets * (exercise.restSeconds + 45), 0) / 60 / 5) * 5
+    : 0;
+  const stepUps = hero ? hero.exercises.filter((exercise) => exercise.stepUp).length : 0;
+  const easing = hero ? hero.exercises.filter((exercise) => exercise.stalled).length : 0;
+  const strengthRecorded = strength.filter((point) => point.value !== null);
+  const strengthChange = strengthRecorded.length >= 2 ? Math.round(((strengthRecorded.at(-1)!.value as number) - 100) * 10) / 10 : null;
+
+  const drop = (session: PlannedSession, exercise: string) =>
+    onGoals((current) => ({
+      ...current,
+      addedSets: current.addedSets.filter(
+        (entry) => !(entry.weekStart === weekStart(today) && entry.session === session.name && entry.exercise === exercise),
+      ),
+    }));
 
   return (
     <>
-      <TrainingStreak streak={streak} />
+      <h2 className="tl-hero" style={{ marginTop: 18 }}>
+        {hero ? hero.name : "Week done."}
+      </h2>
+      <p className="tl-lede">
+        {hero
+          ? `Next · ${hero.sets} sets · about ${minutes} min · `
+          : `All ${next.of} sessions logged. Rest, or add one below. · `}
+        <b>{`${next.done} of ${next.of}`}</b>
+        {` this week${plan.deload ? " · an easier week on purpose" : ""}`}
+        {streak.weeks ? (
+          <>
+            {" · "}
+            <b>{streak.weeks}</b>
+            {`\u2011week streak${streak.currentWeek ? "" : " — one lift keeps it"}`}
+          </>
+        ) : null}
+      </p>
+      <div className="tl-actions">
+        {hero ? (
+          <button
+            type="button"
+            className="button primary"
+            onClick={async () =>
+              onNotice((await copyText(sessionToText(plan, hero))) ? "Session copied. Paste it into Strong." : "Copying is blocked here.")
+            }
+          >
+            <Icon name="copy" />
+            Copy for Strong
+          </button>
+        ) : null}
+        {remaining.length > 1 ? (
+          <button
+            type="button"
+            className="button secondary"
+            onClick={async () =>
+              onNotice(
+                (await copyText(planToText({ ...plan, days: remaining.length, sessions: remaining })))
+                  ? "The rest of the week is copied."
+                  : "Copying is blocked here.",
+              )
+            }
+          >
+            {next.done ? "Copy the rest of the week" : "Copy the week"}
+          </button>
+        ) : null}
+      </div>
 
-      <section className="coach-head">
-        <div className="coach-days" role="group" aria-label="Sessions this week">
-          {DAY_CHOICES.map((value) => (
-            <button
-              key={value}
-              type="button"
-              className={value === plan.days ? "active" : ""}
-              aria-pressed={value === plan.days}
-              onClick={() => setDays(value)}
-            >
-              <b>{value}</b>
-              <small>{value === advice.days ? "suggested" : "days"}</small>
-            </button>
-          ))}
-        </div>
-        <div className="block-state">
-          <span><b>{plan.deload ? "Deload" : `Build week ${week + 1}`}</b><small>of a fixed 4-week block</small></span>
+      {hero ? (
+        <section className="tl-section" aria-label={`${hero.name}, every lift`}>
+          <div className="tl-rows" style={{ marginTop: 0 }}>
+            {hero.exercises.map((exercise) => (
+              <Lift key={`${hero.name}:${exercise.exercise}`} exercise={exercise} onDrop={exercise.byHand ? () => drop(hero, exercise.exercise) : undefined} />
+            ))}
+          </div>
+          <p className="tl-line" style={{ marginTop: 10 }}>
+            {stepUps ? <><span className="tl-good">↑</span>{` ${stepUps === 1 ? "one load goes" : `${stepUps} loads go`} up — top of the range on every set last time`}</> : null}
+            {stepUps && easing ? " · " : ""}
+            {easing ? <><span style={{ color: "var(--warn)" }}>↓</span>{` ${easing === 1 ? "one eases" : `${easing} ease`} off after a stall`}</> : null}
+            {!stepUps && !easing ? "Every load holds this week." : ""}
+          </p>
+        </section>
+      ) : null}
+
+      {others.length ? (
+        <section className="tl-section" aria-label="The rest of the week">
+          <div className="tl-section-head">
+            <span className="tl-caps">Still to come</span>
+            <span className="tl-meta">{`${setsLeft} sets left this week`}</span>
+          </div>
+          <div className="plan-list" style={{ marginTop: 10 }}>
+            {others.map((session) => (
+              <SessionCard
+                key={session.name}
+                session={session}
+                isNext={false}
+                onDrop={(exercise) => drop(session, exercise)}
+                open={shown.has(session.name)}
+                onToggle={() =>
+                  setOpened((current) => {
+                    const changed = new Set(current ?? shown);
+                    if (!changed.delete(session.name)) changed.add(session.name);
+                    return changed;
+                  })
+                }
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {strengthRecorded.length >= 2 ? (
+        <section className="tl-section" aria-label="Strength, typical lift, twelve weeks">
+          <div className="tl-section-head">
+            <span className="tl-caps">Strength · typical lift · 12 weeks</span>
+            <span className="tl-meta">indexed to the first week</span>
+          </div>
+          <Tide
+            data={strength}
+            label="Strength index, typical lift"
+            unit="%"
+            format={(value) => `${value >= 100 ? "+" : ""}${Math.round((value - 100) * 10) / 10}`}
+          />
+        </section>
+      ) : null}
+
+      <section className="tl-section" aria-label="This block">
+        <div className="tl-section-head">
+          <span className="tl-caps">{plan.deload ? "Deload · week 4 of 4" : `Build week ${week + 1} of 4`}</span>
           <ConfirmButton
             label="Restart block"
             confirmLabel="Clear choices & restart"
@@ -158,72 +263,24 @@ export function CoachTab({
             }))}
           />
         </div>
-      </section>
-
-      <section className="panel wide-panel">
-        <div className="panel-head wrap">
-          {/* The split and the size of the week, where the week is, rather
-              than floating above the page as a block of its own. */}
-          <div className="coach-summary">
-            <h2>{weekLabel(plan)}</h2>
-            <small>
-              {next.done
-                ? `${next.done} of ${next.of} logged · ${setsLeft ? `${setsLeft} sets left` : "week covered"}`
-                : `${plan.split} · ${setsLeft} sets${plan.deload ? " · backing off" : ""}`}
-            </small>
-          </div>
-          {remaining.length ? (
-            <button
-              type="button"
-              className="button secondary"
-              onClick={async () =>
-                onNotice(
-                  (await copyText(planToText({ ...plan, days: remaining.length, sessions: remaining })))
-                    ? "Copied."
-                    : "Copying is blocked here.",
-                )
-              }
-            >
-              <Icon name="copy" />
-              {next.done ? "Copy remaining" : "Copy for Strong"}
-            </button>
-          ) : null}
-        </div>
-
-        {/* Four sessions laid out at once is four sessions' worth of reading to
-            find the one you are about to do. They fold, and the one you are
-            about to do is the one that is open. */}
-        <div className="plan-list">
-          {remaining.map((session) => (
-            <SessionCard
-              key={session.name}
-              session={session}
-              isNext={session.name === next.session?.name}
-              onDrop={(exercise) =>
-                onGoals((current) => ({
-                  ...current,
-                  addedSets: current.addedSets.filter(
-                    (entry) =>
-                      !(
-                        entry.weekStart === weekStart(today) &&
-                        entry.session === session.name &&
-                        entry.exercise === exercise
-                      ),
-                  ),
-                }))
-              }
-              open={shown.has(session.name)}
-              onToggle={() => {
-                setOpened((current) => {
-                  const changed = new Set(current ?? shown);
-                  if (!changed.delete(session.name)) changed.add(session.name);
-                  return changed;
-                });
-              }}
-            />
-          ))}
-          {!remaining.length ? <p className="row-note">No more training needed this week.</p> : null}
-        </div>
+        <p className="tl-line" style={{ marginTop: 8, display: "flex", alignItems: "center", flexWrap: "wrap", gap: "4px 8px" }}>
+          <span>Train</span>
+          <span className="tl-picker" role="group" aria-label="Sessions this week">
+            {DAY_CHOICES.map((value) => (
+              <button
+                key={value}
+                type="button"
+                className={value === plan.days ? "active" : ""}
+                aria-pressed={value === plan.days}
+                onClick={() => setDays(value)}
+              >
+                <b>{value}</b>
+                <small>{value === advice.days ? "suggested" : "days"}</small>
+              </button>
+            ))}
+          </span>
+          <span>{`days a week — ${["", "one", "two", "three", "four", "five", "six", "seven"][advice.days] ?? advice.days} is suggested from your history${strengthChange !== null ? ` · strength ${strengthChange >= 0 ? "+" : ""}${strengthChange}% over the window` : ""}`}</span>
+        </p>
       </section>
 
       <WeeklyProgression plan={plan} />
@@ -255,30 +312,37 @@ export function CoachTab({
   );
 }
 
-/**
- * A streak is motivation, not another dashboard. It says only how long the
- * run is and whether this week has been banked yet.
- */
-function TrainingStreak({ streak }: { streak: WorkoutWeekStreak }) {
-  const label = streak.weeks === 1 ? "week" : "weeks";
+/** One lift of the next session: the name and the load, which is what you are looking for at the rack. */
+function Lift({ exercise, onDrop }: { exercise: PlannedExercise; onDrop?: () => void }) {
+  const tone = exercise.stalled ? "down" : exercise.stepUp ? "up" : "";
   return (
-    <section className="training-streak" aria-label={`${streak.weeks} ${label} of consecutive training`}>
-      <span className="streak-mark" aria-hidden="true"><Icon name="trophy" /></span>
-      <span className="streak-copy">
-        {streak.weeks ? (
-          <strong><span className="streak-count">{streak.weeks}</span>-week streak</strong>
-        ) : (
-          <strong>Start the streak</strong>
-        )}
+    <div className="tl-row" style={{ minHeight: 48, padding: "8px 0" }}>
+      <span className="tl-row-copy">
+        <b>{exercise.exercise}</b>
         <small>
-          {streak.currentWeek
-            ? "This week counts."
-            : streak.weeks
-              ? "One lift keeps it going."
-              : "Your next workout is week one."}
+          {`${exercise.sets} × ${exercise.repRange} · ${Math.round(exercise.restSeconds / 30) / 2} min rest`}
+          {onDrop ? (
+            <>
+              {" · "}
+              <button type="button" className="plan-drop" onClick={onDrop} aria-label={`Remove ${exercise.exercise}`}>Remove</button>
+            </>
+          ) : null}
         </small>
       </span>
-    </section>
+      <span className={`tl-row-end ${tone}`.trim()}>
+        {exercise.assistanceLb !== null ? (
+          <>{exercise.assistanceLb}<small>lb assist</small></>
+        ) : exercise.weightLb !== null ? (
+          <>{exercise.weightLb}<small>lb</small></>
+        ) : exercise.bodyweight ? (
+          <small>bodyweight</small>
+        ) : (
+          <span aria-label="no load logged for this yet">—</span>
+        )}
+        {exercise.stepUp ? <Icon name={exercise.assistanceLb !== null ? "down" : "up"} /> : null}
+        {exercise.stalled ? <Icon name="down" /> : null}
+      </span>
+    </div>
   );
 }
 

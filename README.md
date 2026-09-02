@@ -3,8 +3,9 @@
 A private, mobile-first health record and personal coach. It turns the exports your devices
 already make into four answers:
 
-1. **What should I do today?** — Today leads with the meds still due, the next session to lift,
-   and tonight's usual bedtime.
+1. **What should I do today?** — Today opens with a two-line brief written from the record
+   ("A full night. One lift to go."), then the meds still due, the next session to lift, and
+   tonight's usual bedtime.
 2. **How are things changing?** — Sleep, body, medication, mind, and lab markers, each with its
    own history.
 3. **What should I lift this week?** — the Coach writes a 2, 3, or 4-day week from your own Strong
@@ -49,22 +50,33 @@ The key is stored only as a hash and shown once. Neither URL can read the record
 Mobile navigation: **Today · Sleep · Fitness · Mind · Meds · More** (More holds Labs, Summary,
 and Data & goals; the desktop sidebar lists all seven).
 
-- **Today** — do today (meds, next session, tonight's usual bedtime), last night, quick logging,
-  and the last seven days.
-- **Sleep** — 7-day average, nights at goal, bedtime range, sleep debt, typical window, charts,
-  and the night log.
-- **Fitness** — four faces on the Deep Water theme: **Coach** (the week, the streak, weekly
-  progression, and whether every muscle clears the direct + ½ × indirect thresholds), **Progress**
-  (every lift, session by session), **Lifting** (records and history), **Body** (weight, body fat,
-  protein, steps, progress photos).
-- **Mind** — thought journal, topics for therapy, meditation and journaling practice.
-- **Meds** — each medication asked about only on the days it is due, with its streak and a
-  14-day history strip.
+- **Today** — the daily brief, the last fourteen nights as a tide, then the day's rows: each dose
+  due, the next session with one-tap copy, tonight's usual bedtime, protein, meditation, journal.
+- **Sleep** — last night in numerals, the weekly average over eight weeks, your usual night drawn
+  on a 24-hour strip, every night in the period, recovery readings, and the night log.
+- **Fitness** — four faces: **Coach** (the next session as the headline with every lift and load,
+  the rest of the week folded, a strength tide indexed to the block's first week, the day picker,
+  weekly progression, and whether every muscle clears the direct + ½ × indirect thresholds),
+  **Progress** (every lift, session by session), **Lifting** (records and history), **Body**
+  (weight, body fat, protein, steps, progress photos).
+- **Mind** — today's practices, meditation minutes a week, thought journal, topics for therapy.
+- **Meds** — each medication asked about only on the days it is due, rolling 30-day adherence as
+  a tide, a 14-day dot strip, and the streak.
 - **Labs** — results grouped by test with reference ranges, history, and search.
 - **Summary** — a dated page for an appointment: copy as text or print.
 
 The Coach prescribes only movements found in your Strong history — never a lift you have not
 logged. Loads follow double progression with stall detection; every fourth week is a deload.
+
+## Design
+
+One system, called Tideline. Each screen makes one statement in Instrument Serif and says
+everything else in Hanken Grotesk; both faces are served from `public/fonts` so the app makes
+no request to a font host. One signature graphic, the tide — a smooth curve with a soft fill and
+a lit point for now — is drawn the same way for sleep, strength, adherence, meditation and
+weight, with the goal as a dashed hairline. Deep Water is the ground of the whole app in dark
+mode; light mode is the same system on mist paper. Rows are hairlines, not boxes; icons are
+strokes on a 24px grid; every tap target is at least 44px.
 
 Keyboard shortcuts: `I` import, `S` a night, `C` log today, `L` a lab result, `1`–`7` sections,
 `?` the full list.

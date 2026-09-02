@@ -84,3 +84,11 @@ export function listWords(words: string[], cap = 3): string {
   const rest = words.length - cap;
   return `${words.slice(0, cap).join(", ")} and ${rest} ${rest === 1 ? "other" : "others"}`;
 }
+
+/** Hours as a clock-like label: 8.2 → "8h 12m", 8 → "8h". */
+export function hoursLabel(value: number): string {
+  const whole = Math.floor(value);
+  const minutes = Math.round((value - whole) * 60);
+  if (minutes === 60) return `${whole + 1}h`;
+  return minutes ? `${whole}h ${String(minutes).padStart(2, "0")}m` : `${whole}h`;
+}

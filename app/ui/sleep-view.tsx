@@ -6,19 +6,27 @@ import {
   SleepSource,
   averageBedtime,
   averageWakeTime,
+  bedtimeMinutes,
   dateLabel,
   entriesInWindow,
+  formatClock,
   preferredSleepEntries,
   sleepConsistencyRange,
   sleepDebtHours,
 } from "../health-model";
-import { SleepChart, sleepSeries } from "./charts";
+import { sleepWeeklyAverages } from "../series";
+import { sleepSeries } from "./charts";
 import { MetricPanel } from "./metric-panel";
 import { Icon } from "./icons";
-import { ConfirmButton, Empty, PageHeading, PeriodPicker, Segmented, Stat } from "./primitives";
-import { average, formatTime } from "./format";
+import { ConfirmButton, Empty, PeriodPicker, Segmented } from "./primitives";
+import { Tide } from "./tide";
+import { average, formatTime, hoursLabel } from "./format";
 import { Modal, Period, recoveryMetrics } from "./types";
 
+/**
+ * How am I sleeping? Last night in numerals, the season as a tide, the usual
+ * night as a band on a 24-hour strip, and every night as a row you can edit.
+ */
 export function SleepView({
   state,
   editableState,
@@ -44,71 +52,108 @@ export function SleepView({
     return entriesInWindow(source, today, period);
   }, [scope, preferred, state.sleepEntries, today, period]);
 
+  const lastNight = preferred.find((entry) => entry.date <= today) ?? null;
   const recent = entriesInWindow(preferred, today, 7);
   const recentWithDuration = recent.filter((entry) => entry.durationHours !== null);
   const avg = average(recent.map((entry) => entry.durationHours));
-  const atGoal = recent.filter(
-    (entry) => entry.durationHours !== null && entry.durationHours >= state.goals.sleepHours,
-  ).length;
+  const atGoal = recentWithDuration.filter((entry) => (entry.durationHours as number) >= state.goals.sleepHours).length;
   const regularity = sleepConsistencyRange(recent);
   const debt = sleepDebtHours(state, today, 7);
-  const bedtime = averageBedtime(recent);
-  const wake = averageWakeTime(recent);
+  const fortnight = entriesInWindow(preferred, today, 14);
+  const bedtime = averageBedtime(fortnight);
+  const wake = averageWakeTime(fortnight);
+
+  const weekly = useMemo(() => sleepWeeklyAverages(state, today, 8), [state, today]);
+  const weeklyRecorded = weekly.filter((point) => point.value !== null);
+  const shift =
+    weeklyRecorded.length >= 2
+      ? Math.round(((weeklyRecorded.at(-1)!.value as number) - (weeklyRecorded[0].value as number)) * 60)
+      : null;
   const series = useMemo(() => sleepSeries(state, today, period), [state, today, period]);
 
   return (
-    <div className="page">
-      <PageHeading
-        title="Sleep"
-        action={
-          <div className="heading-actions">
-            <button type="button" className="button primary" onClick={() => open({ kind: "sleep", date: today })}>
-              <Icon name="plus" />
-              Add sleep
-            </button>
-          </div>
-        }
-      />
+    <div className="page tl-page">
+      <div className="tl-section-head">
+        <span className="tl-caps">{lastNight ? (lastNight.date === today ? "Sleep · last night" : `Sleep · latest night · ${dateLabel(lastNight.date, { weekday: "short", month: "short", day: "numeric" })}`) : "Sleep"}</span>
+        <button type="button" className="text-button" onClick={() => open({ kind: "sleep", date: today })}>
+          <Icon name="plus" /> Add a night
+        </button>
+      </div>
 
-      <section className="hero-panel">
-        <div className="hero-score">
-          <span className="moon-orb">
-            <Icon name="moon" />
-          </span>
-          <div>
-            <p className="kicker">7-day average</p>
-            <strong>{avg === null ? "—" : `${avg.toFixed(1)} h`}</strong>
-            <small>Goal {state.goals.sleepHours} hours</small>
-          </div>
+      <h1 className="tl-num" tabIndex={-1}>
+        {lastNight?.durationHours != null ? (
+          <Duration hours={lastNight.durationHours} />
+        ) : (
+          <span className="tl-hero" style={{ margin: 0 }}>{lastNight ? "A night, unmeasured." : "No nights yet."}</span>
+        )}
+      </h1>
+      <p className="tl-lede">
+        {lastNight ? (
+          <>
+            {lastNight.bedtime && lastNight.wakeTime ? `${formatTime(lastNight.bedtime)} → ${formatTime(lastNight.wakeTime)} · ` : ""}
+            {lastNight.source}
+            {lastNight.durationHours != null ? (
+              <>
+                {" · "}
+                <b className={lastNight.durationHours >= state.goals.sleepHours ? "tl-good" : undefined}>
+                  {lastNight.durationHours >= state.goals.sleepHours
+                    ? "goal met"
+                    : `${Math.round((state.goals.sleepHours - lastNight.durationHours) * 60)} min short of the ${state.goals.sleepHours} h goal`}
+                </b>
+              </>
+            ) : null}
+            {editableState.sleepEntries.some((item) => item.date === lastNight.date && item.source === lastNight.source) ? (
+              <>
+                {" · "}
+                <button type="button" className="text-button" onClick={() => open({ kind: "sleep", date: lastNight.date, source: lastNight.source })}>
+                  Edit
+                </button>
+              </>
+            ) : null}
+          </>
+        ) : (
+          "Add a night by hand, or connect Apple Health and let the ring or watch write them."
+        )}
+      </p>
+
+      {recentWithDuration.length ? (
+        <p className="tl-line">
+          {`Last seven nights — ${avg === null ? "" : `${avg.toFixed(1)} h a night, `}${atGoal} of ${recentWithDuration.length} at goal`}
+          {regularity === null ? "" : `, bedtimes within ${Math.round(regularity)} min`}
+          {debt === null || debt === 0 ? "" : `, ${debt.toFixed(1)} h short in total`}
+          {"."}
+        </p>
+      ) : null}
+
+      <section className="tl-section" aria-label="Weekly average, eight weeks">
+        <div className="tl-section-head">
+          <span className="tl-caps">Weekly average · 8 weeks</span>
+          {shift !== null ? (
+            <span className="tl-meta accent">
+              <b>{`${shift >= 0 ? "+" : "−"}${Math.abs(shift)} min`}</b>
+              {` a night since ${dateLabel(weeklyRecorded[0].date, { month: "long" })}`}
+            </span>
+          ) : null}
         </div>
-        <div className="stat-row">
-          <Stat label="Nights at goal" value={recentWithDuration.length ? `${atGoal} / ${recentWithDuration.length}` : "—"} detail={`${recentWithDuration.length} of 7 nights recorded`} />
-          <Stat
-            label="Bedtime range"
-            value={regularity === null ? "—" : `${Math.round(regularity)} min`}
-            detail={`guide ≤ ${state.goals.sleepConsistencyMinutes} min`}
-          />
-          <Stat
-            label="Sleep debt"
-            value={debt === null ? "—" : `${debt.toFixed(1)} h`}
-            detail="shortfall across recorded nights"
-          />
-          <Stat
-            label="Typical window"
-            value={bedtime && wake ? `${formatTime(bedtime)} – ${formatTime(wake)}` : "—"}
-            detail="average bedtime and wake"
-          />
-        </div>
+        <Tide data={weekly} label="Sleep, weekly average" unit="h" goal={state.goals.sleepHours} format={(value) => value.toFixed(1)} empty="Two weeks of nights draw the first tide." />
       </section>
 
-      <section className="panel wide-panel">
-        <div className="panel-head">
-          <div>
-            <h2>Duration</h2>
+      {bedtime && wake ? (
+        <section className="tl-section" aria-label="Your usual night">
+          <div className="tl-section-head">
+            <span className="tl-caps">Your usual night · two weeks</span>
+            <span className="tl-meta">the bar is last night</span>
           </div>
+          <NightBand bedtime={bedtime} wake={wake} lastNight={lastNight} />
+        </section>
+      ) : null}
+
+      <section className="tl-section" aria-label="Every night in the period">
+        <div className="tl-section-head">
+          <span className="tl-caps">Every night</span>
           <PeriodPicker value={period} onChange={setPeriod} />
         </div>
-        <SleepChart data={series} goal={state.goals.sleepHours} />
+        <Tide data={series} label="Sleep, hours a night" unit="h" goal={state.goals.sleepHours} format={(value) => value.toFixed(1)} empty="No sleep data in this period." />
       </section>
 
       <MetricPanel
@@ -143,7 +188,7 @@ export function SleepView({
                 </div>
                 <div>
                   <small>Duration</small>
-                  <b>{entry.durationHours === null ? "Unknown" : `${entry.durationHours.toFixed(1)} h`}</b>
+                  <b>{entry.durationHours === null ? "Unknown" : hoursLabel(entry.durationHours)}</b>
                 </div>
                 <div>
                   <small>Window</small>
@@ -199,5 +244,62 @@ export function SleepView({
         ) : null}
       </section>
     </div>
+  );
+}
+
+/** "8h 12m" with the units set small, as numerals rather than a decimal. */
+function Duration({ hours }: { hours: number }) {
+  const whole = Math.floor(hours);
+  let minutes = Math.round((hours - whole) * 60);
+  let h = whole;
+  if (minutes === 60) {
+    h += 1;
+    minutes = 0;
+  }
+  return (
+    <>
+      {h}
+      <small>h</small>
+      {String(minutes).padStart(2, "0")}
+      <small>m</small>
+    </>
+  );
+}
+
+/**
+ * The usual window (average bedtime to average wake, over two weeks) drawn on
+ * a strip from 8 PM to 10 AM, with last night laid over it as a bar. It answers
+ * "when do I actually sleep?" without a number to interpret.
+ */
+function NightBand({ bedtime, wake, lastNight }: { bedtime: string; wake: string; lastNight: { bedtime: string; wakeTime: string } | null }) {
+  const width = 353;
+  const startHour = 20;
+  const span = 14;
+  // Positions on the night clock: 20:00 is the left edge, 10:00 the next morning the right.
+  const at = (clock: string | null): number | null => {
+    if (!clock) return null;
+    const minutes = bedtimeMinutes(clock);
+    if (minutes === null) return null;
+    // bedtimeMinutes puts evening times before midnight at negative offsets and
+    // morning times after; re-anchor to 8 PM.
+    const fromEight = minutes + 24 * 60 - startHour * 60;
+    const hours = ((fromEight % (24 * 60)) + 24 * 60) % (24 * 60) / 60;
+    return Math.max(0, Math.min(width, (hours / span) * width));
+  };
+  const b = at(bedtime);
+  const w = at(wake);
+  const lb = at(lastNight?.bedtime ?? null);
+  const lw = at(lastNight?.wakeTime ?? null);
+  if (b === null || w === null) return null;
+  return (
+    <svg className="tl-band" viewBox={`0 0 ${width} 58`} role="img" aria-label={`Usually in bed ${formatClock(bedtime)}, up ${formatClock(wake)}`}>
+      <line className="axis" x1="0" y1="30" x2={width} y2="30" />
+      <rect className="window" x={Math.min(b, w)} y="20" width={Math.max(6, Math.abs(w - b))} height="20" rx="10" />
+      {lb !== null && lw !== null ? <rect className="night" x={Math.min(lb, lw)} y="26" width={Math.max(4, Math.abs(lw - lb))} height="8" rx="4" /> : null}
+      <text className="edge" x={Math.min(b, w)} y="12">{formatClock(bedtime)}</text>
+      <text className="edge" x={Math.max(b, w)} y="12" textAnchor="end">{formatClock(wake)}</text>
+      <text x="0" y="54">8 PM</text>
+      <text x={width} y="54" textAnchor="end">10 AM</text>
+    </svg>
   );
 }

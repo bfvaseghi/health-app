@@ -3,8 +3,10 @@
 import { FormEvent, useMemo, useState } from "react";
 import type { DailyEntry, HealthState, TherapyNote, ThoughtJournalEntry } from "../health-model";
 import { addDays, dateLabel, mindSummary } from "../health-model";
+import { meditationWeeklyMinutes } from "../series";
 import { Icon } from "./icons";
-import { ConfirmButton, Empty, PageHeading, Stat } from "./primitives";
+import { ConfirmButton, Empty } from "./primitives";
+import { Tide } from "./tide";
 
 /**
  * Meditation, journaling, and the running list of things to raise. The list is
@@ -40,6 +42,22 @@ export function MindView({
   const raised = state.therapyNotes.filter((note) => note.shared);
   const week = Array.from({ length: 14 }, (_, index) => addDays(today, index - 13));
   const thoughtDates = new Set(state.thoughtJournal.map((entry) => entry.date));
+  const weekly = useMemo(() => meditationWeeklyMinutes(state, today, 8), [state, today]);
+  const recentWeek = useMemo(() => mindSummary(state, today, 7), [state, today]);
+  const todayEntry = state.dailyEntries.find((item) => item.date === today);
+  const minutes = todayEntry?.meditationMinutes ?? 0;
+  const journaled = Boolean(todayEntry?.journaled) || thoughtDates.has(today);
+  const words = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen"];
+  const headline = minutes
+    ? `${minutes <= 15 && words[minutes] ? words[minutes] : minutes} quiet ${minutes === 1 ? "minute" : "minutes"}.`
+    : journaled
+      ? "A page written."
+      : "A quiet mind, unlogged.";
+  const lede = [
+    minutes ? "meditated today" : "no meditation logged yet",
+    journaled ? "journal written" : "journal not yet written",
+    open.length ? `${open.length} ${open.length === 1 ? "thing" : "things"} waiting for therapy` : "nothing waiting for therapy",
+  ].join(" · ");
 
   function submitNote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -51,7 +69,19 @@ export function MindView({
 
   return (
     <div className="page mind-page">
-      <PageHeading title="Mind" />
+      <span className="tl-caps">Mind · today</span>
+      <h1 className="tl-hero" tabIndex={-1}>{headline}</h1>
+      <p className="tl-lede">{lede}</p>
+
+      <TodayPractices state={state} today={today} updateDaily={updateDaily} />
+
+      <section className="tl-section" aria-label="Meditation, minutes a week">
+        <div className="tl-section-head">
+          <span className="tl-caps">Meditation · minutes a week · 8 weeks</span>
+          <span className="tl-meta"><b>{recentWeek.meditationDays}</b>{` of the last 7 days`}</span>
+        </div>
+        <Tide data={weekly} label="Meditation, minutes a week" unit=" min" min={0} format={(value) => String(Math.round(value))} empty="Sit a few times and the tide appears." />
+      </section>
 
       <ThoughtJournal
         entries={state.thoughtJournal}
@@ -111,8 +141,6 @@ export function MindView({
         ) : null}
       </section>
 
-      <TodayPractices state={state} today={today} updateDaily={updateDaily} />
-
       <section className="panel wide-panel mind-history">
         <div className="panel-head">
           <div>
@@ -146,24 +174,19 @@ export function MindView({
         </p>
       </section>
 
-      <section className="hero-panel mind-hero">
-        <div className="hero-score">
-          <span className="moon-orb">
-            <Icon name="mind" />
-          </span>
-          <div>
-            <p className="kicker">Last 30 days</p>
-            <strong>{`${summary.meditationDays} ${summary.meditationDays === 1 ? "day" : "days"}`}</strong>
-            <small>meditated</small>
-          </div>
-        </div>
-        <div className="stat-row">
-          <Stat label="Minutes" value={`${summary.meditationMinutes}`} detail="sat in total" />
-          <Stat label="Journaled" value={`${summary.journalDays} / 30`} detail="days written" />
-          <Stat label="To raise" value={`${open.length}`} detail="waiting for a session" />
-          <Stat label="Raised" value={`${raised.length}`} detail="already covered" />
-        </div>
-      </section>
+      <p className="tl-line">
+        {`Last 30 days — `}
+        <b>{summary.meditationDays}</b>
+        {` ${summary.meditationDays === 1 ? "day" : "days"} meditated, `}
+        <b>{summary.meditationMinutes}</b>
+        {` minutes in total, journaled `}
+        <b>{summary.journalDays}</b>
+        {` of 30, `}
+        <b>{open.length}</b>
+        {` to raise and `}
+        <b>{raised.length}</b>
+        {` already covered.`}
+      </p>
     </div>
   );
 }
@@ -289,11 +312,7 @@ function TodayPractices({
   const entry = state.dailyEntries.find((item) => item.date === today);
   const minutes = entry?.meditationMinutes ?? null;
   return (
-    <section className="panel wide-panel mind-practices">
-      <div className="panel-head wrap">
-        <div><p className="kicker">Today</p><h2>Practices</h2></div>
-        <span className="panel-meta">{minutes ? `${minutes} min meditated` : "Meditation not logged"}</span>
-      </div>
+    <section className="tl-actions mind-practices" aria-label="Today's practices">
       <div className="practice-actions">
         <span role="group" aria-label="Meditation minutes">
           {[10, 20].map((value) => (
