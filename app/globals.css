@@ -10,8 +10,8 @@
 
 :root {
   --ink: #10262b;
-  --muted: #587370;
-  --faint: #6f8582;
+  --muted: #4f6966;
+  --faint: #586e6b;
   --line: rgba(16, 38, 43, 0.1);
   --line-strong: rgba(16, 38, 43, 0.22);
   --paper: #ffffff;
@@ -19,14 +19,14 @@
   --soft: #e6ece8;
   --raised: #f8faf8;
 
-  --accent: #177a6a;
+  --accent: #146a5c;
   --accent-strong: #135f53;
   --accent-ink: #ffffff;
-  --accent-pale: rgba(23, 122, 106, 0.1);
+  --accent-pale: rgba(20, 106, 92, 0.1);
   --accent-pale-ink: #135f53;
 
-  --warn: #a86d1f;
-  --warn-pale: rgba(168, 109, 31, 0.12);
+  --warn: #8a5712;
+  --warn-pale: rgba(138, 87, 18, 0.12);
   --danger: #9a4a3e;
   --danger-pale: rgba(154, 74, 62, 0.1);
   --info-pale: #e9efec;
@@ -46,18 +46,18 @@
   --night-from: #0f2a34;
   --night-to: #0c1e26;
 
-  --chart-line: #177a6a;
+  --chart-line: #146a5c;
   --chart-grid: rgba(16, 38, 43, 0.08);
   --chart-bar: #b4cdc6;
-  --chart-bar-goal: #177a6a;
+  --chart-bar-goal: #146a5c;
   --chart-bar-missing: #e1e8e4;
-  --tide-fill-0: rgba(23, 122, 106, 0.22);
-  --tide-fill-1: rgba(23, 122, 106, 0.02);
+  --tide-fill-0: rgba(20, 106, 92, 0.22);
+  --tide-fill-1: rgba(20, 106, 92, 0.02);
 
   --shadow: 0 2px 5px rgba(16, 38, 43, 0.05), 0 22px 52px rgba(16, 38, 43, 0.08);
   --shadow-soft: 0 1px 2px rgba(16, 38, 43, 0.04), 0 9px 24px rgba(16, 38, 43, 0.05);
   --sidebar: 236px;
-  --focus: 0 0 0 3px rgba(23, 122, 106, 0.3);
+  --focus: 0 0 0 3px rgba(20, 106, 92, 0.3);
   --font-ui: "Hanken Grotesk", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --font-heading: var(--font-ui);
   --font-display: "Instrument Serif", Georgia, "Times New Roman", serif;
@@ -68,7 +68,7 @@
 :root[data-theme="dark"] {
   --ink: #eef6f2;
   --muted: #9db8b1;
-  --faint: #7d968f;
+  --faint: #88a29b;
   --line: rgba(157, 184, 177, 0.16);
   --line-strong: rgba(157, 184, 177, 0.32);
   --paper: #12292f;
@@ -121,7 +121,7 @@
   :root:not([data-theme="light"]) {
     --ink: #eef6f2;
     --muted: #9db8b1;
-    --faint: #7d968f;
+    --faint: #88a29b;
     --line: rgba(157, 184, 177, 0.16);
     --line-strong: rgba(157, 184, 177, 0.32);
     --paper: #12292f;
@@ -3003,3 +3003,14 @@ kbd {
 .tl-slice { margin: 10px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
 .tl-slice b { color: var(--ink); font-weight: 600; }
 .tl-slice .text-button { display: inline; min-height: 0; padding: 0; font-size: inherit; font-weight: 600; }
+/* Modals carry the same voice: a serif statement, then the form. */
+.modal-head h2 { font-family: var(--font-display); font-weight: 400; font-size: 32px; letter-spacing: -0.01em; line-height: 1.05; }
+.modal-panel { border-radius: 20px; }
+/* On a wide screen the record stays a column you can read, not a sheet you scan. */
+@media (min-width: 761px) {
+  .tl-page { max-width: 860px; }
+  .tl-page .tide, .tl-page .tl-band, .tl-page .tl-days { max-width: 640px; }
+  .tl-hero { font-size: 58px; }
+}
+.coach-summary h2.tl-caps { font-size: 11px; font-weight: 600; letter-spacing: 0.14em; }
+.coach-summary h2.tl-caps + small { margin-top: 6px; }

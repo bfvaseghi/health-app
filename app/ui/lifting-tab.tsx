@@ -9,9 +9,9 @@ import {
   recentPersonalRecords,
   weeklyVolume,
 } from "../health-model";
-import { LineChart } from "./charts";
+import { Tide } from "./tide";
 import { Icon } from "./icons";
-import { ConfirmButton, Empty, Fold, Note, Segmented } from "./primitives";
+import { ConfirmButton, Empty, Note, Segmented } from "./primitives";
 import type { Modal } from "./types";
 
 const VISIBLE_EXERCISES = 8;
@@ -41,7 +41,6 @@ export function LiftingTab({
   // They answer different questions about the same sets, so only one of them is
   // ever the one you came for.
   const [lens, setLens] = useState<Lens>("records");
-  const [openVolume, setOpenVolume] = useState(false);
   const [openNote, setOpenNote] = useState(false);
 
   if (!state.workoutSets.length) {
@@ -70,8 +69,8 @@ export function LiftingTab({
   // anything is just a thing to click.
   const lastWeek = [...volume].reverse().find((point) => (point.value ?? 0) > 0) ?? null;
   const volumeLine = lastWeek
-    ? `${Math.round(lastWeek.value ?? 0).toLocaleString("en-US")} lb in the week of ${dateLabel(lastWeek.date)}`
-    : "Nothing in the last twelve weeks";
+    ? `${Math.round(lastWeek.value ?? 0).toLocaleString("en-US")} lb in the week of ${dateLabel(lastWeek.date, { month: "short", day: "numeric" })}`
+    : "nothing in the last twelve weeks";
   const lensLine =
     lens === "records"
       ? `${records.length} beaten in the last 60 days`
@@ -81,48 +80,40 @@ export function LiftingTab({
 
   return (
     <>
-      <section className="stat-strip">
-        <div className="stat-tile">
-          <small>Workouts</small>
-          <b>{sessions.length}</b>
-          <span>{sessions.length ? `since ${dateLabel(sessions.at(-1)!.date, { month: "short", year: "numeric" })}` : ""}</span>
+      <h2 className="tl-hero" style={{ marginTop: 18 }}>
+        {`${sessions.length} ${sessions.length === 1 ? "workout" : "workouts"}.`}
+      </h2>
+      <p className="tl-lede">
+        {sessions.length ? `Since ${dateLabel(sessions.at(-1)!.date, { month: "long", year: "numeric" })} · ` : ""}
+        <b>{sessions.reduce((total, session) => total + session.sets, 0).toLocaleString("en-US")}</b>
+        {" working sets · "}
+        <b>{summaries.length}</b>
+        {` distinct ${summaries.length === 1 ? "movement" : "movements"} · `}
+        <b>{`${Math.round(totalVolume / 1_000).toLocaleString("en-US")}k lb`}</b>
+        {" moved, rest timers excluded"}
+      </p>
+
+      {/* The load, week by week, as a tide: the page's one picture. */}
+      <section className="tl-section" aria-label="Volume by week">
+        <div className="tl-section-head">
+          <span className="tl-caps">Volume · pounds a week · 12 weeks</span>
+          <span className="tl-meta">{volumeLine}</span>
         </div>
-        <div className="stat-tile">
-          <small>Working sets</small>
-          <b>{sessions.reduce((total, session) => total + session.sets, 0).toLocaleString("en-US")}</b>
-          <span>rest timers excluded</span>
-        </div>
-        <div className="stat-tile">
-          <small>Exercises</small>
-          <b>{summaries.length}</b>
-          <span>distinct movements</span>
-        </div>
-        <div className="stat-tile">
-          <small>Total volume</small>
-          <b>{`${Math.round(totalVolume / 1_000).toLocaleString("en-US")}k`}</b>
-          <span>pounds moved</span>
-        </div>
+        <Tide
+          data={volume.map((point) => ({ date: point.date, value: point.value && point.value > 0 ? point.value : null }))}
+          label="Volume, pounds moved a week"
+          unit=" lb"
+          min={0}
+          format={(value) => Math.round(value).toLocaleString("en-US")}
+          empty="No sets in the last twelve weeks."
+          dateFormat={{ month: "short", day: "numeric" }}
+        />
       </section>
 
-      {/* The load chart is the page's one picture, and a picture is a lot of
-          room to give something you are not currently asking about. */}
-      <section className="panel wide-panel">
-        <Fold
-          title={<h2>Volume by week</h2>}
-          summary={<span className="fold-line">{volumeLine}</span>}
-          open={openVolume}
-          onToggle={() => setOpenVolume((current) => !current)}
-        >
-          <div className="fold-body">
-            <LineChart data={volume} label="Volume" empty="No sets in the last twelve weeks." />
-          </div>
-        </Fold>
-      </section>
-
-      <section className="panel wide-panel">
+      <section className="tl-section" aria-label="History">
         <div className="panel-head wrap">
           <div className="coach-summary">
-            <h2>History</h2>
+            <h2 className="tl-caps" style={{ margin: 0 }}>History</h2>
             <small>{lensLine}</small>
           </div>
           <Segmented
@@ -240,13 +231,16 @@ export function LiftingTab({
                         asking you to pick something. */}
                     {isOpen && exercise ? (
                       <div className="exercise-detail">
-                        <LineChart
+                        <Tide
                           data={exercise.history.map((session) => ({
                             date: session.date,
                             value: exercise.bodyweight ? session.topReps : session.oneRepMax,
                           }))}
-                          label={exercise.bodyweight ? "Reps" : "Est. 1RM"}
+                          label={exercise.bodyweight ? "Best reps, session by session" : "Estimated one-rep max, session by session"}
+                          unit={exercise.bodyweight ? " reps" : " lb"}
+                          format={(value) => String(Math.round(value))}
                           empty="Not enough sessions to draw a line."
+                          dateFormat={{ month: "short", day: "numeric" }}
                         />
                         <dl className="report-rows">
                           <div>
