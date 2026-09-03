@@ -2993,3 +2993,13 @@ kbd {
   .tl-row.log-row .minute-form { flex: 1 1 100%; padding-left: 54px; }
   .tl-row.log-row .chip:only-child { margin-left: auto; }
 }
+/* Tide interaction: the readout above, the cursor below the lit point. */
+.tide { outline: none; }
+.tide:focus-visible .tide-plot { outline: 2px solid var(--accent); outline-offset: 6px; border-radius: 6px; }
+.tide-readout { margin: 0 0 2px; display: flex; justify-content: flex-end; color: var(--faint); font-size: 12px; min-height: 18px; }
+.tide-plot { cursor: crosshair; touch-action: manipulation; }
+.tide-cursor { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 2 3; }
+.tide-now.is-past { fill: var(--faint); stroke: var(--canvas); opacity: 0.8; }
+.tl-slice { margin: 10px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.tl-slice b { color: var(--ink); font-weight: 600; }
+.tl-slice .text-button { display: inline; min-height: 0; padding: 0; font-size: inherit; font-weight: 600; }

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { HealthState, buildLabTrends, dateLabel, filterLabTrends, labRangeStatus } from "../health-model";
 import { Sparkline } from "./charts";
 import { Icon } from "./icons";
-import { ConfirmButton, Empty, PageHeading } from "./primitives";
+import { ConfirmButton, Empty } from "./primitives";
 import { Modal } from "./types";
 
 export function LabsView({
@@ -28,19 +28,37 @@ export function LabsView({
   );
 
   return (
-    <div className="page">
-      <PageHeading
-        title="Labs"
-        body={trends.length ? `${flagged.length} flagged · ${trends.length - flagged.length} within range or unrated` : "Results stay grouped by test and unit."}
-        action={
-          <button type="button" className="button primary" onClick={() => open({ kind: "lab" })}>
-            <Icon name="plus" />
-            Add result
-          </button>
-        }
-      />
+    <div className="page tl-page">
+      <div className="tl-section-head">
+        <span className="tl-caps">{trends.length ? `Labs · ${trends.length} ${trends.length === 1 ? "marker" : "markers"}` : "Labs"}</span>
+        <button type="button" className="text-button" onClick={() => open({ kind: "lab" })}>
+          <Icon name="plus" /> Add a result
+        </button>
+      </div>
+      <h1 className="tl-hero" tabIndex={-1}>
+        {!trends.length
+          ? "No results yet."
+          : flagged.length === 0
+            ? "All within range."
+            : flagged.length === 1
+              ? "One result to ask about."
+              : `${flagged.length} results to ask about.`}
+      </h1>
+      <p className="tl-lede">
+        {!trends.length
+          ? "Add a result with the reference range printed on the report. Results stay grouped by test and unit."
+          : flagged.length
+            ? `${flagged.map((trend) => `${trend.name} ${trend.status}`).join(" · ")} · latest ${dateLabel(
+                [...trends].sort((a, b) => b.latest.date.localeCompare(a.latest.date))[0].latest.date,
+                { month: "long", day: "numeric", year: "numeric" },
+              )}`
+            : `${trends.length - flagged.length} within range or unrated · latest ${dateLabel(
+                [...trends].sort((a, b) => b.latest.date.localeCompare(a.latest.date))[0].latest.date,
+                { month: "long", day: "numeric", year: "numeric" },
+              )}`}
+      </p>
 
-      <section className="panel wide-panel">
+      <section className="panel wide-panel" style={{ marginTop: 26 }}>
         <div className="panel-head wrap">
           <div>
             <h2>Results</h2>

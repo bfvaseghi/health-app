@@ -4,7 +4,7 @@ import test from "node:test";
 import { dailyBrief } from "../app/brief.ts";
 import { demoHealthState } from "../app/demo-state.ts";
 import { emptyHealthState } from "../app/health-model.ts";
-import { adherenceSeries, meditationWeeklyMinutes, sleepWeeklyAverages, weightWeekly } from "../app/series.ts";
+import { adherenceSeries, daySlice, meditationWeeklyMinutes, sleepWeeklyAverages, weightWeekly } from "../app/series.ts";
 import { strengthIndex } from "../app/training/progress.ts";
 
 const AS_OF = "2026-08-25";
@@ -97,4 +97,26 @@ test("the strength index starts near 100 and stays finite", () => {
   assert.ok(Math.abs(recorded[0].value - 100) < 1, `first recorded week indexes to 100, got ${recorded[0].value}`);
   assert.ok(recorded.every((point) => point.value > 50 && point.value < 200));
   assert.deepEqual(strengthIndex(emptyHealthState(), AS_OF, 4).map((point) => point.value), [null, null, null, null]);
+});
+
+test("a day slice reads one date across every stream without inventing", () => {
+  const state = demoHealthState(AS_OF);
+  const slice = daySlice(state, AS_OF);
+  assert.equal(slice.date, AS_OF);
+  assert.ok(slice.sleepHours === null || slice.sleepHours > 0);
+  assert.ok(Array.isArray(slice.sessions));
+  assert.ok(slice.medsDue >= slice.medsTaken + slice.medsMissed);
+  const blank = daySlice(emptyHealthState(), "2026-01-01");
+  assert.deepEqual(blank, {
+    date: "2026-01-01",
+    sleepHours: null,
+    sessions: [],
+    sets: 0,
+    medsDue: 0,
+    medsTaken: 0,
+    medsMissed: 0,
+    proteinG: null,
+    meditationMinutes: null,
+    journaled: false,
+  });
 });

@@ -8,7 +8,7 @@
  */
 
 import type { HealthState } from "./health-model";
-import { addDays, entriesInWindow, isDue, preferredSleepEntries, todayLocal } from "./health-model";
+import { addDays, buildWorkoutSessions, entriesInWindow, isDue, preferredSleepEntries, todayLocal } from "./health-model";
 
 export type SeriesPoint = { date: string; value: number | null };
 
@@ -91,4 +91,51 @@ export function weightWeekly(state: HealthState, asOf = todayLocal(), weeks = 8)
     const latest = byDate.filter((entry) => entry.date >= from && entry.date <= date).at(-1);
     return { date, value: latest?.weightLb ?? null };
   });
+}
+
+/**
+ * One day, read across every stream — the night, the training, the doses, the
+ * plate and the practice — so a point on a tide can be opened into the day it
+ * belongs to. Nothing is inferred: absent means unrecorded.
+ */
+export type DaySlice = {
+  date: string;
+  sleepHours: number | null;
+  sessions: string[];
+  sets: number;
+  medsDue: number;
+  medsTaken: number;
+  medsMissed: number;
+  proteinG: number | null;
+  meditationMinutes: number | null;
+  journaled: boolean;
+};
+
+export function daySlice(state: HealthState, date: string): DaySlice {
+  const night = preferredSleepEntries(state.sleepEntries).find((entry) => entry.date === date);
+  const sets = state.workoutSets.filter((entry) => entry.date === date);
+  const sessions = buildWorkoutSessions(sets).map((session) => session.name);
+  const day = state.dailyEntries.find((entry) => entry.date === date);
+  let medsDue = 0;
+  let medsTaken = 0;
+  let medsMissed = 0;
+  for (const medication of state.medications) {
+    if (medication.archived || !isDue(medication, date)) continue;
+    medsDue += 1;
+    const dose = state.medicationDoses.find((entry) => entry.medicationId === medication.id && entry.date === date);
+    if (dose?.taken === true) medsTaken += 1;
+    else if (dose?.taken === false) medsMissed += 1;
+  }
+  return {
+    date,
+    sleepHours: night?.durationHours ?? null,
+    sessions,
+    sets: sets.length,
+    medsDue,
+    medsTaken,
+    medsMissed,
+    proteinG: day?.proteinG ?? null,
+    meditationMinutes: day?.meditationMinutes ?? null,
+    journaled: Boolean(day?.journaled) || state.thoughtJournal.some((entry) => entry.date === date),
+  };
 }

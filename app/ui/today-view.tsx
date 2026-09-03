@@ -16,6 +16,7 @@ import {
   proteinSummary,
 } from "../health-model";
 import { dailyBrief } from "../brief";
+import { daySlice } from "../series";
 import { buildPlan, currentBlockWeek, nextSession, sessionToText, withAddedSets, workoutWeekStreak } from "../training/coach";
 import { sleepSeries } from "./charts";
 import { Icon } from "./icons";
@@ -99,6 +100,9 @@ export function TodayView({
   });
 
   const fortnight = useMemo(() => sleepSeries(state, today, 14), [state, today]);
+  // A point on the tide opens into its day: the night, the session, the doses, the plate.
+  const [pickedDay, setPickedDay] = useState<string | null>(null);
+  const slice = useMemo(() => (pickedDay && pickedDay !== today ? daySlice(state, pickedDay) : null), [state, pickedDay, today]);
   const fortnightAverage = average(fortnight.map((point) => point.value));
   const weekDays = Array.from({ length: 7 }, (_, index) => addDays(today, index - 6));
 
@@ -142,7 +146,27 @@ export function TodayView({
             {fortnightAverage === null ? "no nights yet" : <>avg <b>{`${fortnightAverage.toFixed(1)}h`}</b></>}
           </span>
         </div>
-        <Tide data={fortnight} label="Sleep, hours a night" unit="h" goal={state.goals.sleepHours} format={(value) => value.toFixed(1)} empty="Two recorded nights draw the first tide." />
+        <Tide data={fortnight} label="Sleep, hours a night" unit="h" goal={state.goals.sleepHours} format={(value) => value.toFixed(1)} empty="Two recorded nights draw the first tide." onSelect={setPickedDay} />
+        {slice ? (
+          <p className="tl-slice" aria-live="polite">
+            <b>{dateLabel(slice.date, { weekday: "long", month: "short", day: "numeric" })}</b>
+            {" — "}
+            {[
+              slice.sleepHours === null ? "no night recorded" : `slept ${hoursLabel(slice.sleepHours)}`,
+              slice.sessions.length ? `${slice.sessions.join(" and ")} · ${slice.sets} sets` : "rest day",
+              slice.medsDue ? `${slice.medsTaken} of ${slice.medsDue} ${slice.medsDue === 1 ? "dose" : "doses"} taken${slice.medsMissed ? `, ${slice.medsMissed} missed` : ""}` : "",
+              slice.proteinG === null ? "" : `${Math.round(slice.proteinG)} g protein`,
+              slice.meditationMinutes ? `meditated ${slice.meditationMinutes} min` : "",
+              slice.journaled ? "journaled" : "",
+            ]
+              .filter(Boolean)
+              .join(", ")}
+            {". "}
+            <button type="button" className="text-button" onClick={() => open({ kind: "sleep", date: slice.date, source: nights.find((item) => item.date === slice.date)?.source })}>
+              Open the night
+            </button>
+          </p>
+        ) : null}
         <div className="tl-days" role="group" aria-label="Last seven nights">
           {weekDays.map((date) => {
             const night = nights.find((item) => item.date === date);
