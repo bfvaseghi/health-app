@@ -3012,3 +3012,10 @@ kbd {
 .plan-card, .view-fitness .plan-card { background: transparent; }
 .plan-card.is-open, .view-fitness .plan-card.is-open { background: var(--raised); }
 .tl-page .trend-head { display: none; }
+
+/* Hairline lists: a source tag after the date, a quiet lock where a row came from a device. */
+.tl-list { list-style: none; margin: 6px 0 0; padding: 0; }
+.tl-source { margin-left: 8px; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); vertical-align: 1px; }
+.tl-lock { flex: none; display: inline-flex; width: 36px; justify-content: center; color: var(--faint); }
+.tl-lock svg { width: 16px; height: 16px; }
+.tl-row .row-actions { flex: none; }

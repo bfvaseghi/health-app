@@ -6,7 +6,7 @@ import { dateLabel } from "../health-model";
 import { Icon } from "./icons";
 import { MetricPanel } from "./metric-panel";
 import { PhotoCompare } from "./photo-compare";
-import { ConfirmButton, Empty, RecordPill } from "./primitives";
+import { ConfirmButton } from "./primitives";
 import { bodyMetrics, type Modal } from "./types";
 
 const PAGE = 20;
@@ -58,70 +58,64 @@ export function BodyTab({
         />
       ) : null}
 
-      <section className="panel wide-panel">
-        <div className="panel-head">
-          <div>
-            <h2>Day records</h2>
-          </div>
+      <section className="tl-section" aria-labelledby="days-title">
+        <div className="tl-section-head">
+          <h2 className="tl-caps" id="days-title" style={{ margin: 0 }}>
+            {state.dailyEntries.length ? `Day records · ${state.dailyEntries.length.toLocaleString("en-US")}` : "Day records"}
+          </h2>
+          <button type="button" className="text-button" onClick={() => open({ kind: "checkin", date: today })}>
+            <Icon name="plus" /> Add today
+          </button>
         </div>
         {days.length ? (
           <>
-            <ul className="record-list">
-              {days.map((entry) => (
-                <li className="record-row daily-row" key={entry.date}>
-                  <div className="date-tile">
-                    <b>{dateLabel(entry.date, { weekday: "short" })}</b>
-                    <small>{dateLabel(entry.date)}</small>
-                  </div>
-                  <RecordPill label="Weight" value={entry.weightLb === null ? "—" : `${entry.weightLb.toFixed(1)} lb`} />
-                  <RecordPill label="Body fat" value={entry.bodyFatPercent === null ? "—" : `${entry.bodyFatPercent}%`} />
-                  <RecordPill label="Protein" value={entry.proteinG === null ? "—" : `${Math.round(entry.proteinG)} g`} />
-                  <RecordPill
-                    label="Steps"
-                    value={entry.steps === null ? "—" : Math.round(entry.steps).toLocaleString("en-US")}
-                  />
-                  {editableState.dailyEntries.some((item) => item.date === entry.date) ? (
-                    <div className="row-actions">
-                      <button
-                        type="button"
-                        className="row-action"
-                        onClick={() => open({ kind: "checkin", date: entry.date })}
-                        aria-label={`Edit manual values for ${dateLabel(entry.date)}`}
-                      >
-                        <Icon name="pencil" />
-                        <span>Edit</span>
-                      </button>
-                      <ConfirmButton
-                        label={`Delete the manual values for ${dateLabel(entry.date)}`}
-                        onConfirm={() => onDeleteDay(entry.date)}
-                      />
-                    </div>
-                  ) : (
-                    <span className="readonly-label"><Icon name="lock" /> Automatic</span>
-                  )}
-                </li>
-              ))}
+            <ul className="tl-rows tl-list">
+              {days.map((entry) => {
+                const facts = [
+                  entry.weightLb === null ? null : `${entry.weightLb.toFixed(1)} lb`,
+                  entry.bodyFatPercent === null ? null : `${entry.bodyFatPercent}% body fat`,
+                  entry.proteinG === null ? null : `${Math.round(entry.proteinG)} g protein`,
+                  entry.steps === null ? null : `${Math.round(entry.steps).toLocaleString("en-US")} steps`,
+                ].filter((fact): fact is string => fact !== null);
+                const editable = editableState.dailyEntries.some((item) => item.date === entry.date);
+                return (
+                  <li className="tl-row is-static" key={entry.date}>
+                    <span className="tl-row-copy">
+                      <b>{dateLabel(entry.date, { weekday: "short", month: "short", day: "numeric" })}</b>
+                      <small>{facts.length ? facts.join(" · ") : "nothing recorded"}</small>
+                    </span>
+                    {editable ? (
+                      <div className="row-actions">
+                        <button
+                          type="button"
+                          className="icon-button"
+                          onClick={() => open({ kind: "checkin", date: entry.date })}
+                          aria-label={`Edit manual values for ${dateLabel(entry.date)}`}
+                        >
+                          <Icon name="pencil" />
+                        </button>
+                        <ConfirmButton
+                          label={`Delete the manual values for ${dateLabel(entry.date)}`}
+                          onConfirm={() => onDeleteDay(entry.date)}
+                        />
+                      </div>
+                    ) : (
+                      <span className="tl-lock"><Icon name="lock" /><span className="visually-hidden">Recorded automatically</span></span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
             {state.dailyEntries.length > visible ? (
-              <div className="list-more">
-                <button type="button" className="button secondary" onClick={() => setVisible((count) => count + PAGE)}>
+              <p className="tl-line">
+                <button type="button" className="text-button" onClick={() => setVisible((count) => count + PAGE)}>
                   {`Show ${Math.min(PAGE, state.dailyEntries.length - visible)} more`}
                 </button>
-              </div>
+              </p>
             ) : null}
           </>
         ) : (
-          <Empty
-            icon="body"
-            title="No days recorded"
-            body="Import a scale or nutrition export, or add today by hand."
-            action={
-              <button type="button" className="button primary" onClick={() => open({ kind: "checkin", date: today })}>
-                <Icon name="plus" />
-                Add today
-              </button>
-            }
-          />
+          <p className="tl-line">No days recorded. Import a scale or nutrition export, or add today by hand.</p>
         )}
       </section>
     </>

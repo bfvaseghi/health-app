@@ -146,6 +146,7 @@ export function SummaryView({
       <div className="report-grid">
         {groups.map((group) => {
           const rows = report.rows.filter((row) => row.group === group);
+          if (!rows.length) return null;
           const recorded = rows.filter((row) => row.value !== "No data");
           const missing = rows.filter((row) => row.value === "No data");
           return (

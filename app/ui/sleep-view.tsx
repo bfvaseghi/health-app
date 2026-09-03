@@ -18,7 +18,7 @@ import { sleepWeeklyAverages } from "../series";
 import { sleepSeries } from "./charts";
 import { MetricPanel } from "./metric-panel";
 import { Icon } from "./icons";
-import { ConfirmButton, Empty, PeriodPicker, Segmented } from "./primitives";
+import { ConfirmButton, PeriodPicker } from "./primitives";
 import { Tide } from "./tide";
 import { average, formatTime, hoursLabel } from "./format";
 import { Modal, Period, recoveryMetrics } from "./types";
@@ -163,84 +163,74 @@ export function SleepView({
         emptyHint="No readings in this period. A ring or watch records these while you sleep."
       />
 
-      <section className="panel wide-panel">
-        <div className="panel-head wrap">
-          <div>
-            <h2>Nights</h2>
+      <section className="tl-section" aria-labelledby="nights-title">
+        <div className="tl-section-head">
+          <h2 className="tl-caps" id="nights-title" style={{ margin: 0 }}>{`Nights · ${period} days`}</h2>
+          <div className="tl-tabs" role="group" aria-label="Which records to list">
+            <button type="button" aria-pressed={scope === "preferred"} className={scope === "preferred" ? "active" : ""} onClick={() => setScope("preferred")}>
+              One per night
+            </button>
+            <button type="button" aria-pressed={scope === "all"} className={scope === "all" ? "active" : ""} onClick={() => setScope("all")}>
+              Every source
+            </button>
           </div>
-          <Segmented
-            label="Which records to list"
-            value={scope}
-            options={[
-              { value: "preferred", label: "One per night" },
-              { value: "all", label: "Every source" },
-            ]}
-            onChange={(value) => setScope(value as typeof scope)}
-          />
         </div>
         {listed.length ? (
-          <ul className="record-list">
-            {(showAllNights ? listed : listed.slice(0, 7)).map((entry) => (
-              <li className="record-row sleep-row" key={`${entry.date}:${entry.source}`}>
-                <div className="date-tile">
-                  <b>{dateLabel(entry.date, { weekday: "short" })}</b>
-                  <small>{dateLabel(entry.date)}</small>
-                </div>
-                <div>
-                  <small>Duration</small>
-                  <b>{entry.durationHours === null ? "Unknown" : hoursLabel(entry.durationHours)}</b>
-                </div>
-                <div>
-                  <small>Window</small>
-                  <b>
-                    {entry.bedtime && entry.wakeTime
-                      ? `${formatTime(entry.bedtime)} – ${formatTime(entry.wakeTime)}`
-                      : "Not provided"}
-                  </b>
-                </div>
-                <div>
-                  <small>Quality</small>
-                  <b>{entry.quality ? `${entry.quality} / 5` : "Not rated"}</b>
-                </div>
-                <span className={`source-badge ${entry.source}`}>{entry.source}</span>
-                {editableState.sleepEntries.some((item) => item.date === entry.date && item.source === entry.source) ? (
-                  <div className="row-actions">
-                    <button
-                      type="button"
-                      className="row-action"
-                      onClick={() => open({ kind: "sleep", date: entry.date, source: entry.source })}
-                      aria-label={`Edit ${entry.source} sleep for ${dateLabel(entry.date)}`}
-                    >
-                      <Icon name="pencil" />
-                      <span>Edit</span>
-                    </button>
-                    <ConfirmButton
-                      label={`Delete ${entry.source} sleep for ${dateLabel(entry.date)}`}
-                      onConfirm={() => onDelete(entry.date, entry.source)}
-                    />
-                  </div>
-                ) : (
-                  <span className="readonly-label"><Icon name="lock" /> Automatic</span>
-                )}
-              </li>
-            ))}
+          <ul className="tl-rows tl-list">
+            {(showAllNights ? listed : listed.slice(0, 7)).map((entry) => {
+              const editable = editableState.sleepEntries.some((item) => item.date === entry.date && item.source === entry.source);
+              return (
+                <li className="tl-row is-static" key={`${entry.date}:${entry.source}`}>
+                  <span className="tl-row-copy">
+                    <b>
+                      {dateLabel(entry.date, { weekday: "short", month: "short", day: "numeric" })}
+                      <span className="tl-source">{entry.source}</span>
+                    </b>
+                    <small>
+                      {entry.bedtime && entry.wakeTime ? `${formatTime(entry.bedtime)} – ${formatTime(entry.wakeTime)}` : "window not provided"}
+                      {entry.quality ? ` · ${entry.quality}/5` : ""}
+                    </small>
+                  </span>
+                  <span className="tl-row-end">{entry.durationHours === null ? "—" : hoursLabel(entry.durationHours)}</span>
+                  {editable ? (
+                    <div className="row-actions">
+                      <button
+                        type="button"
+                        className="icon-button"
+                        onClick={() => open({ kind: "sleep", date: entry.date, source: entry.source })}
+                        aria-label={`Edit ${entry.source} sleep for ${dateLabel(entry.date)}`}
+                      >
+                        <Icon name="pencil" />
+                      </button>
+                      <ConfirmButton
+                        label={`Delete ${entry.source} sleep for ${dateLabel(entry.date)}`}
+                        onConfirm={() => onDelete(entry.date, entry.source)}
+                      />
+                    </div>
+                  ) : (
+                    <span className="tl-lock"><Icon name="lock" /><span className="visually-hidden">Recorded automatically</span></span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         ) : (
-          <Empty
-            icon="moon"
-            title="No nights in this period"
-            body="Import an export from Oura, Whoop, or Apple Health, or add a night by hand."
-            action={demo ? undefined : (
-              <button type="button" className="button primary" onClick={() => open({ kind: "import" })}>
-                Import health data
-              </button>
+          <p className="tl-line">
+            {"No nights in this period. Import an export from Oura, Whoop, or Apple Health, or add a night by hand."}
+            {demo ? null : (
+              <>
+                {" "}
+                <button type="button" className="text-button" onClick={() => open({ kind: "import" })}>Import health data</button>
+              </>
             )}
-          />
+          </p>
         )}
         {listed.length > 7 ? (
-          <button type="button" className="button secondary show-more" onClick={() => setShowAllNights((value) => !value)}>
-            {showAllNights ? "Show recent 7" : `Show all ${listed.length} nights`}
-          </button>
+          <p className="tl-line">
+            <button type="button" className="text-button" onClick={() => setShowAllNights((value) => !value)}>
+              {showAllNights ? "Show recent 7" : `Show all ${listed.length} nights`}
+            </button>
+          </p>
         ) : null}
       </section>
     </div>
