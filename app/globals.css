@@ -3050,3 +3050,11 @@ kbd {
 .tl-section .raise-list, .tl-section .note-list, .tl-section .report-rows { margin-top: 6px; }
 .tl-section.report-block .report-none { margin-top: 10px; }
 @media print { .tl-section { margin-top: 18px; break-inside: avoid; } }
+
+/* Portability and the iPhone connection as sections. */
+.restore-button { position: relative; cursor: pointer; }
+.restore-button:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tl-section .restore-preview { margin-top: 16px; }
+.tl-section .sync-credentials { margin-top: 14px; }
+.tl-section .iphone-connection-guides > div { padding: 0; border: 0; background: transparent; }
+.tl-section .iphone-connection-guides h3 { font-family: var(--font-body); font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }

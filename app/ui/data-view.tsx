@@ -140,46 +140,28 @@ export function DataView({
           : `${summary.sentence}. Nothing leaves your record unless you export it.`}
       </p>
 
-      <section className="panel wide-panel portability-panel" aria-labelledby="portability-title">
-        <div className="portability-hero">
-          <div className="connection-icon">
-            <Icon name="download" />
-          </div>
-          <div>
-            <p className="kicker">No lock-in</p>
-            <h2 id="portability-title">Take everything with you</h2>
-            <p className="panel-body">
-              One archive: your restorable record, spreadsheet tables, Apple sync data, and every progress photo.
-            </p>
-          </div>
+      <section className="tl-section" aria-labelledby="portability-title">
+        <div className="tl-section-head">
+          <h2 className="tl-caps" id="portability-title" style={{ margin: 0 }}>Take everything with you</h2>
+          <span className="tl-meta">no lock-in</span>
+        </div>
+        <p className="tl-line" style={{ marginTop: 8 }}>
+          One archive: your restorable record, spreadsheet tables, Apple sync data, and every progress photo. It is built on
+          this device and not uploaded anywhere.
+        </p>
+        <div className="tl-actions">
           <button type="button" className="button primary export-everything" disabled={exporting} onClick={exportEverything}>
             <Icon name="download" />
             {exporting ? "Building archive…" : "Download all data"}
           </button>
-        </div>
-
-        <div className="portability-grid">
-          <div className="portability-item">
-            <small>Your data</small>
-            <b>JSON · CSV · photos</b>
-            <span>Readable without Baseline and restorable in one step.</span>
-          </div>
-          <div className="portability-item">
-            <small>Your app</small>
-            <b>Complete source code</b>
-            <span>Clone, fork, download, or hand it to another developer.</span>
-            <div className="inline-links">
-              <a href={SOURCE_REPOSITORY} target="_blank" rel="noreferrer">Open source</a>
-              <a href={SOURCE_ARCHIVE}>Download code</a>
-            </div>
-          </div>
-          <label className="portability-item restore-picker">
-            <small>Bring it back</small>
-            <b>Restore from archive</b>
-            <span>Choose a Baseline ZIP or legacy JSON. Nothing changes until you review it.</span>
+          <label className="button secondary restore-button">
+            <Icon name="upload" />
+            Restore from archive
             <input
               type="file"
+              className="visually-hidden"
               accept="application/zip,.zip,application/json,.json"
+              aria-label="Restore from a Baseline ZIP or legacy JSON archive"
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 event.target.value = "";
@@ -188,6 +170,30 @@ export function DataView({
             />
           </label>
         </div>
+        <ul className="tl-rows tl-list">
+          <li className="tl-row is-static">
+            <span className="tl-row-copy">
+              <b>Your data</b>
+              <small>JSON, CSV and photos, readable without Baseline and restorable in one step.</small>
+            </span>
+          </li>
+          <li className="tl-row is-static">
+            <span className="tl-row-copy">
+              <b>Your app</b>
+              <small>The complete source code, to clone, fork, download, or hand to another developer.</small>
+            </span>
+            <span className="inline-links" style={{ margin: 0, padding: 0 }}>
+              <a href={SOURCE_REPOSITORY} target="_blank" rel="noreferrer">Open source</a>
+              <a href={SOURCE_ARCHIVE}>Download code</a>
+            </span>
+          </li>
+          <li className="tl-row is-static">
+            <span className="tl-row-copy">
+              <b>Bring it back</b>
+              <small>Choose a Baseline ZIP or legacy JSON above. Nothing changes until you have reviewed what is in it.</small>
+            </span>
+          </li>
+        </ul>
 
         {pendingRestore ? (
           <section className="restore-preview" ref={restorePreviewRef} aria-live="polite">
@@ -219,9 +225,6 @@ export function DataView({
           </section>
         ) : null}
 
-        <Note icon="lock">
-          The archive contains sensitive health information. It is created on this device and is not uploaded elsewhere.
-        </Note>
       </section>
 
       <section className="tl-section" aria-labelledby="import-title">
@@ -444,25 +447,32 @@ function AppleHealthSyncPanel({
       : "Off";
 
   return (
-    <section className="panel wide-panel apple-sync-panel">
-      <div className="panel-head wrap">
-        <div>
-          <p className="kicker">Health automation · Notes share sheet</p>
-          <h2>Private iPhone connection</h2>
-          <p className="panel-body">{summary}</p>
-        </div>
+    <section className="tl-section" aria-labelledby="apple-title">
+      <div className="tl-section-head">
+        <h2 className="tl-caps" id="apple-title" style={{ margin: 0 }}>Private iPhone connection</h2>
+        <span className="tl-meta">{summary}</span>
+      </div>
+      <p className="tl-line" style={{ marginTop: 8 }}>
+        Health Auto Export and an Apple Notes shortcut write into your record through two private URLs and one shared key.
+        {demo
+          ? " This is a setup preview: open your real record to create them."
+          : status.configured
+            ? " The URLs can only write, never read. Replacing or turning off the key affects both."
+            : " Create one connection to reveal the URLs and the key."}
+      </p>
+      <div className="tl-actions">
         {demo ? (
-          <button type="button" className="button secondary small" disabled>Real record only</button>
+          <button type="button" className="button secondary" disabled>Real record only</button>
         ) : !status.configured ? (
-          <button type="button" className="button primary small" disabled={status.loading || busy} onClick={createToken}>
+          <button type="button" className="button primary" disabled={status.loading || busy} onClick={createToken}>
             {busy ? "Creating…" : "Create connection"}
           </button>
         ) : (
-          <div className="heading-actions">
+          <>
             <ConfirmButton
               label="Replace shared key"
               confirmLabel="Replace key for both"
-              className="button secondary small"
+              className="button secondary"
               icon="key"
               disabled={busy}
               onConfirm={createToken}
@@ -470,11 +480,11 @@ function AppleHealthSyncPanel({
             <ConfirmButton
               label="Turn off"
               confirmLabel="Turn off both feeds"
-              className="button secondary small"
+              className="button secondary"
               disabled={busy}
               onConfirm={revokeToken}
             />
-          </div>
+          </>
         )}
       </div>
 
@@ -501,11 +511,7 @@ function AppleHealthSyncPanel({
           </div>
         </div>
       ) : status.configured ? (
-        <p className="panel-body">The key shows only once. Need it again? Replace it, then paste the new one everywhere it is used.</p>
-      ) : null}
-
-      {!status.configured && !demo ? (
-        <p className="panel-body">Create one private connection to reveal the two URLs and shared key.</p>
+        <p className="tl-line">The key shows only once. Need it again? Replace it, then paste the new one everywhere it is used.</p>
       ) : null}
       <div className="iphone-connection-guides">
           <div>
@@ -526,9 +532,6 @@ function AppleHealthSyncPanel({
             <p className="panel-body">Then in Notes: Share → Send Copy → Send to Mind. Sending the same note twice is safely ignored.</p>
           </div>
       </div>
-      <Note icon="lock">{demo
-        ? "This is a setup preview. Open your real record to create the private URLs and key."
-        : "These URLs can only write — never read your record. One key serves both; replacing or turning it off affects both."}</Note>
     </section>
   );
 }
