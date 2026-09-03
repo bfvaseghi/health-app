@@ -3019,3 +3019,16 @@ kbd {
 .tl-lock { flex: none; display: inline-flex; width: 36px; justify-content: center; color: var(--faint); }
 .tl-lock svg { width: 16px; height: 16px; }
 .tl-row .row-actions { flex: none; }
+
+/* Journal, therapy and lab rows on the hairline grid. */
+.tl-thought-text { margin: 6px 0 0; color: var(--muted); font-size: 14px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.tl-row-copy b.tl-plain { font-weight: 500; }
+.tl-row.done .tl-row-copy b { color: var(--muted); text-decoration: line-through; }
+.tl-row .therapy-check { flex: none; }
+.tl-search { margin-top: 12px; }
+.tl-lab { padding: 12px 0; border-bottom: 1px solid var(--line); }
+.tl-lab:last-child { border-bottom: 0; }
+.tl-lab .tl-row { min-height: 0; padding: 0; border-bottom: 0; }
+.tl-lab .spark-slot { width: 64px; flex: none; }
+.tl-lab-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
+.tl-lab .lab-history { margin: 10px 0 0; }

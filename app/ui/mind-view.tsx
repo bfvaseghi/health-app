@@ -5,7 +5,7 @@ import type { DailyEntry, HealthState, TherapyNote, ThoughtJournalEntry } from "
 import { addDays, dateLabel, mindSummary } from "../health-model";
 import { meditationWeeklyMinutes } from "../series";
 import { Icon } from "./icons";
-import { ConfirmButton, Empty } from "./primitives";
+import { ConfirmButton } from "./primitives";
 import { Tide } from "./tide";
 
 /**
@@ -90,12 +90,10 @@ export function MindView({
         onNotice={onNotice}
       />
 
-      <section className="panel wide-panel mind-agenda">
-        <div className="panel-head wrap">
-          <div>
-            <h2>For therapy</h2>
-          </div>
-          <span className="panel-meta">{`${open.length} waiting`}</span>
+      <section className="tl-section" aria-labelledby="therapy-title">
+        <div className="tl-section-head">
+          <h2 className="tl-caps" id="therapy-title" style={{ margin: 0 }}>For therapy</h2>
+          <span className="tl-meta">{open.length ? `${open.length} waiting` : "nothing waiting"}</span>
         </div>
 
         <form className="note-form" onSubmit={submitNote}>
@@ -112,26 +110,24 @@ export function MindView({
         </form>
 
         {open.length ? (
-          <ul className="therapy-list">
+          <ul className="tl-rows tl-list">
             {open.map((note) => (
               <TherapyRow key={note.id} note={note} onToggle={onToggleNote} onDelete={onDeleteNote} />
             ))}
           </ul>
         ) : (
-          <Empty
-            icon="mind"
-            title="Nothing waiting"
-            body="Add a thought the day it turns up. Whatever is on this list comes out again in the appointment summary."
-          />
+          <p className="tl-line">Add a thought the day it turns up. Whatever is on this list comes out again in the appointment summary.</p>
         )}
 
         {raised.length ? (
           <>
-            <button type="button" className="text-button" onClick={() => setShowRaised((value) => !value)}>
-              {showRaised ? "Hide" : `Show ${raised.length} already raised`} <Icon name="chevron" />
-            </button>
+            <p className="tl-line">
+              <button type="button" className="text-button" onClick={() => setShowRaised((value) => !value)}>
+                {showRaised ? "Hide the raised" : `Show ${raised.length} already raised`}
+              </button>
+            </p>
             {showRaised ? (
-              <ul className="therapy-list raised">
+              <ul className="tl-rows tl-list">
                 {raised.map((note) => (
                   <TherapyRow key={note.id} note={note} onToggle={onToggleNote} onDelete={onDeleteNote} />
                 ))}
@@ -141,11 +137,10 @@ export function MindView({
         ) : null}
       </section>
 
-      <section className="panel wide-panel mind-history">
-        <div className="panel-head">
-          <div>
-            <h2>Last 14 days</h2>
-          </div>
+      <section className="tl-section" aria-label="Meditation and journaling, last fourteen days">
+        <div className="tl-section-head">
+          <span className="tl-caps">Last 14 days</span>
+          <span className="tl-meta">minutes sat · a mark under a journaled day</span>
         </div>
         <ol className="mind-strip" aria-label="Meditation and journaling, last fourteen days">
           {week.map((date) => {
@@ -169,9 +164,6 @@ export function MindView({
             );
           })}
         </ol>
-        <p className="panel-body">
-          The top number is minutes meditated; the bar underneath marks a day you journaled.
-        </p>
       </section>
 
       <p className="tl-line">
@@ -234,17 +226,15 @@ function ThoughtJournal({
 
   const shown = showAll ? entries : entries.slice(0, 4);
   return (
-    <section className="panel wide-panel thought-journal" aria-labelledby="thought-journal-title">
-      <div className="panel-head wrap">
-        <div>
-          <p className="kicker">Private reflections</p>
-          <h2 id="thought-journal-title">Thought journal</h2>
-        </div>
-        <button type="button" className="button secondary small" onClick={() => void pasteFromNotes()}>
+    <section className="tl-section" aria-labelledby="thought-journal-title">
+      <div className="tl-section-head">
+        <h2 className="tl-caps" id="thought-journal-title" style={{ margin: 0 }}>
+          {entries.length ? `Thought journal · ${entries.length}` : "Thought journal"}
+        </h2>
+        <button type="button" className="text-button" onClick={() => void pasteFromNotes()}>
           <Icon name="copy" /> Paste from Notes
         </button>
       </div>
-      <p className="panel-body">Write freely here. Nothing becomes a therapy topic unless you add it to that list yourself.</p>
       <form className="thought-form" onSubmit={submit}>
         <input
           value={title}
@@ -272,29 +262,33 @@ function ThoughtJournal({
       </form>
 
       {shown.length ? (
-        <ol className="thought-list">
+        <ol className="tl-rows tl-list">
           {shown.map((entry) => (
-            <li key={entry.id}>
-              <div className="thought-meta">
-                <span>{entry.source === "apple-notes" ? "Apple Notes" : "Baseline"}</span>
-                <time dateTime={entry.date}>{dateLabel(entry.date, { month: "short", day: "numeric", year: "numeric" })}</time>
+            <li key={entry.id} className="tl-row is-static" style={{ alignItems: "flex-start" }}>
+              <div className="tl-row-copy">
+                <b>
+                  {entry.title || dateLabel(entry.date, { weekday: "long", month: "long", day: "numeric" })}
+                  <span className="tl-source">{entry.source === "apple-notes" ? "Apple Notes" : "Baseline"}</span>
+                </b>
+                {entry.title ? <small>{dateLabel(entry.date, { month: "long", day: "numeric", year: "numeric" })}</small> : null}
+                <p className="tl-thought-text">{entry.text}</p>
               </div>
-              {entry.title ? <h3>{entry.title}</h3> : null}
-              <p>{entry.text}</p>
               <ConfirmButton label={`Delete thought from ${entry.date}`} onConfirm={() => onDelete(entry.id)} />
             </li>
           ))}
         </ol>
       ) : (
-        <Empty icon="journal" title="No thoughts yet" body="Write here or paste text you copied from Apple Notes." />
+        <p className="tl-line">No thoughts yet. Write here or paste text you copied from Apple Notes.</p>
       )}
       {entries.length > 4 ? (
-        <button type="button" className="text-button" onClick={() => setShowAll((value) => !value)}>
-          {showAll ? "Show recent" : `Show all ${entries.length}`} <Icon name="chevron" />
-        </button>
+        <p className="tl-line">
+          <button type="button" className="text-button" onClick={() => setShowAll((value) => !value)}>
+            {showAll ? "Show recent" : `Show all ${entries.length}`}
+          </button>
+        </p>
       ) : null}
-      <p className="thought-shortcut-note">
-        One-tap from Apple Notes: set up the Shortcut in Data & goals.
+      <p className="tl-line">
+        Nothing here becomes a therapy topic unless you add it to that list yourself. One tap from Apple Notes: set up the Shortcut in Data &amp; goals.
       </p>
     </section>
   );
@@ -350,7 +344,7 @@ function TherapyRow({
   onDelete: (id: string) => void;
 }) {
   return (
-    <li>
+    <li className={note.shared ? "tl-row is-static done" : "tl-row is-static"}>
       <button
         type="button"
         className={note.shared ? "therapy-check done" : "therapy-check"}
@@ -359,14 +353,14 @@ function TherapyRow({
       >
         <Icon name="check" />
       </button>
-      <div>
-        <p>{note.text}</p>
+      <span className="tl-row-copy">
+        <b className="tl-plain">{note.text}</b>
         <small>
           {note.shared && note.sharedDate
             ? `Raised ${dateLabel(note.sharedDate, { month: "short", day: "numeric" })}`
             : dateLabel(note.date, { month: "short", day: "numeric" })}
         </small>
-      </div>
+      </span>
       <ConfirmButton label={`Delete “${note.text}”`} onConfirm={() => onDelete(note.id)} />
     </li>
   );

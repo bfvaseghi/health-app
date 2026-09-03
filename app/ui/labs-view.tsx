@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { HealthState, buildLabTrends, dateLabel, filterLabTrends, labRangeStatus } from "../health-model";
 import { Sparkline } from "./charts";
 import { Icon } from "./icons";
-import { ConfirmButton, Empty } from "./primitives";
+import { ConfirmButton } from "./primitives";
 import { Modal } from "./types";
 
 export function LabsView({
@@ -58,81 +58,72 @@ export function LabsView({
               )}`}
       </p>
 
-      <section className="panel wide-panel" style={{ marginTop: 26 }}>
-        <div className="panel-head wrap">
-          <div>
-            <h2>Results</h2>
-          </div>
+      <section className="tl-section" aria-labelledby="labs-results-title">
+        <div className="tl-section-head">
+          <h2 className="tl-caps" id="labs-results-title" style={{ margin: 0 }}>Results</h2>
           {trends.length ? (
-            <div className="search-field">
-              <Icon name="search" />
-              <input
-                type="search"
-                value={query}
-                placeholder="Filter by test name"
-                aria-label="Filter lab results by test name"
-                onChange={(event) => setQuery(event.target.value)}
-              />
+            <div className="tl-tabs" role="group" aria-label="Filter lab status">
+              <button type="button" className={filter === "all" ? "active" : ""} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>
+                {`All ${trends.length}`}
+              </button>
+              <button type="button" className={filter === "flagged" ? "active" : ""} aria-pressed={filter === "flagged"} onClick={() => setFilter("flagged")}>
+                {`Flagged ${flagged.length}`}
+              </button>
             </div>
           ) : null}
         </div>
 
         {trends.length ? (
-          <div className="lab-filter-row" role="group" aria-label="Filter lab status">
-            <button type="button" className={filter === "all" ? "chip primary" : "chip"} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>All {trends.length}</button>
-            <button type="button" className={filter === "flagged" ? "chip primary" : "chip"} aria-pressed={filter === "flagged"} onClick={() => setFilter("flagged")}>Flagged {flagged.length}</button>
+          <div className="search-field tl-search">
+            <Icon name="search" />
+            <input
+              type="search"
+              value={query}
+              placeholder="Filter by test name"
+              aria-label="Filter lab results by test name"
+              onChange={(event) => setQuery(event.target.value)}
+            />
           </div>
         ) : null}
 
         {trends.length ? (
           shown.length ? (
-            <ul className="record-list">
+            <ul className="tl-list">
               {shown.map((trend) => {
                 const isOpen = expanded === trend.key;
                 const history = [...trend.results].reverse();
+                const flaggedTrend = trend.status === "low" || trend.status === "high";
+                const reference =
+                  trend.latest.referenceLow === null && trend.latest.referenceHigh === null
+                    ? "no range entered"
+                    : `ref ${trend.latest.referenceLow ?? "—"}\u2011${trend.latest.referenceHigh ?? "—"}`;
                 return (
-                  <li key={trend.key} className="lab-group">
-                    <div className="record-row lab-row">
-                      <div className="lab-name">
+                  <li key={trend.key} className="tl-lab">
+                    <div className="tl-row is-static">
+                      <span className="tl-row-copy">
                         <b>{trend.name}</b>
                         <small>
                           {trend.results.length === 1
-                            ? `Measured ${dateLabel(trend.latest.date, { month: "short", day: "numeric", year: "numeric" })}`
-                            : `${trend.results.length} results · latest ${dateLabel(trend.latest.date, {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                              })}`}
+                            ? `measured ${dateLabel(trend.latest.date, { month: "short", day: "numeric", year: "numeric" })}`
+                            : `${trend.results.length} results · latest ${dateLabel(trend.latest.date, { month: "short", day: "numeric", year: "numeric" })}`}
+                          {` · ${reference}`}
+                          {trend.change === null ? "" : ` · ${trend.change > 0 ? "+" : ""}${Number(trend.change.toFixed(2))} since last`}
                         </small>
-                      </div>
-                      <div>
-                        <small>Result</small>
-                        <b>{trend.latest.value === null ? "—" : `${trend.latest.value} ${trend.latest.unit}`}</b>
-                      </div>
-                      <div>
-                        <small>Reference</small>
-                        <b>
-                          {trend.latest.referenceLow === null && trend.latest.referenceHigh === null
-                            ? "Not entered"
-                            : `${trend.latest.referenceLow ?? "—"} – ${trend.latest.referenceHigh ?? "—"}`}
-                        </b>
-                      </div>
-                      <div>
-                        <small>Change</small>
-                        <b>
-                          {trend.change === null
-                            ? "—"
-                            : `${trend.change > 0 ? "+" : ""}${Number(trend.change.toFixed(2))} ${trend.unit}`}
-                        </b>
-                      </div>
-                      <div className="spark-slot">
+                      </span>
+                      <span className="spark-slot">
                         <Sparkline
                           values={history
                             .map((result) => result.value)
                             .filter((value): value is number => value !== null)}
                           label={`${trend.name} history`}
                         />
-                      </div>
+                      </span>
+                      <span className={flaggedTrend ? "tl-row-end down" : "tl-row-end"}>
+                        {trend.latest.value === null ? "—" : trend.latest.value}
+                        {trend.latest.value === null ? null : <small>{trend.latest.unit}</small>}
+                      </span>
+                    </div>
+                    <div className="tl-lab-foot">
                       <span className={`range-badge ${trend.status}`}>{trend.status}</span>
                       <div className="row-actions">
                         {trend.results.length > 1 ? (
@@ -140,6 +131,7 @@ export function LabsView({
                             type="button"
                             className="row-action"
                             aria-expanded={isOpen}
+                            aria-label={isOpen ? `Hide ${trend.name} history` : `Show ${trend.name} history`}
                             onClick={() => setExpanded((current) => (current === trend.key ? null : trend.key))}
                           >
                             <Icon name="history" />
@@ -222,20 +214,15 @@ export function LabsView({
               })}
             </ul>
           ) : (
-            <div className="empty-inline">
-              <p className="panel-body">{query ? `No test matches “${query}”.` : "No flagged results in this view."}</p>
+            <p className="tl-line">
+              {query ? `No test matches “${query}”. ` : "No flagged results in this view."}
               {query ? <button type="button" className="text-button" onClick={() => setQuery("")}>Clear search</button> : null}
-            </div>
+            </p>
           )
         ) : (
-          // The heading already carries "Add result", a few hundred pixels
-          // up and in a stronger style. Two buttons doing the same thing on
-          // one empty screen is not twice as helpful.
-          <Empty
-            icon="records"
-            title="No lab results yet"
-            body="Add a result with the reference range printed on the report. Ranges vary by lab, so use the one that came with your result."
-          />
+          <p className="tl-line">
+            Ranges vary by lab, so use the one that came with your result. Results stay grouped by test and unit.
+          </p>
         )}
       </section>
     </div>
