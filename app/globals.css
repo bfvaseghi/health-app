@@ -3042,3 +3042,11 @@ kbd {
 @media (max-width: 760px) {
   .mind-strip { grid-template-columns: repeat(7, 1fr); row-gap: 10px; }
 }
+
+/* Stacked row ends (a figure over its detail), and the doctor summary as sections. */
+.tl-row-end.stack { flex-direction: column; align-items: flex-end; gap: 1px; line-height: 1.25; }
+.tl-row-end.stack b { font-weight: 600; }
+.tl-section.therapy-priority, .tl-section.labs-priority { border-left: 0; }
+.tl-section .raise-list, .tl-section .note-list, .tl-section .report-rows { margin-top: 6px; }
+.tl-section.report-block .report-none { margin-top: 10px; }
+@media print { .tl-section { margin-top: 18px; break-inside: avoid; } }

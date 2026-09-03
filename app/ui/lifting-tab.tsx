@@ -11,7 +11,7 @@ import {
 } from "../health-model";
 import { Tide } from "./tide";
 import { Icon } from "./icons";
-import { ConfirmButton, Empty, Note, Segmented } from "./primitives";
+import { ConfirmButton, Note } from "./primitives";
 import type { Modal } from "./types";
 
 const VISIBLE_EXERCISES = 8;
@@ -45,19 +45,20 @@ export function LiftingTab({
 
   if (!state.workoutSets.length) {
     return (
-      <section className="panel wide-panel">
-        <Empty
-          icon="dumbbell"
-          title="No workouts yet"
-          body="Strong exports a CSV of every set you have logged. Drop it in and your history, records, and volume appear here."
-          action={demo ? undefined : (
+      <div className="tl-page">
+        <h2 className="tl-hero">No workouts yet.</h2>
+        <p className="tl-lede">
+          Strong exports a CSV of every set you have logged. Drop it in and your history, records, and volume appear here.
+        </p>
+        {demo ? null : (
+          <div className="tl-actions">
             <button type="button" className="button primary" onClick={() => open({ kind: "import" })}>
               <Icon name="upload" />
               Import a Strong export
             </button>
-          )}
-        />
-      </section>
+          </div>
+        )}
+      </div>
     );
   }
 
@@ -111,58 +112,41 @@ export function LiftingTab({
       </section>
 
       <section className="tl-section" aria-label="History">
-        <div className="panel-head wrap">
-          <div className="coach-summary">
-            <h2 className="tl-caps" style={{ margin: 0 }}>History</h2>
-            <small>{lensLine}</small>
+        <div className="tl-section-head">
+          <h2 className="tl-caps" style={{ margin: 0 }}>History</h2>
+          <div className="tl-tabs" role="group" aria-label="What to look at">
+            {([["records", "Records"], ["exercises", "Exercises"], ["sessions", "Sessions"]] as [Lens, string][]).map(([value, label]) => (
+              <button key={value} type="button" aria-pressed={lens === value} className={lens === value ? "active" : ""} onClick={() => setLens(value)}>
+                {label}
+              </button>
+            ))}
           </div>
-          <Segmented
-            label="What to look at"
-            value={lens}
-            options={[
-              { value: "records", label: "Records" },
-              { value: "exercises", label: "Exercises" },
-              { value: "sessions", label: "Sessions" },
-            ]}
-            onChange={(value) => setLens(value as Lens)}
-          />
         </div>
+        <p className="tl-line" style={{ marginTop: 8 }}>{lensLine}</p>
 
         {lens === "records" ? (
           records.length ? (
             <>
-              <ul className="record-list">
+              <ul className="tl-rows tl-list">
                 {records.map((record) => (
-                  <li className="record-row pr-row" key={record.exercise}>
-                    <div className="pr-mark">
-                      <Icon name="trophy" />
-                    </div>
-                    <div className="pr-name">
+                  <li className="tl-row is-static" key={record.exercise}>
+                    <span className="tl-row-copy">
                       <b>{record.exercise}</b>
-                      <small>{dateLabel(record.date, { weekday: "short", month: "short", day: "numeric" })}</small>
-                    </div>
-                    <div>
-                      <small>Best set</small>
+                      <small>
+                        {dateLabel(record.date, { weekday: "short", month: "short", day: "numeric" })}
+                        {record.previous === null
+                          ? ""
+                          : ` · beat ${Math.round(record.previous)}${record.bodyweight ? " reps" : " lb"}`}
+                      </small>
+                    </span>
+                    <span className="tl-row-end stack up">
                       <b>
                         {record.bodyweight
                           ? `${record.reps ?? "—"} reps`
                           : `${record.weightLb ?? "—"} lb × ${record.reps ?? "—"}`}
                       </b>
-                    </div>
-                    <div>
-                      <small>{record.bodyweight ? "Best reps" : "Est. 1RM"}</small>
-                      <b>
-                        {record.bodyweight
-                          ? `${record.reps ?? "—"}`
-                          : record.oneRepMax === null
-                            ? "—"
-                            : `${record.oneRepMax} lb`}
-                      </b>
-                    </div>
-                    <div>
-                      <small>{record.bodyweight ? "Beat" : "Beat 1RM"}</small>
-                      <b>{record.previous === null ? "—" : `${Math.round(record.previous)}${record.bodyweight ? "" : " lb"}`}</b>
-                    </div>
+                      {record.bodyweight || record.oneRepMax === null ? null : <small>{`est. 1RM ${record.oneRepMax} lb`}</small>}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -187,7 +171,7 @@ export function LiftingTab({
               </div>
             </>
           ) : (
-            <p className="panel-body">Nothing beaten in the last sixty days.</p>
+            <p className="tl-line">Nothing beaten in the last sixty days.</p>
           )
         ) : null}
 
@@ -276,43 +260,38 @@ export function LiftingTab({
               })}
             </ul>
             {summaries.length > VISIBLE_EXERCISES ? (
-              <div className="list-more">
-                <button type="button" className="button secondary" onClick={() => setShowAll((value) => !value)}>
+              <p className="tl-line">
+                <button type="button" className="text-button" onClick={() => setShowAll((value) => !value)}>
                   {showAll ? "Show fewer" : `Show all ${summaries.length}`}
                 </button>
-              </div>
+              </p>
             ) : null}
           </>
         ) : null}
 
         {lens === "sessions" ? (
-          <ul className="record-list">
-          {sessions.slice(0, 20).map((session) => (
-            <li className="record-row session-row" key={session.startedAt}>
-              <div className="date-tile">
-                <b>{dateLabel(session.date, { weekday: "short" })}</b>
-                <small>{dateLabel(session.date)}</small>
-              </div>
-              <div className="session-name">
-                <b>{session.name || "Workout"}</b>
-                <small>{session.exercises.slice(0, 3).join(", ")}{session.exercises.length > 3 ? `, +${session.exercises.length - 3}` : ""}</small>
-              </div>
-              <div>
-                <small>Sets</small>
-                <b>{session.sets}</b>
-              </div>
-              <div>
-                <small>Volume</small>
-                <b>{`${session.volumeLb.toLocaleString("en-US")} lb`}</b>
-              </div>
-              <div className="row-actions">
-                <ConfirmButton
-                  label={`Delete the session on ${dateLabel(session.date)}`}
-                  onConfirm={() => onDeleteSession(session.startedAt)}
-                />
-              </div>
-            </li>
-          ))}
+          <ul className="tl-rows tl-list">
+            {sessions.slice(0, 20).map((session) => (
+              <li className="tl-row is-static" key={session.startedAt}>
+                <span className="tl-row-copy">
+                  <b>{session.name || "Workout"}</b>
+                  <small>
+                    {dateLabel(session.date, { weekday: "short", month: "short", day: "numeric" })}
+                    {` · ${session.exercises.slice(0, 3).join(", ")}${session.exercises.length > 3 ? `, +${session.exercises.length - 3}` : ""}`}
+                  </small>
+                </span>
+                <span className="tl-row-end stack">
+                  <b>{`${session.sets} sets`}</b>
+                  <small>{`${session.volumeLb.toLocaleString("en-US")} lb`}</small>
+                </span>
+                <div className="row-actions">
+                  <ConfirmButton
+                    label={`Delete the session on ${dateLabel(session.date)}`}
+                    onConfirm={() => onDeleteSession(session.startedAt)}
+                  />
+                </div>
+              </li>
+            ))}
           </ul>
         ) : null}
       </section>

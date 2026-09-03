@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { HealthState, ReportRow, buildHealthReport, dateLabel, reportToText } from "../health-model";
 import { Icon } from "./icons";
-import { Note, Segmented } from "./primitives";
+import { Note } from "./primitives";
 import { copyText, listWords } from "./format";
 
 const groups: Array<ReportRow["group"]> = ["Sleep", "Medication", "Body", "Training", "Mind"];
@@ -56,29 +56,20 @@ export function SummaryView({
         </button>
       </div>
 
-      <section className="panel wide-panel report-header" style={{ marginTop: 26 }}>
-        <div className="panel-head wrap">
-          <div>
-            <p className="kicker">Period</p>
-            <h2>
-              {dateLabel(report.start, { month: "long", day: "numeric" })} –{" "}
-              {dateLabel(report.end, { month: "long", day: "numeric", year: "numeric" })}
-            </h2>
-          </div>
-          <div className="no-print">
-            <Segmented
-              label="Report period"
-              value={String(days)}
-              options={[
-                { value: "7", label: "7 days" },
-                { value: "30", label: "30 days" },
-                { value: "90", label: "90 days" },
-              ]}
-              onChange={(value) => setDays(Number(value))}
-            />
+      <section className="tl-section report-header" aria-labelledby="period-title">
+        <div className="tl-section-head">
+          <h2 className="tl-caps" id="period-title" style={{ margin: 0 }}>
+            {`Period · ${dateLabel(report.start, { month: "short", day: "numeric" })} – ${dateLabel(report.end, { month: "short", day: "numeric", year: "numeric" })}`}
+          </h2>
+          <div className="tl-tabs no-print" role="group" aria-label="Report period">
+            {[7, 30, 90].map((option) => (
+              <button key={option} type="button" aria-pressed={days === option} className={days === option ? "active" : ""} onClick={() => setDays(option)}>
+                {`${option} days`}
+              </button>
+            ))}
           </div>
         </div>
-        <p className="panel-body">
+        <p className="tl-line" style={{ marginTop: 8 }}>
           {`Coverage in this period: sleep ${report.coverage.sleepNights}/${report.days} nights · medication ${report.coverage.medicationDosesAnswered}/${report.coverage.medicationDosesDue} due doses answered.`}
         </p>
         <div className="report-inclusions no-print" aria-label="Choose private details to include">
@@ -88,12 +79,12 @@ export function SummaryView({
       </section>
 
       {includeTherapy && report.toRaise.length ? (
-        <section className="panel wide-panel report-priority therapy-priority">
-          <div className="panel-head">
-            <div>
-              <p className="kicker">Current concern · not limited to the selected period</p>
-              <h2>{`${report.toRaise.length} ${report.toRaise.length === 1 ? "thing" : "things"} for therapy`}</h2>
-            </div>
+        <section className="tl-section report-priority therapy-priority" aria-labelledby="raise-title">
+          <div className="tl-section-head">
+            <h2 className="tl-caps" id="raise-title" style={{ margin: 0 }}>
+              {`For therapy · ${report.toRaise.length} ${report.toRaise.length === 1 ? "thing" : "things"} waiting`}
+            </h2>
+            <span className="tl-meta">not limited to the period</span>
           </div>
           <ul className="raise-list">
             {report.toRaise.map((note) => (
@@ -106,38 +97,30 @@ export function SummaryView({
         </section>
       ) : null}
 
-      <section className="panel wide-panel report-priority labs-priority">
-        <div className="panel-head">
-          <div>
-            <p className="kicker">Current concern · not limited to the selected period</p>
-            <h2>Latest result per test, outside its range</h2>
-          </div>
+      <section className="tl-section report-priority labs-priority" aria-labelledby="flagged-title">
+        <div className="tl-section-head">
+          <h2 className="tl-caps" id="flagged-title" style={{ margin: 0 }}>Labs · latest result outside its range</h2>
+          <span className="tl-meta">not limited to the period</span>
         </div>
         {report.flaggedLabs.length ? (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th scope="col">Test</th>
-                  <th scope="col">Result</th>
-                  <th scope="col">Reference</th>
-                  <th scope="col">Date</th>
-                </tr>
-              </thead>
-              <tbody>
-                {report.flaggedLabs.map((result) => (
-                  <tr key={result.id}>
-                    <th scope="row">{result.name}</th>
-                    <td>{result.value === null ? "—" : `${result.value} ${result.unit}`}</td>
-                    <td>{`${result.referenceLow ?? "—"} – ${result.referenceHigh ?? "—"} ${result.unit}`}</td>
-                    <td>{dateLabel(result.date, { month: "short", day: "numeric", year: "numeric" })}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ul className="tl-rows tl-list">
+            {report.flaggedLabs.map((result) => (
+              <li className="tl-row is-static" key={result.id}>
+                <span className="tl-row-copy">
+                  <b>{result.name}</b>
+                  <small>
+                    {`ref ${result.referenceLow ?? "—"}\u2011${result.referenceHigh ?? "—"} ${result.unit} · ${dateLabel(result.date, { month: "short", day: "numeric", year: "numeric" })}`}
+                  </small>
+                </span>
+                <span className="tl-row-end down">
+                  {result.value === null ? "—" : result.value}
+                  {result.value === null ? null : <small>{result.unit}</small>}
+                </span>
+              </li>
+            ))}
+          </ul>
         ) : (
-          <p className="panel-body">
+          <p className="tl-line">
             The most recent result for each test sits inside the range you entered, or has no range to judge it by.
           </p>
         )}
@@ -150,12 +133,8 @@ export function SummaryView({
           const recorded = rows.filter((row) => row.value !== "No data");
           const missing = rows.filter((row) => row.value === "No data");
           return (
-            <section className="panel report-block" key={group} aria-labelledby={`report-${group.toLowerCase()}`}>
-              <div className="panel-head">
-                <div>
-                  <h2 className="kicker" id={`report-${group.toLowerCase()}`}>{group}</h2>
-                </div>
-              </div>
+            <section className="tl-section report-block" key={group} aria-labelledby={`report-${group.toLowerCase()}`}>
+              <h2 className="tl-caps" id={`report-${group.toLowerCase()}`} style={{ margin: 0 }}>{group}</h2>
               {recorded.length ? (
                 <dl className="report-rows">
                   {recorded.map((row) => (
@@ -184,12 +163,10 @@ export function SummaryView({
       </div>
 
       {report.notes.length && showNotes ? (
-        <section className="panel wide-panel report-notes">
-          <div className="panel-head wrap">
-            <div>
-              <h2>{`Notes from ${report.notes.length} ${report.notes.length === 1 ? "day" : "days"}`}</h2>
-            </div>
-            <span className="panel-meta">Included in copy and print</span>
+        <section className="tl-section report-notes" aria-labelledby="notes-title">
+          <div className="tl-section-head">
+            <h2 className="tl-caps" id="notes-title" style={{ margin: 0 }}>{`Notes from ${report.notes.length} ${report.notes.length === 1 ? "day" : "days"}`}</h2>
+            <span className="tl-meta">included in copy and print</span>
           </div>
           <ul className="note-list">
             {report.notes.map((note) => (
