@@ -5,7 +5,7 @@ import type { HealthState, Medication } from "../health-model";
 import { addDays, dateLabel, isDue, medicationStatuses } from "../health-model";
 import { adherenceSeries } from "../series";
 import { Icon } from "./icons";
-import { ConfirmButton, Empty } from "./primitives";
+import { ConfirmButton } from "./primitives";
 import { Tide } from "./tide";
 import type { Modal } from "./types";
 
@@ -69,9 +69,11 @@ export function MedsView({
     <div className="page tl-page">
       <div className="tl-section-head">
         <span className="tl-caps">Meds · today</span>
-        <button type="button" className="text-button" onClick={() => open({ kind: "medication" })}>
-          <Icon name="plus" /> Add a medication
-        </button>
+        {statuses.length ? (
+          <button type="button" className="text-button" onClick={() => open({ kind: "medication" })}>
+            <Icon name="plus" /> Add a medication
+          </button>
+        ) : null}
       </div>
       <h1 className="tl-hero" tabIndex={-1}>{headline}</h1>
       <p className="tl-lede">{lede}</p>
@@ -157,19 +159,12 @@ export function MedsView({
           </div>
         </section>
       ) : (
-        <section className="panel wide-panel" style={{ marginTop: 28 }}>
-          <Empty
-            icon="medication"
-            title="Nothing added yet"
-            body="Add what you are on and how often. Each medication is only asked about on the days it is due."
-            action={
-              <button type="button" className="button primary" onClick={() => open({ kind: "medication" })}>
-                <Icon name="plus" />
-                Add a medication
-              </button>
-            }
-          />
-        </section>
+        <div className="tl-actions">
+          <button type="button" className="button primary" onClick={() => open({ kind: "medication" })}>
+            <Icon name="plus" />
+            Add a medication
+          </button>
+        </div>
       )}
     </div>
   );

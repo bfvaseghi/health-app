@@ -52,45 +52,35 @@ export function ProgressTab({ state, today }: { state: HealthState; today: strin
 
       {progress.lifts.length ? (
         <>
-          <section className="verdict-row">
-            <Verdict
-              label="Going up"
-              value={progress.rising}
-              suffix={` of ${progress.lifts.length}`}
-              tone={progress.rising >= progress.falling ? "good" : "watch"}
-              detail={`${progress.falling} down, ${holding} holding`}
-            />
-            <Verdict
-              label="Strength"
-              value={progress.trendPercent}
-              suffix="%"
-              signed
-              tone={
-                progress.trendPercent === null || Math.abs(progress.trendPercent) < 2.5
-                  ? "flat"
-                  : progress.trendPercent > 0
-                    ? "good"
-                    : "watch"
-              }
-              detail={`typical lift, over ${progress.weeks} weeks`}
-            />
-            <Verdict
-              label="Volume"
-              value={progress.volume.change === null ? null : Math.round(progress.volume.change / 100) / 10}
-              suffix="k lb"
-              signed
-              tone="flat"
-              detail={
-                progress.volume.to === null
-                  ? "no sets logged"
-                  : `${Math.round(progress.volume.to / 100) / 10}k lb a week now`
-              }
-            />
-          </section>
+          <h2 className="tl-hero" style={{ marginTop: 14 }}>
+            {progress.rising === progress.lifts.length
+              ? "Every lift going up."
+              : progress.rising === 0
+                ? holding === progress.lifts.length
+                  ? "Holding steady."
+                  : `${progress.falling} of ${progress.lifts.length} lifts slipping.`
+                : `${progress.rising} of ${progress.lifts.length} lifts going up.`}
+          </h2>
+          <p className="tl-lede">
+            {progress.falling ? <><b>{progress.falling}</b>{` ${progress.falling === 1 ? "is" : "are"} down, `}</> : ""}
+            <b>{holding}</b>
+            {` holding · strength `}
+            <b>{progress.trendPercent === null ? "—" : `${progress.trendPercent > 0 ? "+" : ""}${progress.trendPercent}%`}</b>
+            {` for the typical lift over ${progress.weeks} weeks`}
+            {progress.volume.to === null ? "" : (
+              <>
+                {" · "}
+                <b>{`${Math.round(progress.volume.to / 100) / 10}k lb`}</b>
+                {" a week now"}
+                {progress.volume.change === null ? "" : ` (${progress.volume.change > 0 ? "+" : ""}${Math.round(progress.volume.change / 100) / 10}k)`}
+              </>
+            )}
+          </p>
 
-          <section className="panel wide-panel">
-            <div className="panel-head">
-              <h2>Every lift, session by session</h2>
+          <section className="tl-section" aria-label="Every lift, session by session">
+            <div className="tl-section-head">
+              <span className="tl-caps">Every lift · session by session</span>
+              <span className="tl-meta">{`over ${progress.weeks}w · now`}</span>
             </div>
             <div className="trend-head">
               <span />
@@ -125,34 +115,6 @@ export function ProgressTab({ state, today }: { state: HealthState; today: strin
         </section>
       )}
     </>
-  );
-}
-
-/** One headline number, with what it is and how it is doing. */
-function Verdict({
-  label,
-  value,
-  suffix,
-  detail,
-  tone,
-  signed = false,
-}: {
-  label: string;
-  value: number | null;
-  suffix: string;
-  detail: string;
-  tone: string;
-  signed?: boolean;
-}) {
-  return (
-    <article className={`verdict ${tone}`}>
-      <span className="verdict-label">{label}</span>
-      <strong>
-        {value === null ? "—" : `${signed && value > 0 ? "+" : ""}${value}`}
-        {value === null ? "" : <small>{suffix}</small>}
-      </strong>
-      <small>{detail}</small>
-    </article>
   );
 }
 

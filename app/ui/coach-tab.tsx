@@ -34,7 +34,7 @@ import { muscleLabels } from "../training/muscles";
 import { strengthIndex } from "../training/progress";
 import { Icon } from "./icons";
 import { copyText, listWords } from "./format";
-import { ConfirmButton, Empty, Fold } from "./primitives";
+import { ConfirmButton, Fold } from "./primitives";
 import { Tide } from "./tide";
 import type { Modal } from "./types";
 
@@ -90,19 +90,20 @@ export function CoachTab({
 
   if (state.workoutSets.length < 10) {
     return (
-      <section className="panel wide-panel">
-        <Empty
-          icon="dumbbell"
-          title="Nothing to build from yet"
-          body="Import a Strong export and this writes the block."
-          action={demo ? undefined : (
+      <div className="tl-page">
+        <h2 className="tl-hero">Nothing to build from yet.</h2>
+        <p className="tl-lede">
+          The coach writes a four-week block from your own lifts. Ten logged sets are enough to start; a Strong export brings them in at once.
+        </p>
+        {demo ? null : (
+          <div className="tl-actions">
             <button type="button" className="button primary" onClick={() => open({ kind: "import" })}>
               <Icon name="upload" />
-              Import
+              Import from Strong
             </button>
-          )}
-        />
-      </section>
+          </div>
+        )}
+      </div>
     );
   }
 

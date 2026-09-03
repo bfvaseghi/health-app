@@ -17,8 +17,9 @@ import {
   restoreArchivePhotos,
 } from "../portability";
 import { Icon } from "./icons";
-import { ConfirmButton, Note, NumberSetting, PageHeading, SelectSetting, Segmented } from "./primitives";
+import { ConfirmButton, Note, NumberSetting, SelectSetting, Segmented } from "./primitives";
 import { downloadBlob, formatBytes, formatTimestamp } from "./format";
+import { recordSummary } from "./record-summary";
 import { Modal, Theme } from "./types";
 
 type Snapshot = { id: number; createdAt: string; bytes: number };
@@ -125,11 +126,19 @@ export function DataView({
     }
   }
 
+  const summary = recordSummary(state);
+
   return (
-    <div className="page">
-      <PageHeading
-        title="Data & goals"
-      />
+    <div className="page tl-page">
+      <span className="tl-caps">Data &amp; goals</span>
+      <h1 className="tl-hero" tabIndex={-1}>
+        {summary.total === 0 ? "Nothing here yet." : "Yours to keep."}
+      </h1>
+      <p className="tl-lede">
+        {summary.total === 0
+          ? "Nothing is stored until you log something or bring a record in. Everything you add stays in your own record, and you can take all of it with you."
+          : `${summary.sentence}. Nothing leaves your record unless you export it.`}
+      </p>
 
       <section className="panel wide-panel portability-panel" aria-labelledby="portability-title">
         <div className="portability-hero">
