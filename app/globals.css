@@ -3032,3 +3032,13 @@ kbd {
 .tl-lab .spark-slot { width: 64px; flex: none; }
 .tl-lab-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
 .tl-lab .lab-history { margin: 10px 0 0; }
+
+.tl-lab-history { margin: 6px 0 0 14px; padding-left: 12px; border-left: 2px solid var(--line); }
+.tl-lab-history .tl-row { min-height: 48px; padding: 8px 0; }
+.tl-section .settings-grid { margin-top: 6px; }
+.tl-section .heading-actions { display: flex; align-items: center; gap: 8px; width: auto; flex: 0 0 auto; }
+.tl-section-head { flex-wrap: wrap; }
+/* Fourteen days on a phone: two weeks, one above the other, every day visible. */
+@media (max-width: 760px) {
+  .mind-strip { grid-template-columns: repeat(7, 1fr); row-gap: 10px; }
+}

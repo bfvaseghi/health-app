@@ -155,59 +155,42 @@ export function LabsView({
                     </div>
 
                     {isOpen ? (
-                      <div className="table-wrap lab-history">
-                        <table>
-                          <caption>{`${trend.name} history`}</caption>
-                          <thead>
-                            <tr>
-                              <th scope="col">Date</th>
-                              <th scope="col">Result</th>
-                              <th scope="col">Reference</th>
-                              <th scope="col">Status</th>
-                              <th scope="col">
-                                <span className="visually-hidden">Actions</span>
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {trend.results.map((result) => (
-                              <tr key={result.id}>
-                                <th scope="row">
-                                  {dateLabel(result.date, { month: "short", day: "numeric", year: "numeric" })}
-                                </th>
-                                <td>{result.value === null ? "—" : `${result.value} ${result.unit}`}</td>
-                                <td>
+                      <ul className="tl-rows tl-list tl-lab-history" aria-label={`${trend.name} history`}>
+                        {trend.results.map((result) => {
+                          const status = labRangeStatus(result);
+                          return (
+                            <li key={result.id} className="tl-row is-static">
+                              <span className="tl-row-copy">
+                                <b className="tl-plain">{dateLabel(result.date, { month: "short", day: "numeric", year: "numeric" })}</b>
+                                <small>
                                   {result.referenceLow === null && result.referenceHigh === null
-                                    ? "Not entered"
-                                    : `${result.referenceLow ?? "—"} – ${result.referenceHigh ?? "—"}`}
-                                </td>
-                                <td>
-                                  <span className={`range-badge ${labRangeStatus(result)}`}>
-                                    {labRangeStatus(result)}
-                                  </span>
-                                </td>
-                                <td>
-                                  <div className="row-actions">
-                                    <button
-                                      type="button"
-                                      className="row-action"
-                                      onClick={() => open({ kind: "lab", id: result.id })}
-                                      aria-label={`Edit ${trend.name} from ${result.date}`}
-                                    >
-                                      <Icon name="pencil" />
-                                      <span>Edit</span>
-                                    </button>
-                                    <ConfirmButton
-                                      label={`Delete ${trend.name} from ${result.date}`}
-                                      onConfirm={() => onDeleteLab(result.id)}
-                                    />
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                                    ? "no range entered"
+                                    : `ref ${result.referenceLow ?? "—"}\u2011${result.referenceHigh ?? "—"}`}
+                                  {` · ${status}`}
+                                </small>
+                              </span>
+                              <span className={status === "low" || status === "high" ? "tl-row-end down" : "tl-row-end"}>
+                                {result.value === null ? "—" : result.value}
+                                {result.value === null ? null : <small>{result.unit}</small>}
+                              </span>
+                              <div className="row-actions">
+                                <button
+                                  type="button"
+                                  className="icon-button"
+                                  onClick={() => open({ kind: "lab", id: result.id })}
+                                  aria-label={`Edit ${trend.name} from ${result.date}`}
+                                >
+                                  <Icon name="pencil" />
+                                </button>
+                                <ConfirmButton
+                                  label={`Delete ${trend.name} from ${result.date}`}
+                                  onConfirm={() => onDeleteLab(result.id)}
+                                />
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
                     ) : null}
                   </li>
                 );

@@ -17,7 +17,7 @@ import {
   restoreArchivePhotos,
 } from "../portability";
 import { Icon } from "./icons";
-import { ConfirmButton, Note, NumberSetting, SelectSetting, Segmented } from "./primitives";
+import { ConfirmButton, Note, NumberSetting, SelectSetting } from "./primitives";
 import { downloadBlob, formatBytes, formatTimestamp } from "./format";
 import { recordSummary } from "./record-summary";
 import { Modal, Theme } from "./types";
@@ -224,23 +224,19 @@ export function DataView({
         </Note>
       </section>
 
-      <section className="panel wide-panel import-panel">
-        <div className="connection-icon">
-          <Icon name="upload" />
+      <section className="tl-section" aria-labelledby="import-title">
+        <div className="tl-section-head">
+          <h2 className="tl-caps" id="import-title" style={{ margin: 0 }}>Import · Oura · Whoop · Apple Health · Strong</h2>
         </div>
-        <div>
-          <p className="kicker">Oura · Whoop · Apple Health</p>
-          <h2>Import</h2>
-          <p>
-            Drop the export your app already makes — a Whoop or Apple zip, an Oura CSV, or any table with a date
-            column. Columns are matched for you, and you see what will land before anything is saved.
-          </p>
-          <div className="connection-actions">
-            <button type="button" className="button primary" onClick={() => open({ kind: "import" })}>
-              <Icon name="upload" />
-              Import health data
-            </button>
-          </div>
+        <p className="tl-line" style={{ marginTop: 10 }}>
+          Drop the export your app already makes — a Whoop or Apple zip, an Oura CSV, a Strong export, or any table with a date
+          column. Columns are matched for you, and you see what will land before anything is saved.
+        </p>
+        <div className="tl-actions">
+          <button type="button" className="button primary" onClick={() => open({ kind: "import" })}>
+            <Icon name="upload" />
+            Import health data
+          </button>
         </div>
       </section>
 
@@ -250,58 +246,53 @@ export function DataView({
       {/* Keyed so a restored backup or a sync from another device replaces the draft outright. */}
       <GoalsPanel key={JSON.stringify(state.goals)} goals={state.goals} onGoals={onGoals} />
 
-      <section className="panel wide-panel">
-        <div className="panel-head wrap">
-          <div>
-            <p className="kicker">Appearance</p>
-            <h2>Theme</h2>
+      <section className="tl-section" aria-labelledby="theme-title">
+        <div className="tl-section-head">
+          <h2 className="tl-caps" id="theme-title" style={{ margin: 0 }}>Appearance</h2>
+          <div className="tl-tabs" role="group" aria-label="Theme">
+            {(["system", "light", "dark"] as Theme[]).map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={theme === option}
+                className={theme === option ? "active" : ""}
+                onClick={() => onTheme(option)}
+              >
+                {option === "system" ? "System" : option === "light" ? "Light" : "Dark"}
+              </button>
+            ))}
           </div>
-          <Segmented
-            label="Theme"
-            value={theme}
-            options={[
-              { value: "system", label: "System" },
-              { value: "light", label: "Light" },
-              { value: "dark", label: "Dark" },
-            ]}
-            onChange={(value) => onTheme(value as Theme)}
-          />
         </div>
-        <button type="button" className="text-button" onClick={() => open({ kind: "shortcuts" })}>
-          <Icon name="keyboard" />
-          Keyboard shortcuts
-        </button>
+        <p className="tl-line">
+          <button type="button" className="text-button" onClick={() => open({ kind: "shortcuts" })}>
+            <Icon name="keyboard" />
+            Keyboard shortcuts
+          </button>
+        </p>
       </section>
 
-      {!demo ? <section className="panel wide-panel">
-        <div className="panel-head wrap">
-          <div>
-            <p className="kicker">Server history</p>
-            <h2>Recover an earlier save</h2>
-          </div>
-          <button type="button" className="button secondary small" onClick={loadSnapshots}>
+      {!demo ? <section className="tl-section" aria-labelledby="snapshots-title">
+        <div className="tl-section-head">
+          <h2 className="tl-caps" id="snapshots-title" style={{ margin: 0 }}>Recover an earlier save</h2>
+          <button type="button" className="text-button" onClick={loadSnapshots}>
             <Icon name="history" />
             {snapshots.status === "loading" ? "Looking…" : "Find snapshots"}
           </button>
         </div>
-        <p className="panel-body">
+        <p className="tl-line" style={{ marginTop: 10 }}>
           Each save keeps the version it replaced, up to the last 30. Restoring is itself a save, so the current
           version is kept too.
         </p>
-        {snapshots.status === "error" ? <p className="panel-body error">{snapshots.message}</p> : null}
+        {snapshots.status === "error" ? <p className="tl-line" role="alert">{snapshots.message}</p> : null}
         {snapshots.status === "ready" ? (
           snapshots.items.length ? (
-            <ul className="record-list">
+            <ul className="tl-rows tl-list">
               {snapshots.items.map((snapshot) => (
-                <li className="record-row snapshot-row" key={snapshot.id}>
-                  <div>
-                    <small>Saved</small>
-                    <b>{formatTimestamp(snapshot.createdAt)}</b>
-                  </div>
-                  <div>
-                    <small>Size</small>
-                    <b>{formatBytes(snapshot.bytes)}</b>
-                  </div>
+                <li className="tl-row is-static" key={snapshot.id}>
+                  <span className="tl-row-copy">
+                    <b className="tl-plain">{formatTimestamp(snapshot.createdAt)}</b>
+                    <small>{formatBytes(snapshot.bytes)}</small>
+                  </span>
                   <div className="row-actions">
                     <ConfirmButton
                       label="Restore this version"
@@ -315,20 +306,17 @@ export function DataView({
               ))}
             </ul>
           ) : (
-            <p className="panel-body">No earlier versions are stored yet.</p>
+            <p className="tl-line">No earlier versions are stored yet.</p>
           )
         ) : null}
       </section> : null}
 
-      {!demo ? <section className="panel wide-panel danger-panel">
-        <div className="panel-head wrap">
-          <div>
-            <p className="kicker">Start over</p>
-            <h2>Erase every record</h2>
-          </div>
+      {!demo ? <section className="tl-section" aria-labelledby="erase-title">
+        <div className="tl-section-head">
+          <h2 className="tl-caps" id="erase-title" style={{ margin: 0 }}>Start over</h2>
           <ConfirmButton label="Erase all data" confirmLabel="Erase everything" className="button danger" onConfirm={onErase} />
         </div>
-        <p className="panel-body">
+        <p className="tl-line" style={{ marginTop: 10 }}>
           Clears every record, photo, snapshot, and sync connection. Goals stay. There is no undo — download a backup
           first.
         </p>
@@ -553,11 +541,9 @@ function GoalsPanel({ goals, onGoals }: { goals: GoalSettings; onGoals: (goals: 
     setDraft((current) => ({ ...current, [key]: value }));
 
   return (
-    <section className="panel wide-panel">
-      <div className="panel-head wrap">
-        <div>
-          <h2>Goals</h2>
-        </div>
+    <section className="tl-section" aria-labelledby="goals-title">
+      <div className="tl-section-head">
+        <h2 className="tl-caps" id="goals-title" style={{ margin: 0 }}>Goals</h2>
         <div className="heading-actions">
           {dirty ? (
             <>
