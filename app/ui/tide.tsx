@@ -1,8 +1,9 @@
 "use client";
 
-import { KeyboardEvent, MouseEvent, useId, useState } from "react";
+import { KeyboardEvent, MouseEvent, useId, useRef, useState } from "react";
 import { dateLabel } from "../health-model";
 import type { DataPoint } from "./charts";
+import { useWidth } from "./use-width";
 
 /**
  * The tide: Baseline's one signature graphic.
@@ -45,14 +46,17 @@ export function Tide({
   dateFormat?: Intl.DateTimeFormatOptions;
 }) {
   const gradientId = useId().replace(/:/g, "");
+  const figureRef = useRef<HTMLElement>(null);
+  // Drawn at the width it is shown at, so labels are the same size on a phone
+  // and a desktop; the tide grows a little taller as it grows wider.
+  const width = useWidth(figureRef, 353);
   const points = data.filter((point): point is DataPoint & { value: number } => point.value !== null);
   const [picked, setPicked] = useState<string | null>(null);
   if (points.length < 2) {
     return <p className="tide-empty">{empty}</p>;
   }
 
-  const width = 353;
-  const height = 104;
+  const height = Math.round(Math.min(150, Math.max(104, width * 0.28)));
   const pad = { l: 2, r: 52, t: 16, b: 14 };
   const values = points.map((point) => point.value);
   const spread = Math.max(...values) - Math.min(...values) || 1;
@@ -114,6 +118,7 @@ export function Tide({
 
   return (
     <figure
+      ref={figureRef}
       className="tide"
       tabIndex={0}
       role="group"

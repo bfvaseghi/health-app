@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef } from "react";
 import {
   HealthState,
   SleepSource,
@@ -20,6 +20,7 @@ import { MetricPanel } from "./metric-panel";
 import { Icon } from "./icons";
 import { ConfirmButton, PeriodPicker } from "./primitives";
 import { Tide } from "./tide";
+import { useWidth } from "./use-width";
 import { average, formatTime, hoursLabel } from "./format";
 import { Modal, Period, recoveryMetrics } from "./types";
 
@@ -262,7 +263,8 @@ function Duration({ hours }: { hours: number }) {
  * "when do I actually sleep?" without a number to interpret.
  */
 function NightBand({ bedtime, wake, lastNight }: { bedtime: string; wake: string; lastNight: { bedtime: string; wakeTime: string } | null }) {
-  const width = 353;
+  const ref = useRef<SVGSVGElement>(null);
+  const width = useWidth(ref, 353);
   const startHour = 20;
   const span = 14;
   // Positions on the night clock: 20:00 is the left edge, 10:00 the next morning the right.
@@ -282,7 +284,7 @@ function NightBand({ bedtime, wake, lastNight }: { bedtime: string; wake: string
   const lw = at(lastNight?.wakeTime ?? null);
   if (b === null || w === null) return null;
   return (
-    <svg className="tl-band" viewBox={`0 0 ${width} 58`} role="img" aria-label={`Usually in bed ${formatClock(bedtime)}, up ${formatClock(wake)}`}>
+    <svg ref={ref} className="tl-band" viewBox={`0 0 ${width} 58`} role="img" aria-label={`Usually in bed ${formatClock(bedtime)}, up ${formatClock(wake)}`}>
       <line className="axis" x1="0" y1="30" x2={width} y2="30" />
       <rect className="window" x={Math.min(b, w)} y="20" width={Math.max(6, Math.abs(w - b))} height="20" rx="10" />
       {lb !== null && lw !== null ? <rect className="night" x={Math.min(lb, lw)} y="26" width={Math.max(4, Math.abs(lw - lb))} height="8" rx="4" /> : null}

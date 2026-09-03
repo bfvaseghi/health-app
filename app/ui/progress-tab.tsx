@@ -28,7 +28,7 @@ export function ProgressTab({ state, today }: { state: HealthState; today: strin
   return (
     <>
       <div className="progress-head">
-        <div className="range-picker" role="group" aria-label="Period">
+        <div className="tl-tabs" role="group" aria-label="Period">
           {WINDOWS.map((value) => (
             <button
               key={value}

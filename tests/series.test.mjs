@@ -4,7 +4,7 @@ import test from "node:test";
 import { dailyBrief } from "../app/brief.ts";
 import { demoHealthState } from "../app/demo-state.ts";
 import { emptyHealthState } from "../app/health-model.ts";
-import { adherenceSeries, daySlice, meditationWeeklyMinutes, sleepWeeklyAverages, weightWeekly } from "../app/series.ts";
+import { adherenceSeries, daySlice, meditationWeeklyMinutes, sleepWeeklyAverages, weeklyMovement, weightWeekly } from "../app/series.ts";
 import { strengthIndex } from "../app/training/progress.ts";
 
 const AS_OF = "2026-08-25";
@@ -119,4 +119,27 @@ test("a day slice reads one date across every stream without inventing", () => {
     meditationMinutes: null,
     journaled: false,
   });
+});
+
+test("the weekly movement names one stream, or nothing when nothing cleared its floor", () => {
+  const state = demoHealthState(AS_OF);
+  const moved = weeklyMovement(state, AS_OF);
+  if (moved) {
+    assert.ok(["sleep", "weight", "steps", "protein", "resting heart rate", "meditation"].includes(moved.metric));
+    assert.match(moved.sentence, /(up|down) .* on last week\.$/);
+  }
+  assert.equal(weeklyMovement(emptyHealthState(), AS_OF), null);
+
+  // Seven full nights after seven short ones: sleep moves, and says by how much.
+  const shifted = emptyHealthState();
+  for (let back = 0; back < 14; back += 1) {
+    const date = new Date(`${AS_OF}T12:00:00`);
+    date.setDate(date.getDate() - back);
+    const iso = date.toISOString().slice(0, 10);
+    shifted.sleepEntries.push({ id: `n${back}`, date: iso, source: "manual", durationHours: back < 7 ? 8 : 7, bedtime: null, wakeTime: null, quality: null, restingHeartRate: null, hrvMs: null, notes: "" });
+  }
+  const sleep = weeklyMovement(shifted, AS_OF);
+  assert.equal(sleep?.metric, "sleep");
+  assert.equal(sleep?.direction, "up");
+  assert.equal(sleep?.sentence, "Sleep is up 60 min a night on last week.");
 });

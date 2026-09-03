@@ -139,3 +139,59 @@ export function daySlice(state: HealthState, date: string): DaySlice {
     journaled: Boolean(day?.journaled) || state.thoughtJournal.some((entry) => entry.date === date),
   };
 }
+
+/**
+ * The one thing that moved most this week: each stream's last seven days set
+ * against the seven before, and the largest change that clears a floor of
+ * noise is the answer. Nothing crossing its floor returns null, which the page
+ * says plainly rather than inventing a trend.
+ */
+export type Movement = { metric: string; direction: "up" | "down"; sentence: string; ratio: number };
+
+export function weeklyMovement(state: HealthState, asOf = todayLocal()): Movement | null {
+  const week = (from: number, to: number) => {
+    const dates: string[] = [];
+    for (let back = from; back < to; back += 1) dates.push(addDays(asOf, -back));
+    return dates;
+  };
+  const thisWeek = new Set(week(0, 7));
+  const lastWeek = new Set(week(7, 14));
+  const nights = preferredSleepEntries(state.sleepEntries);
+  const days = state.dailyEntries;
+  const pick = <T extends { date: string }>(rows: T[], set: Set<string>, value: (row: T) => number | null) =>
+    rows.filter((row) => set.has(row.date)).map(value).filter((v): v is number => v !== null && Number.isFinite(v));
+  const compare = (
+    metric: string,
+    now: number[],
+    before: number[],
+    floor: number,
+    phrase: (delta: number, direction: "up" | "down") => string,
+    reduce: (values: number[]) => number | null = mean,
+  ): Movement | null => {
+    if (now.length < 3 || before.length < 3) return null;
+    const a = reduce(now);
+    const b = reduce(before);
+    if (a === null || b === null || b === 0) return null;
+    const delta = a - b;
+    if (Math.abs(delta) < floor) return null;
+    const direction: "up" | "down" = delta > 0 ? "up" : "down";
+    return { metric, direction, ratio: Math.abs(delta) / Math.abs(b), sentence: phrase(delta, direction) };
+  };
+  const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
+  const candidates = [
+    compare("sleep", pick(nights, thisWeek, (n) => n.durationHours), pick(nights, lastWeek, (n) => n.durationHours), 10 / 60,
+      (delta, direction) => `Sleep is ${direction} ${Math.round(Math.abs(delta) * 60)} min a night on last week.`),
+    compare("weight", pick(days, thisWeek, (d) => d.weightLb), pick(days, lastWeek, (d) => d.weightLb), 0.5,
+      (delta, direction) => `Weight is ${direction} ${Math.abs(delta).toFixed(1)} lb on last week.`),
+    compare("steps", pick(days, thisWeek, (d) => d.steps), pick(days, lastWeek, (d) => d.steps), 750,
+      (delta, direction) => `Steps are ${direction} ${Math.round(Math.abs(delta)).toLocaleString("en-US")} a day on last week.`),
+    compare("protein", pick(days, thisWeek, (d) => d.proteinG), pick(days, lastWeek, (d) => d.proteinG), 10,
+      (delta, direction) => `Protein is ${direction} ${Math.round(Math.abs(delta))} g a day on last week.`),
+    compare("resting heart rate", pick(nights, thisWeek, (n) => n.restingHeartRate), pick(nights, lastWeek, (n) => n.restingHeartRate), 2,
+      (delta, direction) => `Resting heart rate is ${direction} ${Math.round(Math.abs(delta))} bpm on last week.`),
+    compare("meditation", pick(days, thisWeek, (d) => d.meditationMinutes ?? 0), pick(days, lastWeek, (d) => d.meditationMinutes ?? 0), 10,
+      (delta, direction) => `Meditation is ${direction} ${Math.round(Math.abs(delta))} minutes on last week.`, sum),
+  ].filter((movement): movement is Movement => movement !== null);
+  if (!candidates.length) return null;
+  return candidates.sort((a, b) => b.ratio - a.ratio)[0];
+}

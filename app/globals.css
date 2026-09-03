@@ -3058,3 +3058,9 @@ kbd {
 .tl-section .sync-credentials { margin-top: 14px; }
 .tl-section .iphone-connection-guides > div { padding: 0; border: 0; background: transparent; }
 .tl-section .iphone-connection-guides h3 { font-family: var(--font-body); font-size: 11px; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); }
+
+/* Desktop: answer buttons and forms stop at a hand's width. */
+@media (min-width: 761px) {
+  .med-answer { max-width: 420px; }
+  .note-form { max-width: 640px; }
+}

@@ -16,7 +16,7 @@ import {
   proteinSummary,
 } from "../health-model";
 import { dailyBrief } from "../brief";
-import { daySlice } from "../series";
+import { daySlice, weeklyMovement } from "../series";
 import { buildPlan, currentBlockWeek, nextSession, sessionToText, withAddedSets, workoutWeekStreak } from "../training/coach";
 import { sleepSeries } from "./charts";
 import { Icon } from "./icons";
@@ -494,6 +494,7 @@ function ThisWeek({ state, today, go }: { state: HealthState; today: string; go:
   const workouts = buildWorkoutSessions(state.workoutSets.filter((set) => set.date > addDays(today, -7) && set.date <= today)).length;
   const protein = proteinSummary(state, today, 7);
   const mind = mindSummary(state, today, 7);
+  const moved = weeklyMovement(state, today);
 
   const link = (view: View, text: string) => (
     <button type="button" className="text-button" onClick={() => go(view)}>
@@ -514,6 +515,7 @@ function ThisWeek({ state, today, go }: { state: HealthState; today: string; go:
       {", "}
       {link("mind", mind.journalDays ? `journaled ${mind.journalDays} ${mind.journalDays === 1 ? "day" : "days"}` : "journal not yet written")}
       {"."}
+      {moved ? <> {" "}<b>{moved.sentence}</b></> : sleepHours !== null || workouts ? " Nothing moved much on last week." : ""}
     </p>
   );
 }
