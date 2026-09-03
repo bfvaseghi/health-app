@@ -489,6 +489,7 @@ export function LabModal({
       referenceLow: number(data.get("low")),
       referenceHigh: number(data.get("high")),
       note: String(data.get("note") ?? ""),
+      ask: data.get("ask") === "on",
     };
     const issue = validateLabResult(result);
     if (issue) {
@@ -538,6 +539,10 @@ export function LabModal({
           <Field name="high" label="Reference high" step="any" value={existing?.referenceHigh} />
         </div>
         <TextAreaField name="note" label="Optional note" value={existing?.note} />
+        <label className="check-row">
+          <input type="checkbox" name="ask" defaultChecked={existing?.ask ?? false} />
+          <span>Ask my doctor about this, whatever the range says</span>
+        </label>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
         <div className="modal-actions">
           {existing ? (

@@ -31,6 +31,7 @@ import {
   todayLocal,
   upsertDailyEntry,
   upsertLabResult,
+  setLabAsk,
   upsertProgressPhoto,
   upsertSleepEntry,
   upsertTherapyNote,
@@ -450,6 +451,7 @@ export default function Home() {
     });
   const saveSleep = (entry: SleepEntry) => updateState((current) => upsertSleepEntry(current, entry));
   const saveLab = (result: LabResult) => updateState((current) => upsertLabResult(current, result));
+  const askLab = (id: string, ask: boolean) => updateState((current) => setLabAsk(current, id, ask));
   // Takes either the goals to write or a function of the ones on record. The
   // set steppers on the Coach tab fire faster than React re-renders, and three
   // presses built from one captured copy of the goals are two presses lost.
@@ -803,7 +805,7 @@ export default function Home() {
             onDeleteMedication={deleteMedication}
           />
         )}
-        {view === "labs" && <LabsView state={visibleState} open={openModal} onDeleteLab={deleteLab} />}
+        {view === "labs" && <LabsView state={visibleState} open={openModal} onDeleteLab={deleteLab} onAskLab={askLab} />}
         {view === "summary" && <SummaryView state={visibleState} today={today} onNotice={notice} />}
         {view === "more" && <MoreView go={go} />}
         {view === "data" && (

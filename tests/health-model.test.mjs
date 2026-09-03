@@ -3,55 +3,57 @@ import test from "node:test";
 
 import {
   addDays,
+  averageBedtime,
+  averageWakeTime,
   bedtimeMinutes,
+  buildHealthReport,
+  buildLabTrends,
   compareDailyMetric,
+  dailyEntriesCsv,
   dateLabel,
   daysBetween,
+  dueToday,
   emptyHealthState,
-  findRetiredFields,
   entriesInWindow,
+  estimateSleepHours,
+  filterLabTrends,
+  findRetiredFields,
+  isDue,
+  labAskReason,
   labRangeStatus,
+  labResultsCsv,
+  loggingCoverage,
+  medicationAdherence,
+  medicationDosesCsv,
+  medicationStatus,
+  medicationStatuses,
   mergeRecords,
+  mindSummary,
   normalizeDailyEntry,
   normalizeGoals,
   normalizeHealthState,
   normalizeLabResult,
   normalizeSleepEntry,
+  normalizeThoughtJournalEntry,
   normalizeWorkoutSet,
   preferredSleepEntries,
-  sleepConsistencyRange,
-  upsertDailyEntry,
-  upsertLabResult,
-  upsertSleepEntry,
-  validIsoDate,
-  averageBedtime,
-  averageWakeTime,
-  buildHealthReport,
-  buildLabTrends,
-  dailyEntriesCsv,
-  estimateSleepHours,
-  filterLabTrends,
-  labResultsCsv,
-  loggingCoverage,
+  recordDose,
   removeDailyEntry,
   removeLabResult,
+  removeMedication,
   removeSleepEntry,
   reportToText,
+  setLabAsk,
+  sleepConsistencyRange,
   sleepDebtHours,
   sleepEntriesCsv,
-  medicationAdherence,
-  isDue,
-  medicationStatus,
-  medicationStatuses,
-  dueToday,
-  recordDose,
-  upsertMedication,
-  removeMedication,
-  medicationDosesCsv,
-  mindSummary,
-  normalizeThoughtJournalEntry,
   thoughtJournalCsv,
+  upsertDailyEntry,
+  upsertLabResult,
+  upsertMedication,
+  upsertSleepEntry,
   upsertThoughtJournalEntry,
+  validIsoDate,
 } from "../app/health-model.ts";
 import { createBaselineArchive, parseBackupFile } from "../app/portability.ts";
 import { parseThoughtJournalShortcut, thoughtJournalFingerprint } from "../app/thought-journal.ts";
@@ -1011,4 +1013,25 @@ test("a superset marker is not part of the lift's name", () => {
 
   // A name that is nothing but the marker is not a lift.
   assert.equal(normalizeWorkoutSet({ date: "2030-01-15", exercise: "*", setNumber: 1 }), null);
+});
+
+test("a result marked to ask about joins the doctor list even inside its range", () => {
+  const within = { id: "vit-d", name: "Vitamin D", date: "2030-01-10", value: 45, unit: "ng/mL", referenceLow: 30, referenceHigh: 100, note: "" };
+  assert.equal(normalizeLabResult(within).ask, false, "old records default to unmarked");
+  assert.equal(normalizeLabResult({ ...within, ask: "yes" }).ask, false, "only a real true marks it");
+
+  let state = upsertLabResult(emptyHealthState(), within);
+  assert.deepEqual(buildHealthReport(state, "2030-01-15", 7).flaggedLabs, []);
+  assert.equal(labAskReason(buildLabTrends(state.labResults)[0]), null);
+
+  state = setLabAsk(state, "vit-d", true);
+  assert.equal(state.labResults[0].ask, true);
+  assert.equal(labAskReason(buildLabTrends(state.labResults)[0]), "flagged by you");
+  const report = buildHealthReport(state, "2030-01-15", 7);
+  assert.deepEqual(report.flaggedLabs.map((result) => result.id), ["vit-d"]);
+  assert.match(reportToText(report), /Vitamin D 45 ng\/mL on 2030-01-10 \(range 30 to 100; marked to ask about\)/);
+
+  assert.equal(setLabAsk(state, "missing", true), state, "an unknown id changes nothing");
+  state = setLabAsk(state, "vit-d", false);
+  assert.deepEqual(buildHealthReport(state, "2030-01-15", 7).flaggedLabs, []);
 });

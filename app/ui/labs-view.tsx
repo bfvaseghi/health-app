@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { HealthState, buildLabTrends, dateLabel, filterLabTrends, labRangeStatus } from "../health-model";
+import { HealthState, buildLabTrends, dateLabel, filterLabTrends, labAskReason, labRangeStatus } from "../health-model";
 import { Sparkline } from "./charts";
 import { Icon } from "./icons";
 import { ConfirmButton } from "./primitives";
@@ -11,19 +11,21 @@ export function LabsView({
   state,
   open,
   onDeleteLab,
+  onAskLab,
 }: {
   state: HealthState;
   open: (modal: Modal) => void;
   onDeleteLab: (id: string) => void;
+  onAskLab: (id: string, ask: boolean) => void;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "flagged">("all");
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const trends = useMemo(() => buildLabTrends(state.labResults), [state.labResults]);
-  const flagged = trends.filter((trend) => trend.status === "low" || trend.status === "high");
+  const flagged = trends.filter((trend) => labAskReason(trend) !== null);
   const shown = useMemo(
-    () => filterLabTrends(trends, query).filter((trend) => filter === "all" || trend.status === "low" || trend.status === "high"),
+    () => filterLabTrends(trends, query).filter((trend) => filter === "all" || labAskReason(trend) !== null),
     [trends, query, filter],
   );
 
@@ -48,7 +50,7 @@ export function LabsView({
         {!trends.length
           ? "Add a result with the reference range printed on the report. Results stay grouped by test and unit."
           : flagged.length
-            ? `${flagged.map((trend) => `${trend.name} ${trend.status}`).join(" · ")} · latest ${dateLabel(
+            ? `${flagged.map((trend) => `${trend.name} ${labAskReason(trend) === "outside range" ? trend.status : "flagged"}`).join(" · ")} · latest ${dateLabel(
                 [...trends].sort((a, b) => b.latest.date.localeCompare(a.latest.date))[0].latest.date,
                 { month: "long", day: "numeric", year: "numeric" },
               )}`
@@ -124,7 +126,18 @@ export function LabsView({
                       </span>
                     </div>
                     <div className="tl-lab-foot">
-                      <span className={`range-badge ${trend.status}`}>{trend.status}</span>
+                      <span className="tl-lab-status">
+                        <span className={`range-badge ${trend.status}`}>{trend.status}</span>
+                        <button
+                          type="button"
+                          className={trend.latest.ask ? "chip primary small" : "chip small"}
+                          aria-pressed={trend.latest.ask}
+                          onClick={() => onAskLab(trend.latest.id, !trend.latest.ask)}
+                        >
+                          <Icon name="summary" />
+                          {trend.latest.ask ? "On the doctor list" : "Ask my doctor"}
+                        </button>
+                      </span>
                       <div className="row-actions">
                         {trend.results.length > 1 ? (
                           <button

@@ -2279,3 +2279,10 @@ kbd {
   .med-answer { max-width: 420px; }
   .note-form { max-width: 640px; }
 }
+
+/* A result on the doctor list: the status pill and the ask toggle side by side. */
+.tl-lab-status { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.chip.small { min-height: 30px; padding: 4px 10px; font-size: 12px; }
+.chip.small svg { width: 14px; height: 14px; }
+.check-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; color: var(--muted); font-size: 14px; cursor: pointer; }
+.check-row input { width: 18px; height: 18px; accent-color: var(--accent); }

@@ -101,6 +101,8 @@ export type LabResult = {
   referenceLow: number | null;
   referenceHigh: number | null;
   note: string;
+  /** Marked to bring up at the next appointment, whatever the range says. */
+  ask: boolean;
 };
 
 /** The only targets this app holds. */
@@ -458,7 +460,22 @@ export function normalizeLabResult(value: unknown): LabResult | null {
     referenceLow: finiteNumber(result.referenceLow, -1_000_000, 1_000_000),
     referenceHigh: finiteNumber(result.referenceHigh, -1_000_000, 1_000_000),
     note: safeText(result.note, 1_000),
+    ask: result.ask === true,
   };
+}
+
+/** Mark or unmark a result to ask about; the record is otherwise untouched. */
+export function setLabAsk(state: HealthState, id: string, ask: boolean): HealthState {
+  const result = state.labResults.find((entry) => entry.id === id);
+  if (!result || result.ask === ask) return state;
+  return upsertLabResult(state, { ...result, ask });
+}
+
+/** Whether a marker belongs on the doctor list: out of range, or asked about by hand. */
+export function labAskReason(trend: Pick<LabTrend, "status" | "results">): "outside range" | "flagged by you" | null {
+  if (trend.status === "low" || trend.status === "high") return "outside range";
+  if (trend.results.some((result) => result.ask)) return "flagged by you";
+  return null;
 }
 
 export function normalizeWorkoutSet(value: unknown): WorkoutSet | null {
@@ -1687,12 +1704,10 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
     rows,
     // The most recent result for each test only: a marker corrected two years ago
     // is history, not something to raise at this appointment.
+    // Out of range, or marked to ask about by hand; either way the latest result speaks.
     flaggedLabs: buildLabTrends(state.labResults.filter((result) => result.date <= asOf))
-      .map((trend) => trend.latest)
-      .filter((result) => {
-        const status = labRangeStatus(result);
-        return status === "low" || status === "high";
-      }),
+      .filter((trend) => labAskReason(trend) !== null)
+      .map((trend) => (labAskReason(trend) === "flagged by you" ? { ...trend.latest, ask: true } : trend.latest)),
     toRaise: state.therapyNotes.filter((note) => !note.shared && note.date <= asOf),
     notes: daily
       .filter((entry) => entry.note !== "")
@@ -1721,10 +1736,12 @@ export function reportToText(
   }
 
   if (report.flaggedLabs.length) {
-    lines.push("Most recent result per test, outside the entered reference range");
+    lines.push("Labs to ask about: most recent result per test, outside its range or marked by you");
     for (const lab of report.flaggedLabs) {
+      const status = labRangeStatus(lab);
+      const reason = status === "low" || status === "high" ? status : "marked to ask about";
       lines.push(
-        `  ${lab.name} ${lab.value ?? "—"} ${lab.unit} on ${lab.date} (range ${lab.referenceLow ?? "—"} to ${lab.referenceHigh ?? "—"})`,
+        `  ${lab.name} ${lab.value ?? "—"} ${lab.unit} on ${lab.date} (range ${lab.referenceLow ?? "—"} to ${lab.referenceHigh ?? "—"}; ${reason})`,
       );
     }
     lines.push("");

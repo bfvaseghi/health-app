@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { HealthState, ReportRow, buildHealthReport, dateLabel, reportToText } from "../health-model";
+import { HealthState, ReportRow, buildHealthReport, dateLabel, reportToText, labRangeStatus } from "../health-model";
 import { Icon } from "./icons";
 import { Note } from "./primitives";
 import { copyText, listWords } from "./format";
@@ -99,8 +99,8 @@ export function SummaryView({
 
       <section className="tl-section report-priority labs-priority" aria-labelledby="flagged-title">
         <div className="tl-section-head">
-          <h2 className="tl-caps" id="flagged-title" style={{ margin: 0 }}>Labs · latest result outside its range</h2>
-          <span className="tl-meta">not limited to the period</span>
+          <h2 className="tl-caps" id="flagged-title" style={{ margin: 0 }}>Labs · to ask about</h2>
+          <span className="tl-meta">latest result per test · not limited to the period</span>
         </div>
         {report.flaggedLabs.length ? (
           <ul className="tl-rows tl-list">
@@ -109,10 +109,12 @@ export function SummaryView({
                 <span className="tl-row-copy">
                   <b>{result.name}</b>
                   <small>
-                    {`ref ${result.referenceLow ?? "—"}\u2011${result.referenceHigh ?? "—"} ${result.unit} · ${dateLabel(result.date, { month: "short", day: "numeric", year: "numeric" })}`}
+                    {`ref ${result.referenceLow ?? "—"}\u2011${result.referenceHigh ?? "—"} ${result.unit} · ${dateLabel(result.date, { month: "short", day: "numeric", year: "numeric" })} · ${
+                      labRangeStatus(result) === "low" || labRangeStatus(result) === "high" ? labRangeStatus(result) : "marked to ask about"
+                    }`}
                   </small>
                 </span>
-                <span className="tl-row-end down">
+                <span className={labRangeStatus(result) === "low" || labRangeStatus(result) === "high" ? "tl-row-end down" : "tl-row-end"}>
                   {result.value === null ? "—" : result.value}
                   {result.value === null ? null : <small>{result.unit}</small>}
                 </span>
@@ -121,7 +123,7 @@ export function SummaryView({
           </ul>
         ) : (
           <p className="tl-line">
-            The most recent result for each test sits inside the range you entered, or has no range to judge it by.
+            Every latest result sits inside its range, and none is marked to ask about. Mark one from Labs and it appears here.
           </p>
         )}
       </section>
