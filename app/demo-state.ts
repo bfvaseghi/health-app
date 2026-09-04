@@ -252,8 +252,8 @@ export function demoHealthState(today: string): HealthState {
       { id: "demo-note-2", date: addDays(today, -2), text: "Synthetic example: practise one short pause before answering.", shared: false, sharedDate: "" },
     ],
     thoughtLoops: [
-      { id: "demo-loop-1", name: "Replaying that conversation", reply: "I'm having the thought again. It is a thought, not a verdict. Back to the room.", createdAt: addDays(today, -55), archived: false },
-      { id: "demo-loop-2", name: "What if the review goes badly", reply: "Not now. I'll give this ten minutes at six, with a pen.", createdAt: addDays(today, -9), archived: false },
+      { id: "demo-loop-1", name: "Replaying that conversation", reply: "It's done. Back to the room.", outcomes: { passed: "Let it go", later: "Tonight", hooked: "Went round again" }, laterAt: "20:30", createdAt: addDays(today, -55), archived: false },
+      { id: "demo-loop-2", name: "What if the review goes badly", reply: "Later, at six.", laterAt: "18:00", createdAt: addDays(today, -9), archived: false },
     ],
     loopEvents: demoLoopEvents(today),
     thoughtJournal: [

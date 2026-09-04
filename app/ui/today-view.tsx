@@ -198,6 +198,7 @@ export function TodayView({
           {state.goals.trackMedication && medications.length ? (
             <MedRows statuses={medications} due={due} today={today} go={go} onDose={onDose} />
           ) : null}
+          <LaterRows state={state} today={today} go={go} />
 
           {hasPlan ? (
             <div className="tl-row">
@@ -517,5 +518,33 @@ function ThisWeek({ state, today, go }: { state: HealthState; today: string; go:
       {"."}
       {moved ? <> {" "}<b>{moved.sentence}</b></> : sleepHours !== null || workouts ? " Nothing moved much on last week." : ""}
     </p>
+  );
+}
+
+/** A thought set aside for later today keeps its appointment here, then leaves. */
+function LaterRows({ state, today, go }: { state: HealthState; today: string; go: (view: View) => void }) {
+  const later = state.loopEvents.filter((event) => event.date === today && event.move === "later");
+  if (!later.length) return null;
+  const seen = new Set<string>();
+  return (
+    <>
+      {later.map((event) => {
+        const loop = state.thoughtLoops.find((entry) => entry.id === event.loopId);
+        if (!loop || seen.has(loop.id)) return null;
+        seen.add(loop.id);
+        const [h, m] = loop.laterAt.split(":").map(Number);
+        const when = `${((h + 11) % 12) + 1}${m ? `:${String(m).padStart(2, "0")}` : ""} ${h < 12 ? "AM" : "PM"}`;
+        return (
+          <div key={loop.id} className="tl-row is-static">
+            <span className="tl-well"><Icon name="mind" /></span>
+            <span className="tl-row-copy">
+              <b>{loop.name}</b>
+              <small>{`set aside until ${when}`}</small>
+            </span>
+            <button type="button" className="text-button" onClick={() => go("mind")}>Open</button>
+          </div>
+        );
+      })}
+    </>
   );
 }

@@ -65,9 +65,15 @@ export type ThoughtLoop = {
   name: string;
   /** What you say back, in your own words. */
   reply: string;
+  /** Your words for the three outcomes; the defaults are only a starting point. */
+  outcomes: Record<Exclude<LoopMove, "noticed">, string>;
+  /** When "later" is, as "HH:MM"; the thought gets this slot instead of now. */
+  laterAt: string;
   createdAt: string;
   archived: boolean;
 };
+
+export const DEFAULT_LOOP_OUTCOMES: ThoughtLoop["outcomes"] = { passed: "Let it pass", later: "Later", hooked: "Got pulled in" };
 
 /**
  * What happened after a loop came up, in plain words. "noticed" is a tap that
@@ -582,10 +588,18 @@ export function normalizeThoughtLoop(value: unknown): ThoughtLoop | null {
   const loop = recordValue(value);
   const name = safeText(loop.name, 120);
   if (!name) return null;
+  const given = recordValue(loop.outcomes);
+  const laterAt = typeof loop.laterAt === "string" && /^([01]\d|2[0-3]):[0-5]\d$/.test(loop.laterAt) ? loop.laterAt : "18:00";
   return {
     id: safeText(loop.id, 120) || `loop-${Math.abs(hashText(name)).toString(36)}`,
     name,
     reply: safeText(loop.reply, 400),
+    outcomes: {
+      passed: safeText(given.passed, 40) || DEFAULT_LOOP_OUTCOMES.passed,
+      later: safeText(given.later, 40) || DEFAULT_LOOP_OUTCOMES.later,
+      hooked: safeText(given.hooked, 40) || DEFAULT_LOOP_OUTCOMES.hooked,
+    },
+    laterAt,
     createdAt: validIsoDate(String(loop.createdAt ?? "").slice(0, 10)) ? String(loop.createdAt) : todayLocal(),
     archived: booleanOrNull(loop.archived) ?? false,
   };
@@ -1477,17 +1491,13 @@ export function loopSummary(state: HealthState, loopId: string, asOf = todayLoca
   const trend: LoopSummary["trend"] =
     week + lastWeek < 3 && !lastWeek ? "new" : week <= lastWeek - step ? "fading" : week >= lastWeek + step ? "louder" : "steady";
   const parts: string[] = [];
-  parts.push(
-    trend === "new"
-      ? week
-        ? `${week} ${week === 1 ? "time" : "times"} this week.`
-        : "Not yet this week."
-      : `${week} this week, ${lastWeek} last week — ${trend}.`,
-  );
-  if (quietDays !== null && quietDays >= 2) parts.push(`Quiet for ${quietDays} days.`);
-  if (letGoShare !== null) parts.push(`You let it go ${letGoShare}% of the time.`);
-  if (peak) parts.push(`Mostly ${peak}.`);
-  return { today, week, lastWeek, month: month.length, priorMonth, quietDays, letGoShare, hooked, peak, trend, sentence: parts.join(" ") };
+  if (trend === "new") parts.push(week ? `${week} this week` : "not yet this week");
+  else if (week === lastWeek) parts.push(`${week} this week, same as last`);
+  else parts.push(`${week} this week, ${week < lastWeek ? "down from" : "up from"} ${lastWeek}`);
+  if (quietDays !== null && quietDays >= 2) parts.push(`quiet ${quietDays} days`);
+  if (letGoShare !== null) parts.push(`let go ${letGoShare}%`);
+  if (peak) parts.push(`mostly ${peak}`);
+  return { today, week, lastWeek, month: month.length, priorMonth, quietDays, letGoShare, hooked, peak, trend, sentence: parts.join(" · ") };
 }
 
 /** Times a loop came up in each trailing week, oldest first; a zero is a real zero. */
@@ -1910,7 +1920,7 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
       value: events.length ? `${events.length} ${events.length === 1 ? "time" : "times"} in ${safeDays} days` : "No data",
       detail: events.length
         ? `${before.length} the ${safeDays} days before${
-            answered.length >= 3 ? ` · let go ${Math.round((letGo / answered.length) * 100)}% of the time` : ""
+            answered.length >= 3 ? ` · let go ${Math.round((letGo / answered.length) * 100)}%` : ""
           }`
         : "did not come up in this period",
     });

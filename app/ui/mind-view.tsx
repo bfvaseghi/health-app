@@ -2,7 +2,7 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import type { DailyEntry, HealthState, LoopEvent, LoopMove, TherapyNote, ThoughtJournalEntry, ThoughtLoop } from "../health-model";
-import { addDays, dateLabel, localDateTime, loopSummary, loopWeekly, mindSummary } from "../health-model";
+import { DEFAULT_LOOP_OUTCOMES, addDays, dateLabel, localDateTime, loopSummary, loopWeekly, mindSummary } from "../health-model";
 import { meditationWeeklyMinutes } from "../series";
 import { Icon } from "./icons";
 import { ConfirmButton } from "./primitives";
@@ -36,7 +36,7 @@ export function MindView({
   onDeleteNote: (id: string) => void;
   onAddThought: (entry: { title: string; text: string; source: ThoughtJournalEntry["source"] }) => void;
   onDeleteThought: (id: string) => void;
-  onSaveLoop: (loop: { id?: string; name: string; reply: string }) => void;
+  onSaveLoop: (loop: LoopDraft) => void;
   onDeleteLoop: (id: string) => void;
   onLoopEvent: (event: LoopEvent) => void;
   onDeleteLoopEvent: (id: string) => void;
@@ -386,19 +386,18 @@ function TherapyRow({
   );
 }
 
-const SUGGESTED_REPLIES = [
-  "There it is again. A thought, not a fact.",
-  "Not now. Back to what I was doing.",
-  "I'll think about this at six, for ten minutes, not before.",
-  "This has come up before and passed before.",
-];
+export type LoopDraft = { id?: string; name: string; reply: string; outcomes?: ThoughtLoop["outcomes"]; laterAt?: string };
 
-/** What happened, in the words you would use; each is a response with evidence behind it. */
-const OUTCOMES: Array<{ move: LoopMove; label: string; hint: string }> = [
-  { move: "passed", label: "Let it pass", hint: "noticed it and went back to what you were doing" },
-  { move: "later", label: "Saved it for later", hint: "gave it a set time today instead of now" },
-  { move: "hooked", label: "Got pulled in", hint: "spent a while inside it — honest counts too" },
-];
+const SUGGESTED_REPLIES = ["Not now.", "It's a thought.", "Later, at six.", "It passed before."];
+
+const OUTCOME_KEYS: Array<Exclude<LoopMove, "noticed">> = ["passed", "later", "hooked"];
+
+/** "18:00" as "6 PM", "18:30" as "6:30 PM". */
+function clock(value: string): string {
+  const [h, m] = value.split(":").map(Number);
+  const hour = ((h + 11) % 12) + 1;
+  return `${hour}${m ? `:${String(m).padStart(2, "0")}` : ""} ${h < 12 ? "AM" : "PM"}`;
+}
 
 /**
  * Thought loops. Three things have evidence behind them for a thought that keeps
@@ -418,7 +417,7 @@ function ThoughtLoops({
 }: {
   state: HealthState;
   today: string;
-  onSave: (loop: { id?: string; name: string; reply: string }) => void;
+  onSave: (loop: LoopDraft) => void;
   onDelete: (id: string) => void;
   onEvent: (event: LoopEvent) => void;
   onDeleteEvent: (id: string) => void;
@@ -428,7 +427,12 @@ function ThoughtLoops({
   const [editing, setEditing] = useState<"new" | string | null>(null);
   // The reply card stays up for the loop you just tapped, holding the event so
   // a move or "it passed" lands on that tap and not a new one.
-  const [live, setLive] = useState<{ loopId: string; eventId: string } | null>(null);
+  const [live, setLive] = useState<{ loopId: string; eventId: string } | null>(() => {
+    // A tap from the last ten minutes is still the moment: leaving the page and
+    // coming back finds the card where it was.
+    const recent = state.loopEvents.find((event) => Date.parse(event.at) >= Date.now() - 10 * 60_000);
+    return recent ? { loopId: recent.loopId, eventId: recent.id } : null;
+  });
 
   const cameUp = (loop: ThoughtLoop) => {
     const at = localDateTime();
@@ -452,9 +456,7 @@ function ThoughtLoops({
       </div>
       {!loops.length && editing !== "new" ? (
         <p className="tl-line" style={{ marginTop: 8 }}>
-          Name a thought that keeps coming back and choose the line you will answer it with. Tap it each time it comes up, say
-          your line, and go back to what you were doing. Counting it and answering it is what works; trying not to think it
-          is what makes it louder.
+          A thought that keeps coming back, and the line you answer it with. Tap it each time it comes up.
         </p>
       ) : null}
       {editing === "new" ? (
@@ -463,7 +465,7 @@ function ThoughtLoops({
           onSave={(draft) => {
             onSave(draft);
             setEditing(null);
-            onNotice(`Added. Tap "It came up" whenever it does.`);
+            onNotice("Added.");
           }}
         />
       ) : null}
@@ -513,26 +515,21 @@ function ThoughtLoops({
                   </div>
                   {isLive && current ? (
                     <div className="tl-reply" role="status" aria-live="polite">
-                      <p className="tl-reply-line">{loop.reply || "There it is. Back to what I was doing."}</p>
-                      <p className="tl-reply-ask">
-                        {current.move === "noticed"
-                          ? "Counted. When you know, what happened?"
-                          : OUTCOMES.find((entry) => entry.move === current.move)?.hint ?? ""}
-                      </p>
+                      <p className="tl-reply-line">{loop.reply || "Not now."}</p>
                       <div className="tl-reply-moves" role="group" aria-label="What happened">
-                        {OUTCOMES.map((entry) => (
+                        {OUTCOME_KEYS.map((move) => (
                           <button
-                            key={entry.move}
+                            key={move}
                             type="button"
-                            className={current.move === entry.move ? "chip primary small" : "chip small"}
-                            aria-pressed={current.move === entry.move}
-                            title={entry.hint}
-                            onClick={() => onEvent({ ...current, move: current.move === entry.move ? "noticed" : entry.move })}
+                            className={current.move === move ? "chip primary small" : "chip small"}
+                            aria-pressed={current.move === move}
+                            onClick={() => onEvent({ ...current, move: current.move === move ? "noticed" : move })}
                           >
-                            {entry.label}
+                            {loop.outcomes[move]}
                           </button>
                         ))}
                       </div>
+                      {current.move === "later" ? <p className="tl-reply-ask">{`${clock(loop.laterAt)} today. It is on Today until then.`}</p> : null}
                       <p className="tl-line" style={{ marginTop: 10 }}>
                         <button type="button" className="text-button" onClick={() => { onDeleteEvent(current.id); setLive(null); }}>
                           Undo this tap
@@ -560,12 +557,6 @@ function ThoughtLoops({
           );
         })}
       </ul>
-      {loops.length ? (
-        <p className="tl-line">
-          The tide under each thought is how often it came up, week by week; down is good. The share you let go is the
-          number that moves first.
-        </p>
-      ) : null}
     </section>
   );
 }
@@ -576,24 +567,26 @@ function LoopForm({
   onCancel,
 }: {
   loop?: ThoughtLoop;
-  onSave: (draft: { name: string; reply: string }) => void;
+  onSave: (draft: Omit<LoopDraft, "id">) => void;
   onCancel: () => void;
 }) {
   const [name, setName] = useState(loop?.name ?? "");
   const [reply, setReply] = useState(loop?.reply ?? "");
+  const [outcomes, setOutcomes] = useState<ThoughtLoop["outcomes"]>(loop?.outcomes ?? DEFAULT_LOOP_OUTCOMES);
+  const [laterAt, setLaterAt] = useState(loop?.laterAt ?? "18:00");
   return (
     <form
       className="tl-loop-form"
       onSubmit={(event) => {
         event.preventDefault();
         if (!name.trim()) return;
-        onSave({ name: name.trim(), reply: reply.trim() });
+        onSave({ name: name.trim(), reply: reply.trim(), outcomes, laterAt });
       }}
     >
       <input
         value={name}
         maxLength={120}
-        placeholder="The thought, in a few words: “I said the wrong thing”"
+        placeholder="The thought, in a few words"
         aria-label="The thought, in a few words"
         onChange={(event) => setName(event.target.value)}
         autoFocus
@@ -601,20 +594,41 @@ function LoopForm({
       <input
         value={reply}
         maxLength={400}
-        placeholder="Your answer to it, the same every time"
-        aria-label="Your answer to it"
+        placeholder="What you say back"
+        aria-label="What you say back"
         onChange={(event) => setReply(event.target.value)}
       />
-      <div className="tl-suggest" role="group" aria-label="Lines that work">
+      <div className="tl-suggest" role="group" aria-label="Some lines">
         {SUGGESTED_REPLIES.map((line) => (
           <button key={line} type="button" className={reply === line ? "chip primary small" : "chip small"} onClick={() => setReply(line)}>
             {line}
           </button>
         ))}
       </div>
+      {loop ? (
+        <>
+          <span className="tl-caps" style={{ marginTop: 6 }}>Your words for what happened</span>
+          <div className="tl-loop-words">
+            {OUTCOME_KEYS.map((move) => (
+              <input
+                key={move}
+                value={outcomes[move]}
+                maxLength={40}
+                aria-label={`Your words for ${DEFAULT_LOOP_OUTCOMES[move].toLowerCase()}`}
+                placeholder={DEFAULT_LOOP_OUTCOMES[move]}
+                onChange={(event) => setOutcomes((current) => ({ ...current, [move]: event.target.value }))}
+              />
+            ))}
+          </div>
+          <label className="tl-loop-time">
+            <span>Later means</span>
+            <input type="time" value={laterAt} aria-label="Time for later" onChange={(event) => setLaterAt(event.target.value || "18:00")} />
+          </label>
+        </>
+      ) : null}
       <div className="tl-actions" style={{ marginTop: 4 }}>
         <button type="submit" className="button primary" disabled={!name.trim()}>
-          {loop ? "Save" : "Add it"}
+          {loop ? "Save" : "Add"}
         </button>
         <button type="button" className="button secondary" onClick={onCancel}>Cancel</button>
       </div>

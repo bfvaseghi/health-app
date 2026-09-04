@@ -566,7 +566,7 @@ export default function Home() {
 
   const deleteTherapyNote = (id: string) => commit((current) => removeTherapyNote(current, id), "Note deleted.", true);
 
-  const saveLoop = (loop: { id?: string; name: string; reply: string }) =>
+  const saveLoop = (loop: { id?: string; name: string; reply: string; outcomes?: Record<string, string>; laterAt?: string }) =>
     updateState((current) => upsertThoughtLoop(current, { ...loop, createdAt: current.thoughtLoops.find((entry) => entry.id === loop.id)?.createdAt }));
   const deleteLoop = (id: string) => updateState((current) => removeThoughtLoop(current, id));
   const logLoopEvent = (event: LoopEvent) => updateState((current) => upsertLoopEvent(current, event));

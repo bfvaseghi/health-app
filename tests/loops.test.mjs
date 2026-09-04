@@ -64,6 +64,11 @@ test("old records without loops normalise to none, and last week's names for out
   assert.equal(odd.loopEvents.at(-1).date, "2026-08-01");
   assert.equal("passed" in odd.loopEvents[0], false, "the separate yes/no is gone");
   assert.equal(odd.thoughtLoops[0].reply, "");
+  assert.deepEqual(odd.thoughtLoops[0].outcomes, { passed: "Let it pass", later: "Later", hooked: "Got pulled in" });
+  assert.equal(odd.thoughtLoops[0].laterAt, "18:00");
+  const worded = normalizeHealthState({ thoughtLoops: [{ id: "b", name: "y", outcomes: { passed: "Gone", later: "", hooked: 7 }, laterAt: "9:99" }] });
+  assert.deepEqual(worded.thoughtLoops[0].outcomes, { passed: "Gone", later: "Later", hooked: "Got pulled in" }, "your words stay; blanks and junk fall back");
+  assert.equal(worded.thoughtLoops[0].laterAt, "18:00", "a bad time falls back to six");
 });
 
 test("the summary counts this week against last, says whether it is fading, and finds the evenings", () => {
@@ -76,11 +81,11 @@ test("the summary counts this week against last, says whether it is fading, and 
   assert.equal(summary.letGoShare, 80, "8 of 10 answered taps were let go or set aside");
   assert.equal(summary.hooked, 2);
   assert.equal(summary.peak, "evenings");
-  assert.equal(summary.sentence, "5 this week, 7 last week — fading. You let it go 80% of the time. Mostly evenings.");
+  assert.equal(summary.sentence, "5 this week, down from 7 · let go 80% · mostly evenings");
 
   const fresh = loopSummary(upsertThoughtLoop(emptyHealthState(), { id: "n", name: "New" }), "n", AS_OF);
   assert.equal(fresh.trend, "new");
-  assert.equal(fresh.sentence, "Not yet this week.");
+  assert.equal(fresh.sentence, "not yet this week");
   assert.equal(fresh.quietDays, null);
 });
 
@@ -96,7 +101,7 @@ test("the doctor summary carries each loop as a row, in the text too", () => {
   assert.equal(row.group, "Mind");
   assert.equal(row.label, "Thought loop: Replaying the call");
   assert.equal(row.value, "5 times in 7 days");
-  assert.match(row.detail, /^7 the 7 days before · let go 75% of the time$/);
+  assert.match(row.detail, /^7 the 7 days before · let go 75%$/);
   assert.match(reportToText(report), /Thought loop: Replaying the call: 5 times in 7 days/);
   const csv = thoughtLoopsCsv(withLoop().thoughtLoops, withLoop().loopEvents);
   assert.match(csv.split("\n")[0], /^id,loop_id,loop,at,date,outcome/);

@@ -2305,3 +2305,7 @@ kbd {
 @media (min-width: 761px) { .tl-loop-form { max-width: 640px; } }
 
 .tl-reply-ask { margin: 10px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }
+
+.tl-loop-words { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.tl-loop-time { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+.tl-loop-time input { min-height: 38px; padding: 6px 10px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--raised); color: var(--ink); font: inherit; font-size: 14px; }
