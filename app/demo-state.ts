@@ -319,11 +319,13 @@ export function demoHealthState(today: string): HealthState {
  * a newer loop that has only just been named. Deterministic, so the demo reads
  * the same every time.
  */
-function demoLoopEvents(today: string): Array<{ id: string; loopId: string; at: string; date: string; move: string; passed: boolean | null }> {
+function demoLoopEvents(today: string): Array<{ id: string; loopId: string; at: string; date: string; move: string }> {
   const perWeek = [12, 10, 9, 8, 6, 5, 4, 2];
   const hours = [21, 19, 22, 20, 8, 21, 18, 23, 20];
-  const moves = ["noticed", "named", "shifted", "named", "parked", "named", "shifted", "named", "named"];
-  const events: Array<{ id: string; loopId: string; at: string; date: string; move: string; passed: boolean | null }> = [];
+  // Early weeks it pulled them in more often than not; lately it mostly passes.
+  const early = ["hooked", "hooked", "passed", "hooked", "later", "hooked", "passed", "noticed", "hooked"];
+  const late = ["passed", "passed", "later", "passed", "hooked", "passed", "passed", "noticed", "passed"];
+  const events: Array<{ id: string; loopId: string; at: string; date: string; move: string }> = [];
   perWeek.forEach((count, weekIndex) => {
     const weekEnd = addDays(today, -(perWeek.length - 1 - weekIndex) * 7);
     for (let n = 0; n < count; n += 1) {
@@ -335,14 +337,13 @@ function demoLoopEvents(today: string): Array<{ id: string; loopId: string; at: 
         loopId: "demo-loop-1",
         at: `${date}T${String(hour).padStart(2, "0")}:${n % 2 ? "40" : "15"}`,
         date,
-        move: moves[n % moves.length],
-        passed: weekIndex < 2 ? (n % 3 === 0) : n % 4 !== 0,
+        move: (weekIndex < 3 ? early : late)[n % early.length],
       });
     }
   });
   for (let n = 0; n < 5; n += 1) {
     const date = addDays(today, -(n * 2));
-    events.push({ id: `demo-loop-2-${n}`, loopId: "demo-loop-2", at: `${date}T${n % 2 ? "07" : "13"}:05`, date, move: n % 2 ? "parked" : "noticed", passed: n === 0 ? null : true });
+    events.push({ id: `demo-loop-2-${n}`, loopId: "demo-loop-2", at: `${date}T${n % 2 ? "07" : "13"}:05`, date, move: n === 0 ? "noticed" : n % 2 ? "later" : "passed" });
   }
   return events;
 }

@@ -69,10 +69,14 @@ export type ThoughtLoop = {
   archived: boolean;
 };
 
-/** What you did the moment a loop came up. */
-export type LoopMove = "noticed" | "named" | "shifted" | "parked";
+/**
+ * What happened after a loop came up, in plain words. "noticed" is a tap that
+ * was never answered. The thought's frequency falls slowly; how you respond
+ * changes fast, so the response is the number worth watching.
+ */
+export type LoopMove = "noticed" | "passed" | "later" | "hooked";
 
-/** One time a loop came up: when, what you did, and whether it passed. */
+/** One time a loop came up: when, and what happened. */
 export type LoopEvent = {
   id: string;
   loopId: string;
@@ -80,7 +84,6 @@ export type LoopEvent = {
   at: string;
   date: string;
   move: LoopMove;
-  passed: boolean | null;
 };
 
 /** A private free-form reflection, kept separate from the therapy agenda. */
@@ -565,7 +568,9 @@ export function normalizeTherapyNote(value: unknown): TherapyNote | null {
   };
 }
 
-const LOOP_MOVES: LoopMove[] = ["noticed", "named", "shifted", "parked"];
+const LOOP_MOVES: LoopMove[] = ["noticed", "passed", "later", "hooked"];
+/** Earlier names for the same outcomes, so a record written last week still reads. */
+const LEGACY_LOOP_MOVES: Record<string, LoopMove> = { named: "passed", shifted: "passed", parked: "later" };
 
 /** "YYYY-MM-DDTHH:MM" in local time; the date is the first ten characters. */
 export function localDateTime(date = new Date()): string {
@@ -593,14 +598,19 @@ export function normalizeLoopEvent(value: unknown, knownLoops: Set<string>): Loo
   const at = typeof event.at === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(event.at) ? event.at.slice(0, 16) : null;
   const date = validIsoDate(event.date) ? event.date : at ? at.slice(0, 10) : null;
   if (!date) return null;
-  const move = LOOP_MOVES.includes(event.move as LoopMove) ? (event.move as LoopMove) : "noticed";
+  let move: LoopMove = LOOP_MOVES.includes(event.move as LoopMove)
+    ? (event.move as LoopMove)
+    : LEGACY_LOOP_MOVES[String(event.move)] ?? "noticed";
+  // The old shape carried a separate yes/no for "did it pass"; fold it in.
+  const legacyPassed = booleanOrNull(event.passed);
+  if (legacyPassed === false) move = "hooked";
+  else if (legacyPassed === true && move === "noticed") move = "passed";
   return {
     id: safeText(event.id, 120) || `${loopId}-${at ?? date}`,
     loopId,
     at: at ?? `${date}T12:00`,
     date,
     move,
-    passed: booleanOrNull(event.passed),
   };
 }
 
@@ -1422,8 +1432,10 @@ export type LoopSummary = {
   priorMonth: number;
   /** Days since it last came up; 0 if today, null if never. */
   quietDays: number | null;
-  /** Share of answered events that passed, over 30 days; null with fewer than three answers. */
-  passedShare: number | null;
+  /** Of the answered taps in 30 days, how many you let pass or set aside rather than got pulled into; null under three answers. */
+  letGoShare: number | null;
+  /** Times it pulled you in over 30 days. */
+  hooked: number;
   /** When it tends to come up over 30 days; null with fewer than three events. */
   peak: "mornings" | "afternoons" | "evenings" | "nights" | null;
   trend: "fading" | "steady" | "louder" | "new";
@@ -1449,8 +1461,9 @@ export function loopSummary(state: HealthState, loopId: string, asOf = todayLoca
   const priorMonth = inWindow(30, 60).length;
   const latest = events[0]?.date ?? null;
   const quietDays = latest ? daysBetween(latest, asOf) : null;
-  const answered = month.filter((event) => event.passed !== null);
-  const passedShare = answered.length >= 3 ? Math.round((answered.filter((event) => event.passed).length / answered.length) * 100) : null;
+  const answered = month.filter((event) => event.move !== "noticed");
+  const hooked = answered.filter((event) => event.move === "hooked").length;
+  const letGoShare = answered.length >= 3 ? Math.round(((answered.length - hooked) / answered.length) * 100) : null;
   let peak: LoopSummary["peak"] = null;
   if (month.length >= 3) {
     const counts = new Map<string, number>();
@@ -1472,9 +1485,9 @@ export function loopSummary(state: HealthState, loopId: string, asOf = todayLoca
       : `${week} this week, ${lastWeek} last week — ${trend}.`,
   );
   if (quietDays !== null && quietDays >= 2) parts.push(`Quiet for ${quietDays} days.`);
-  if (passedShare !== null) parts.push(`Passed ${passedShare}% of the time you answered.`);
+  if (letGoShare !== null) parts.push(`You let it go ${letGoShare}% of the time.`);
   if (peak) parts.push(`Mostly ${peak}.`);
-  return { today, week, lastWeek, month: month.length, priorMonth, quietDays, passedShare, peak, trend, sentence: parts.join(" ") };
+  return { today, week, lastWeek, month: month.length, priorMonth, quietDays, letGoShare, hooked, peak, trend, sentence: parts.join(" ") };
 }
 
 /** Times a loop came up in each trailing week, oldest first; a zero is a real zero. */
@@ -1888,7 +1901,8 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
     const before = state.loopEvents.filter(
       (event) => event.loopId === loop.id && event.date >= addDays(start, -safeDays) && event.date < start,
     );
-    const answered = events.filter((event) => event.passed !== null);
+    const answered = events.filter((event) => event.move !== "noticed");
+    const letGo = answered.filter((event) => event.move !== "hooked").length;
     rows.push({
       id: `loop-${loop.id}`,
       group: "Mind",
@@ -1896,7 +1910,7 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
       value: events.length ? `${events.length} ${events.length === 1 ? "time" : "times"} in ${safeDays} days` : "No data",
       detail: events.length
         ? `${before.length} the ${safeDays} days before${
-            answered.length >= 3 ? ` · passed ${Math.round((answered.filter((event) => event.passed).length / answered.length) * 100)}% when answered` : ""
+            answered.length >= 3 ? ` · let go ${Math.round((letGo / answered.length) * 100)}% of the time` : ""
           }`
         : "did not come up in this period",
     });
@@ -2078,9 +2092,9 @@ export function therapyNotesCsv(entries: TherapyNote[]): string {
 export function thoughtLoopsCsv(loops: ThoughtLoop[], events: LoopEvent[]): string {
   const names = new Map(loops.map((loop) => [loop.id, loop.name]));
   return toCsv(
-    ["id", "loop_id", "loop", "at", "date", "move", "passed"],
+    ["id", "loop_id", "loop", "at", "date", "outcome"],
     [...events].sort((a, b) => a.at.localeCompare(b.at)).map((event) => [
-      event.id, event.loopId, names.get(event.loopId) ?? "", event.at, event.date, event.move, event.passed === null ? "" : event.passed,
+      event.id, event.loopId, names.get(event.loopId) ?? "", event.at, event.date, event.move,
     ]),
   );
 }

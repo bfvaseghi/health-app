@@ -23,11 +23,11 @@ const at = (daysBack, hour) => `${addDays(AS_OF, -daysBack)}T${String(hour).padS
 function withLoop() {
   let state = upsertThoughtLoop(emptyHealthState(), { id: "loop", name: "Replaying the call", reply: "A thought, not a verdict." });
   const taps = [
-    [0, 21, "named", true], [0, 22, "noticed", null], [1, 20, "shifted", true], [3, 19, "named", false], [5, 8, "parked", true],
-    [7, 21, "noticed", null], [8, 20, "named", true], [9, 22, "noticed", true], [10, 21, "named", false], [11, 20, "noticed", true], [12, 19, "named", true], [13, 21, "noticed", true],
+    [0, 21, "passed"], [0, 22, "noticed"], [1, 20, "passed"], [3, 19, "hooked"], [5, 8, "later"],
+    [7, 21, "noticed"], [8, 20, "passed"], [9, 22, "passed"], [10, 21, "hooked"], [11, 20, "passed"], [12, 19, "passed"], [13, 21, "passed"],
   ];
-  taps.forEach(([back, hour, move, passed], index) => {
-    state = upsertLoopEvent(state, { id: `e${index}`, loopId: "loop", at: at(back, hour), move, passed });
+  taps.forEach(([back, hour, move], index) => {
+    state = upsertLoopEvent(state, { id: `e${index}`, loopId: "loop", at: at(back, hour), move });
   });
   return state;
 }
@@ -46,16 +46,23 @@ test("a loop is named once and every tap on it is kept, with its hour", () => {
   assert.equal(removeLoopEvent(state, "missing"), state);
 });
 
-test("old records without loops normalise to none, and a bad move becomes noticed", () => {
+test("old records without loops normalise to none, and last week's names for outcomes still read", () => {
   const legacy = normalizeHealthState({ version: 1, dailyEntries: [] });
   assert.deepEqual([legacy.thoughtLoops, legacy.loopEvents], [[], []]);
   const odd = normalizeHealthState({
     thoughtLoops: [{ id: "a", name: "x" }],
-    loopEvents: [{ id: "1", loopId: "a", at: "2026-08-01T09:30", move: "vanished", passed: "yes" }],
+    loopEvents: [
+      { id: "1", loopId: "a", at: "2026-08-01T09:30", move: "vanished", passed: "yes" },
+      { id: "2", loopId: "a", at: "2026-08-01T10:30", move: "named", passed: true },
+      { id: "3", loopId: "a", at: "2026-08-01T11:30", move: "parked" },
+      { id: "4", loopId: "a", at: "2026-08-01T12:30", move: "shifted", passed: false },
+      { id: "5", loopId: "a", at: "2026-08-01T13:30", move: "noticed", passed: true },
+    ],
   });
-  assert.equal(odd.loopEvents[0].move, "noticed");
-  assert.equal(odd.loopEvents[0].passed, null);
-  assert.equal(odd.loopEvents[0].date, "2026-08-01");
+  const byId = Object.fromEntries(odd.loopEvents.map((event) => [event.id, event.move]));
+  assert.deepEqual(byId, { 1: "noticed", 2: "passed", 3: "later", 4: "hooked", 5: "passed" });
+  assert.equal(odd.loopEvents.at(-1).date, "2026-08-01");
+  assert.equal("passed" in odd.loopEvents[0], false, "the separate yes/no is gone");
   assert.equal(odd.thoughtLoops[0].reply, "");
 });
 
@@ -66,9 +73,10 @@ test("the summary counts this week against last, says whether it is fading, and 
   assert.equal(summary.lastWeek, 7);
   assert.equal(summary.trend, "fading");
   assert.equal(summary.quietDays, 0);
-  assert.equal(summary.passedShare, 80, "8 of 10 answered taps passed");
+  assert.equal(summary.letGoShare, 80, "8 of 10 answered taps were let go or set aside");
+  assert.equal(summary.hooked, 2);
   assert.equal(summary.peak, "evenings");
-  assert.equal(summary.sentence, "5 this week, 7 last week — fading. Passed 80% of the time you answered. Mostly evenings.");
+  assert.equal(summary.sentence, "5 this week, 7 last week — fading. You let it go 80% of the time. Mostly evenings.");
 
   const fresh = loopSummary(upsertThoughtLoop(emptyHealthState(), { id: "n", name: "New" }), "n", AS_OF);
   assert.equal(fresh.trend, "new");
@@ -88,10 +96,10 @@ test("the doctor summary carries each loop as a row, in the text too", () => {
   assert.equal(row.group, "Mind");
   assert.equal(row.label, "Thought loop: Replaying the call");
   assert.equal(row.value, "5 times in 7 days");
-  assert.match(row.detail, /^7 the 7 days before · passed 75% when answered$/);
+  assert.match(row.detail, /^7 the 7 days before · let go 75% of the time$/);
   assert.match(reportToText(report), /Thought loop: Replaying the call: 5 times in 7 days/);
   const csv = thoughtLoopsCsv(withLoop().thoughtLoops, withLoop().loopEvents);
-  assert.match(csv.split("\n")[0], /^id,loop_id,loop,at,date,move,passed/);
+  assert.match(csv.split("\n")[0], /^id,loop_id,loop,at,date,outcome/);
   assert.equal(csv.trim().split("\n").length, 13);
 });
 
@@ -100,6 +108,8 @@ test("the demo record shows a loop that is clearly fading and one just named", (
   assert.equal(state.thoughtLoops.length, 2);
   const weekly = loopWeekly(state, "demo-loop-1", AS_OF, 8).map((point) => point.value);
   assert.ok(weekly[0] > weekly.at(-1), `first week ${weekly[0]} should exceed the last ${weekly.at(-1)}`);
-  assert.equal(loopSummary(state, "demo-loop-1", AS_OF).trend, "fading");
+  const summary = loopSummary(state, "demo-loop-1", AS_OF);
+  assert.equal(summary.trend, "fading");
+  assert.ok(summary.letGoShare !== null && summary.letGoShare >= 60, `lately it mostly passes, got ${summary.letGoShare}`);
   assert.ok(state.loopEvents.every((event) => /^demo-loop-/.test(event.id)), "synthetic ids only");
 });

@@ -2303,3 +2303,5 @@ kbd {
 .tl-suggest { display: flex; flex-wrap: wrap; gap: 6px; }
 .tl-suggest .chip { text-align: left; white-space: normal; line-height: 1.3; }
 @media (min-width: 761px) { .tl-loop-form { max-width: 640px; } }
+
+.tl-reply-ask { margin: 10px 0 0; color: var(--muted); font-size: 13px; line-height: 1.45; }

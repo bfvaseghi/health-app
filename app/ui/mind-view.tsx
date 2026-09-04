@@ -387,23 +387,25 @@ function TherapyRow({
 }
 
 const SUGGESTED_REPLIES = [
-  "I'm having the thought again. It is a thought, not a fact.",
-  "Noted. Not now — back to what I was doing.",
-  "I'll give this ten minutes at six, with a pen. Not before.",
+  "There it is again. A thought, not a fact.",
+  "Not now. Back to what I was doing.",
+  "I'll think about this at six, for ten minutes, not before.",
   "This has come up before and passed before.",
 ];
 
-const MOVES: Array<{ move: LoopMove; label: string; hint: string }> = [
-  { move: "named", label: "Named it", hint: "said it was the loop, not news" },
-  { move: "shifted", label: "Shifted", hint: "moved to one concrete thing" },
-  { move: "parked", label: "Parked it", hint: "gave it a time later today" },
+/** What happened, in the words you would use; each is a response with evidence behind it. */
+const OUTCOMES: Array<{ move: LoopMove; label: string; hint: string }> = [
+  { move: "passed", label: "Let it pass", hint: "noticed it and went back to what you were doing" },
+  { move: "later", label: "Saved it for later", hint: "gave it a set time today instead of now" },
+  { move: "hooked", label: "Got pulled in", hint: "spent a while inside it — honest counts too" },
 ];
 
 /**
- * Thought loops. A recurring thought loses its grip when it is counted and
- * answered the same way each time; trying not to think it is what brings it
- * back. So: name it once, choose what you will say back, tap it every time it
- * comes up, and watch the tide of taps fall week by week.
+ * Thought loops. Three things have evidence behind them for a thought that keeps
+ * coming back: noticing it as the loop rather than as news, returning to what
+ * you were doing, and giving it a set time later instead of now. Trying not to
+ * think it is the one thing that makes it louder. So: name it once, choose what
+ * you will say back, tap it every time it comes up, then say what happened.
  */
 function ThoughtLoops({
   state,
@@ -430,7 +432,7 @@ function ThoughtLoops({
 
   const cameUp = (loop: ThoughtLoop) => {
     const at = localDateTime();
-    const event: LoopEvent = { id: `${loop.id}-${at}-${Math.random().toString(36).slice(2, 6)}`, loopId: loop.id, at, date: at.slice(0, 10), move: "noticed", passed: null };
+    const event: LoopEvent = { id: `${loop.id}-${at}-${Math.random().toString(36).slice(2, 6)}`, loopId: loop.id, at, date: at.slice(0, 10), move: "noticed" };
     onEvent(event);
     setLive({ loopId: loop.id, eventId: event.id });
   };
@@ -444,14 +446,15 @@ function ThoughtLoops({
         </h2>
         {editing === "new" ? null : (
           <button type="button" className="text-button" onClick={() => setEditing("new")}>
-            <Icon name="plus" /> Name a loop
+            <Icon name="plus" /> Add a thought
           </button>
         )}
       </div>
       {!loops.length && editing !== "new" ? (
         <p className="tl-line" style={{ marginTop: 8 }}>
-          A thought that keeps coming back loosens when it is counted and answered the same way each time, not when it is pushed
-          away. Name one, choose what you will say back, and tap it whenever it comes up.
+          Name a thought that keeps coming back and choose the line you will answer it with. Tap it each time it comes up, say
+          your line, and go back to what you were doing. Counting it and answering it is what works; trying not to think it
+          is what makes it louder.
         </p>
       ) : null}
       {editing === "new" ? (
@@ -460,7 +463,7 @@ function ThoughtLoops({
           onSave={(draft) => {
             onSave(draft);
             setEditing(null);
-            onNotice(`"${draft.name}" is named. Tap it whenever it comes up.`);
+            onNotice(`Added. Tap "It came up" whenever it does.`);
           }}
         />
       ) : null}
@@ -510,9 +513,14 @@ function ThoughtLoops({
                   </div>
                   {isLive && current ? (
                     <div className="tl-reply" role="status" aria-live="polite">
-                      <p className="tl-reply-line">{loop.reply || "Noted."}</p>
-                      <div className="tl-reply-moves" role="group" aria-label="What you did with it">
-                        {MOVES.map((entry) => (
+                      <p className="tl-reply-line">{loop.reply || "There it is. Back to what I was doing."}</p>
+                      <p className="tl-reply-ask">
+                        {current.move === "noticed"
+                          ? "Counted. When you know, what happened?"
+                          : OUTCOMES.find((entry) => entry.move === current.move)?.hint ?? ""}
+                      </p>
+                      <div className="tl-reply-moves" role="group" aria-label="What happened">
+                        {OUTCOMES.map((entry) => (
                           <button
                             key={entry.move}
                             type="button"
@@ -526,15 +534,6 @@ function ThoughtLoops({
                         ))}
                       </div>
                       <p className="tl-line" style={{ marginTop: 10 }}>
-                        <button
-                          type="button"
-                          className="text-button"
-                          aria-pressed={current.passed === true}
-                          onClick={() => onEvent({ ...current, passed: current.passed === true ? null : true })}
-                        >
-                          {current.passed === true ? "It passed ✓" : "It passed"}
-                        </button>
-                        {" · "}
                         <button type="button" className="text-button" onClick={() => { onDeleteEvent(current.id); setLive(null); }}>
                           Undo this tap
                         </button>
@@ -563,8 +562,8 @@ function ThoughtLoops({
       </ul>
       {loops.length ? (
         <p className="tl-line">
-          Name it, move to one concrete thing, or park it for a set time later. Down is good: the tide under each loop is
-          how often it came up, week by week.
+          The tide under each thought is how often it came up, week by week; down is good. The share you let go is the
+          number that moves first.
         </p>
       ) : null}
     </section>
@@ -594,7 +593,7 @@ function LoopForm({
       <input
         value={name}
         maxLength={120}
-        placeholder="The thought, in a few words"
+        placeholder="The thought, in a few words: “I said the wrong thing”"
         aria-label="The thought, in a few words"
         onChange={(event) => setName(event.target.value)}
         autoFocus
@@ -602,8 +601,8 @@ function LoopForm({
       <input
         value={reply}
         maxLength={400}
-        placeholder="What you will say back, every time"
-        aria-label="What you will say back"
+        placeholder="Your answer to it, the same every time"
+        aria-label="Your answer to it"
         onChange={(event) => setReply(event.target.value)}
       />
       <div className="tl-suggest" role="group" aria-label="Lines that work">
@@ -615,7 +614,7 @@ function LoopForm({
       </div>
       <div className="tl-actions" style={{ marginTop: 4 }}>
         <button type="submit" className="button primary" disabled={!name.trim()}>
-          {loop ? "Save" : "Name it"}
+          {loop ? "Save" : "Add it"}
         </button>
         <button type="button" className="button secondary" onClick={onCancel}>Cancel</button>
       </div>
