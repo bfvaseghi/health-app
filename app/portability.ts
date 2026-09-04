@@ -10,6 +10,7 @@ import {
   progressPhotosCsv,
   sleepEntriesCsv,
   therapyNotesCsv,
+  thoughtLoopsCsv,
   thoughtJournalCsv,
   workoutSetsCsv,
 } from "./health-model";
@@ -209,6 +210,7 @@ export async function createBaselineArchive(
     textFile("csv/medication-doses.csv", medicationDosesCsv(state)),
     textFile("csv/therapy-notes.csv", therapyNotesCsv(state.therapyNotes)),
     textFile("csv/thought-journal.csv", thoughtJournalCsv(state.thoughtJournal)),
+    textFile("csv/thought-loops.csv", thoughtLoopsCsv(state.thoughtLoops, state.loopEvents)),
     textFile("csv/progress-photos.csv", progressPhotosCsv(state.progressPhotos)),
     textFile("csv/goals.csv", goalsCsv(state.goals)),
   ];

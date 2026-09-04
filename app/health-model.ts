@@ -55,6 +55,34 @@ export type TherapyNote = {
   sharedDate: string;
 };
 
+/**
+ * A thought that keeps coming back, named once and answered the same way each
+ * time. Counting it and answering it is what loosens it; pushing it away is
+ * what brings it back, so nothing here asks you to stop thinking it.
+ */
+export type ThoughtLoop = {
+  id: string;
+  name: string;
+  /** What you say back, in your own words. */
+  reply: string;
+  createdAt: string;
+  archived: boolean;
+};
+
+/** What you did the moment a loop came up. */
+export type LoopMove = "noticed" | "named" | "shifted" | "parked";
+
+/** One time a loop came up: when, what you did, and whether it passed. */
+export type LoopEvent = {
+  id: string;
+  loopId: string;
+  /** Local wall-clock time, "YYYY-MM-DDTHH:MM", so the hour survives export. */
+  at: string;
+  date: string;
+  move: LoopMove;
+  passed: boolean | null;
+};
+
 /** A private free-form reflection, kept separate from the therapy agenda. */
 export type ThoughtJournalEntry = {
   id: string;
@@ -187,6 +215,8 @@ export type HealthState = {
   workoutSets: WorkoutSet[];
   therapyNotes: TherapyNote[];
   thoughtJournal: ThoughtJournalEntry[];
+  thoughtLoops: ThoughtLoop[];
+  loopEvents: LoopEvent[];
   progressPhotos: ProgressPhoto[];
   goals: GoalSettings;
 };
@@ -230,6 +260,8 @@ export function emptyHealthState(now = new Date()): HealthState {
     labResults: [],
     workoutSets: [],
     therapyNotes: [],
+    thoughtLoops: [],
+    loopEvents: [],
     thoughtJournal: [],
     progressPhotos: [],
     goals: { ...defaultGoals },
@@ -530,6 +562,45 @@ export function normalizeTherapyNote(value: unknown): TherapyNote | null {
     text,
     shared: booleanOrNull(note.shared) ?? false,
     sharedDate: validIsoDate(note.sharedDate) ? note.sharedDate : "",
+  };
+}
+
+const LOOP_MOVES: LoopMove[] = ["noticed", "named", "shifted", "parked"];
+
+/** "YYYY-MM-DDTHH:MM" in local time; the date is the first ten characters. */
+export function localDateTime(date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+export function normalizeThoughtLoop(value: unknown): ThoughtLoop | null {
+  const loop = recordValue(value);
+  const name = safeText(loop.name, 120);
+  if (!name) return null;
+  return {
+    id: safeText(loop.id, 120) || `loop-${Math.abs(hashText(name)).toString(36)}`,
+    name,
+    reply: safeText(loop.reply, 400),
+    createdAt: validIsoDate(String(loop.createdAt ?? "").slice(0, 10)) ? String(loop.createdAt) : todayLocal(),
+    archived: booleanOrNull(loop.archived) ?? false,
+  };
+}
+
+export function normalizeLoopEvent(value: unknown, knownLoops: Set<string>): LoopEvent | null {
+  const event = recordValue(value);
+  const loopId = safeText(event.loopId, 120);
+  if (!loopId || !knownLoops.has(loopId)) return null;
+  const at = typeof event.at === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(event.at) ? event.at.slice(0, 16) : null;
+  const date = validIsoDate(event.date) ? event.date : at ? at.slice(0, 10) : null;
+  if (!date) return null;
+  const move = LOOP_MOVES.includes(event.move as LoopMove) ? (event.move as LoopMove) : "noticed";
+  return {
+    id: safeText(event.id, 120) || `${loopId}-${at ?? date}`,
+    loopId,
+    at: at ?? `${date}T12:00`,
+    date,
+    move,
+    passed: booleanOrNull(event.passed),
   };
 }
 
@@ -837,6 +908,16 @@ export function normalizeHealthState(value: unknown): HealthState {
   const photos = Array.isArray(state.progressPhotos)
     ? state.progressPhotos.map(normalizeProgressPhoto).filter((photo): photo is ProgressPhoto => Boolean(photo))
     : [];
+  const loops = dedupeByKey(
+    Array.isArray(state.thoughtLoops)
+      ? state.thoughtLoops.map(normalizeThoughtLoop).filter((loop): loop is ThoughtLoop => Boolean(loop))
+      : [],
+    (loop) => loop.id,
+  );
+  const loopIds = new Set(loops.map((loop) => loop.id));
+  const loopEvents = Array.isArray(state.loopEvents)
+    ? state.loopEvents.map((event) => normalizeLoopEvent(event, loopIds)).filter((event): event is LoopEvent => Boolean(event))
+    : [];
 
   // Medications first: a dose is only meaningful against one that exists.
   const medications = normalizeMedications(state.medications);
@@ -873,6 +954,8 @@ export function normalizeHealthState(value: unknown): HealthState {
     therapyNotes: dedupeByKey(therapy, (note) => note.id).sort((a, b) => b.date.localeCompare(a.date)),
     thoughtJournal: dedupeByKey(thoughts, (entry) => entry.id)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.date.localeCompare(a.date)),
+    thoughtLoops: loops.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    loopEvents: dedupeByKey(loopEvents, (event) => event.id).sort((a, b) => b.at.localeCompare(a.at)),
     progressPhotos: dedupeByKey(photos, (photo) => photo.id).sort((a, b) => b.date.localeCompare(a.date)),
     goals: normalizeGoals(state.goals),
   };
@@ -1292,6 +1375,118 @@ export function removeTherapyNote(state: HealthState, id: string): HealthState {
   });
 }
 
+export function upsertThoughtLoop(state: HealthState, value: unknown): HealthState {
+  const loop = normalizeThoughtLoop(value);
+  if (!loop) return state;
+  return normalizeHealthState({
+    ...state,
+    updatedAt: new Date().toISOString(),
+    thoughtLoops: [...state.thoughtLoops.filter((item) => item.id !== loop.id), loop],
+  });
+}
+
+/** Removing a loop removes every time it came up; the history is the loop's. */
+export function removeThoughtLoop(state: HealthState, id: string): HealthState {
+  return normalizeHealthState({
+    ...state,
+    updatedAt: new Date().toISOString(),
+    thoughtLoops: state.thoughtLoops.filter((loop) => loop.id !== id),
+    loopEvents: state.loopEvents.filter((event) => event.loopId !== id),
+  });
+}
+
+export function upsertLoopEvent(state: HealthState, value: unknown): HealthState {
+  const event = normalizeLoopEvent(value, new Set(state.thoughtLoops.map((loop) => loop.id)));
+  if (!event) return state;
+  return normalizeHealthState({
+    ...state,
+    updatedAt: new Date().toISOString(),
+    loopEvents: [event, ...state.loopEvents.filter((item) => item.id !== event.id)],
+  });
+}
+
+export function removeLoopEvent(state: HealthState, id: string): HealthState {
+  if (!state.loopEvents.some((event) => event.id === id)) return state;
+  return normalizeHealthState({
+    ...state,
+    updatedAt: new Date().toISOString(),
+    loopEvents: state.loopEvents.filter((event) => event.id !== id),
+  });
+}
+
+export type LoopSummary = {
+  today: number;
+  week: number;
+  lastWeek: number;
+  month: number;
+  priorMonth: number;
+  /** Days since it last came up; 0 if today, null if never. */
+  quietDays: number | null;
+  /** Share of answered events that passed, over 30 days; null with fewer than three answers. */
+  passedShare: number | null;
+  /** When it tends to come up over 30 days; null with fewer than three events. */
+  peak: "mornings" | "afternoons" | "evenings" | "nights" | null;
+  trend: "fading" | "steady" | "louder" | "new";
+  sentence: string;
+};
+
+function partOfDay(at: string): "mornings" | "afternoons" | "evenings" | "nights" {
+  const hour = Number(at.slice(11, 13));
+  if (hour >= 5 && hour < 12) return "mornings";
+  if (hour >= 12 && hour < 17) return "afternoons";
+  if (hour >= 17 && hour < 22) return "evenings";
+  return "nights";
+}
+
+/** How one loop is going: counted, compared with the week before, and said plainly. */
+export function loopSummary(state: HealthState, loopId: string, asOf = todayLocal()): LoopSummary {
+  const events = state.loopEvents.filter((event) => event.loopId === loopId && event.date <= asOf);
+  const inWindow = (from: number, to: number) => events.filter((event) => event.date > addDays(asOf, -to) && event.date <= addDays(asOf, -from));
+  const today = events.filter((event) => event.date === asOf).length;
+  const week = inWindow(0, 7).length;
+  const lastWeek = inWindow(7, 14).length;
+  const month = inWindow(0, 30);
+  const priorMonth = inWindow(30, 60).length;
+  const latest = events[0]?.date ?? null;
+  const quietDays = latest ? daysBetween(latest, asOf) : null;
+  const answered = month.filter((event) => event.passed !== null);
+  const passedShare = answered.length >= 3 ? Math.round((answered.filter((event) => event.passed).length / answered.length) * 100) : null;
+  let peak: LoopSummary["peak"] = null;
+  if (month.length >= 3) {
+    const counts = new Map<string, number>();
+    for (const event of month) counts.set(partOfDay(event.at), (counts.get(partOfDay(event.at)) ?? 0) + 1);
+    const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+    if (top && top[1] / month.length >= 0.4) peak = top[0] as LoopSummary["peak"];
+  }
+  // A change counts when it is at least two taps and at least a quarter of last
+  // week; one tap either way is a day, not a direction.
+  const step = Math.max(2, Math.ceil(lastWeek * 0.25));
+  const trend: LoopSummary["trend"] =
+    week + lastWeek < 3 && !lastWeek ? "new" : week <= lastWeek - step ? "fading" : week >= lastWeek + step ? "louder" : "steady";
+  const parts: string[] = [];
+  parts.push(
+    trend === "new"
+      ? week
+        ? `${week} ${week === 1 ? "time" : "times"} this week.`
+        : "Not yet this week."
+      : `${week} this week, ${lastWeek} last week — ${trend}.`,
+  );
+  if (quietDays !== null && quietDays >= 2) parts.push(`Quiet for ${quietDays} days.`);
+  if (passedShare !== null) parts.push(`Passed ${passedShare}% of the time you answered.`);
+  if (peak) parts.push(`Mostly ${peak}.`);
+  return { today, week, lastWeek, month: month.length, priorMonth, quietDays, passedShare, peak, trend, sentence: parts.join(" ") };
+}
+
+/** Times a loop came up in each trailing week, oldest first; a zero is a real zero. */
+export function loopWeekly(state: HealthState, loopId: string, asOf = todayLocal(), weeks = 8): Array<{ date: string; value: number }> {
+  const events = state.loopEvents.filter((event) => event.loopId === loopId);
+  return Array.from({ length: weeks }, (_, index) => {
+    const end = addDays(asOf, -(weeks - 1 - index) * 7);
+    const start = addDays(end, -6);
+    return { date: end, value: events.filter((event) => event.date >= start && event.date <= end).length };
+  });
+}
+
 export function upsertThoughtJournalEntry(state: HealthState, value: unknown): HealthState {
   const entry = normalizeThoughtJournalEntry(value);
   if (!entry) return state;
@@ -1688,6 +1883,24 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
     value: mind.meditationDays ? `${mind.meditationDays} of ${safeDays} days` : "No data",
     detail: mind.meditationMinutes ? `${mind.meditationMinutes} minutes in total` : "nothing recorded in this period",
   });
+  for (const loop of state.thoughtLoops.filter((entry) => !entry.archived)) {
+    const events = state.loopEvents.filter((event) => event.loopId === loop.id && event.date >= start && event.date <= asOf);
+    const before = state.loopEvents.filter(
+      (event) => event.loopId === loop.id && event.date >= addDays(start, -safeDays) && event.date < start,
+    );
+    const answered = events.filter((event) => event.passed !== null);
+    rows.push({
+      id: `loop-${loop.id}`,
+      group: "Mind",
+      label: `Thought loop: ${loop.name}`,
+      value: events.length ? `${events.length} ${events.length === 1 ? "time" : "times"} in ${safeDays} days` : "No data",
+      detail: events.length
+        ? `${before.length} the ${safeDays} days before${
+            answered.length >= 3 ? ` · passed ${Math.round((answered.filter((event) => event.passed).length / answered.length) * 100)}% when answered` : ""
+          }`
+        : "did not come up in this period",
+    });
+  }
   rows.push({
     id: "journal",
     group: "Mind",
@@ -1858,6 +2071,16 @@ export function therapyNotesCsv(entries: TherapyNote[]): string {
     ["id", "date", "text", "raised", "raised_date"],
     [...entries].sort((a, b) => a.date.localeCompare(b.date)).map((entry) => [
       entry.id, entry.date, entry.text, entry.shared, entry.sharedDate,
+    ]),
+  );
+}
+
+export function thoughtLoopsCsv(loops: ThoughtLoop[], events: LoopEvent[]): string {
+  const names = new Map(loops.map((loop) => [loop.id, loop.name]));
+  return toCsv(
+    ["id", "loop_id", "loop", "at", "date", "move", "passed"],
+    [...events].sort((a, b) => a.at.localeCompare(b.at)).map((event) => [
+      event.id, event.loopId, names.get(event.loopId) ?? "", event.at, event.date, event.move, event.passed === null ? "" : event.passed,
     ]),
   );
 }

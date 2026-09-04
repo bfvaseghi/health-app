@@ -1,8 +1,8 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import type { DailyEntry, HealthState, TherapyNote, ThoughtJournalEntry } from "../health-model";
-import { addDays, dateLabel, mindSummary } from "../health-model";
+import type { DailyEntry, HealthState, LoopEvent, LoopMove, TherapyNote, ThoughtJournalEntry, ThoughtLoop } from "../health-model";
+import { addDays, dateLabel, localDateTime, loopSummary, loopWeekly, mindSummary } from "../health-model";
 import { meditationWeeklyMinutes } from "../series";
 import { Icon } from "./icons";
 import { ConfirmButton } from "./primitives";
@@ -22,6 +22,10 @@ export function MindView({
   onDeleteNote,
   onAddThought,
   onDeleteThought,
+  onSaveLoop,
+  onDeleteLoop,
+  onLoopEvent,
+  onDeleteLoopEvent,
   onNotice,
 }: {
   state: HealthState;
@@ -32,6 +36,10 @@ export function MindView({
   onDeleteNote: (id: string) => void;
   onAddThought: (entry: { title: string; text: string; source: ThoughtJournalEntry["source"] }) => void;
   onDeleteThought: (id: string) => void;
+  onSaveLoop: (loop: { id?: string; name: string; reply: string }) => void;
+  onDeleteLoop: (id: string) => void;
+  onLoopEvent: (event: LoopEvent) => void;
+  onDeleteLoopEvent: (id: string) => void;
   onNotice: (message: string) => void;
 }) {
   const [draft, setDraft] = useState("");
@@ -47,6 +55,7 @@ export function MindView({
   const todayEntry = state.dailyEntries.find((item) => item.date === today);
   const minutes = todayEntry?.meditationMinutes ?? 0;
   const journaled = Boolean(todayEntry?.journaled) || thoughtDates.has(today);
+  const loopsToday = state.loopEvents.filter((event) => event.date === today).length;
   const words = ["", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen"];
   const headline = minutes
     ? `${minutes <= 15 && words[minutes] ? words[minutes] : minutes} quiet ${minutes === 1 ? "minute" : "minutes"}.`
@@ -57,6 +66,7 @@ export function MindView({
     minutes ? "meditated today" : "no meditation logged yet",
     journaled ? "journal written" : "journal not yet written",
     open.length ? `${open.length} ${open.length === 1 ? "thing" : "things"} waiting for therapy` : "nothing waiting for therapy",
+    ...(loopsToday ? [`${loopsToday} ${loopsToday === 1 ? "loop" : "loops"} noticed today`] : []),
   ].join(" · ");
 
   function submitNote(event: FormEvent<HTMLFormElement>) {
@@ -74,6 +84,16 @@ export function MindView({
       <p className="tl-lede">{lede}</p>
 
       <TodayPractices state={state} today={today} updateDaily={updateDaily} />
+
+      <ThoughtLoops
+        state={state}
+        today={today}
+        onSave={onSaveLoop}
+        onDelete={onDeleteLoop}
+        onEvent={onLoopEvent}
+        onDeleteEvent={onDeleteLoopEvent}
+        onNotice={onNotice}
+      />
 
       <section className="tl-section" aria-label="Meditation, minutes a week">
         <div className="tl-section-head">
@@ -363,5 +383,242 @@ function TherapyRow({
       </span>
       <ConfirmButton label={`Delete “${note.text}”`} onConfirm={() => onDelete(note.id)} />
     </li>
+  );
+}
+
+const SUGGESTED_REPLIES = [
+  "I'm having the thought again. It is a thought, not a fact.",
+  "Noted. Not now — back to what I was doing.",
+  "I'll give this ten minutes at six, with a pen. Not before.",
+  "This has come up before and passed before.",
+];
+
+const MOVES: Array<{ move: LoopMove; label: string; hint: string }> = [
+  { move: "named", label: "Named it", hint: "said it was the loop, not news" },
+  { move: "shifted", label: "Shifted", hint: "moved to one concrete thing" },
+  { move: "parked", label: "Parked it", hint: "gave it a time later today" },
+];
+
+/**
+ * Thought loops. A recurring thought loses its grip when it is counted and
+ * answered the same way each time; trying not to think it is what brings it
+ * back. So: name it once, choose what you will say back, tap it every time it
+ * comes up, and watch the tide of taps fall week by week.
+ */
+function ThoughtLoops({
+  state,
+  today,
+  onSave,
+  onDelete,
+  onEvent,
+  onDeleteEvent,
+  onNotice,
+}: {
+  state: HealthState;
+  today: string;
+  onSave: (loop: { id?: string; name: string; reply: string }) => void;
+  onDelete: (id: string) => void;
+  onEvent: (event: LoopEvent) => void;
+  onDeleteEvent: (id: string) => void;
+  onNotice: (message: string) => void;
+}) {
+  const loops = state.thoughtLoops.filter((loop) => !loop.archived);
+  const [editing, setEditing] = useState<"new" | string | null>(null);
+  // The reply card stays up for the loop you just tapped, holding the event so
+  // a move or "it passed" lands on that tap and not a new one.
+  const [live, setLive] = useState<{ loopId: string; eventId: string } | null>(null);
+
+  const cameUp = (loop: ThoughtLoop) => {
+    const at = localDateTime();
+    const event: LoopEvent = { id: `${loop.id}-${at}-${Math.random().toString(36).slice(2, 6)}`, loopId: loop.id, at, date: at.slice(0, 10), move: "noticed", passed: null };
+    onEvent(event);
+    setLive({ loopId: loop.id, eventId: event.id });
+  };
+  const current = live ? state.loopEvents.find((event) => event.id === live.eventId) ?? null : null;
+
+  return (
+    <section className="tl-section" aria-labelledby="loops-title">
+      <div className="tl-section-head">
+        <h2 className="tl-caps" id="loops-title" style={{ margin: 0 }}>
+          {loops.length ? `Thought loops · ${loops.length}` : "Thought loops"}
+        </h2>
+        {editing === "new" ? null : (
+          <button type="button" className="text-button" onClick={() => setEditing("new")}>
+            <Icon name="plus" /> Name a loop
+          </button>
+        )}
+      </div>
+      {!loops.length && editing !== "new" ? (
+        <p className="tl-line" style={{ marginTop: 8 }}>
+          A thought that keeps coming back loosens when it is counted and answered the same way each time, not when it is pushed
+          away. Name one, choose what you will say back, and tap it whenever it comes up.
+        </p>
+      ) : null}
+      {editing === "new" ? (
+        <LoopForm
+          onCancel={() => setEditing(null)}
+          onSave={(draft) => {
+            onSave(draft);
+            setEditing(null);
+            onNotice(`"${draft.name}" is named. Tap it whenever it comes up.`);
+          }}
+        />
+      ) : null}
+
+      <ul className="tl-list">
+        {loops.map((loop) => {
+          const summary = loopSummary(state, loop.id, today);
+          const weekly = loopWeekly(state, loop.id, today, 8);
+          const total = state.loopEvents.filter((event) => event.loopId === loop.id).length;
+          const isLive = live?.loopId === loop.id && current !== null;
+          return (
+            <li key={loop.id} className="tl-loop">
+              {editing === loop.id ? (
+                <LoopForm
+                  loop={loop}
+                  onCancel={() => setEditing(null)}
+                  onSave={(draft) => {
+                    onSave({ ...draft, id: loop.id });
+                    setEditing(null);
+                  }}
+                />
+              ) : (
+                <>
+                  <div className="tl-section-head" style={{ alignItems: "flex-start" }}>
+                    <span className="tl-row-copy">
+                      <b>{loop.name}</b>
+                      <small>{summary.sentence}</small>
+                    </span>
+                    <div className="row-actions">
+                      <button type="button" className="icon-button" aria-label={`Edit ${loop.name}`} onClick={() => setEditing(loop.id)}>
+                        <Icon name="pencil" />
+                      </button>
+                      <ConfirmButton
+                        label={`Delete ${loop.name} and every time it came up`}
+                        onConfirm={() => onDelete(loop.id)}
+                      />
+                    </div>
+                  </div>
+                  <div className="tl-actions" style={{ alignItems: "center" }}>
+                    <button type="button" className="button primary" onClick={() => cameUp(loop)}>
+                      <Icon name="mind" />
+                      It came up
+                    </button>
+                    <span className="tl-meta" style={{ textAlign: "left" }}>
+                      {summary.today ? `${summary.today} ${summary.today === 1 ? "time" : "times"} today` : "not yet today"}
+                    </span>
+                  </div>
+                  {isLive && current ? (
+                    <div className="tl-reply" role="status" aria-live="polite">
+                      <p className="tl-reply-line">{loop.reply || "Noted."}</p>
+                      <div className="tl-reply-moves" role="group" aria-label="What you did with it">
+                        {MOVES.map((entry) => (
+                          <button
+                            key={entry.move}
+                            type="button"
+                            className={current.move === entry.move ? "chip primary small" : "chip small"}
+                            aria-pressed={current.move === entry.move}
+                            title={entry.hint}
+                            onClick={() => onEvent({ ...current, move: current.move === entry.move ? "noticed" : entry.move })}
+                          >
+                            {entry.label}
+                          </button>
+                        ))}
+                      </div>
+                      <p className="tl-line" style={{ marginTop: 10 }}>
+                        <button
+                          type="button"
+                          className="text-button"
+                          aria-pressed={current.passed === true}
+                          onClick={() => onEvent({ ...current, passed: current.passed === true ? null : true })}
+                        >
+                          {current.passed === true ? "It passed ✓" : "It passed"}
+                        </button>
+                        {" · "}
+                        <button type="button" className="text-button" onClick={() => { onDeleteEvent(current.id); setLive(null); }}>
+                          Undo this tap
+                        </button>
+                        {" · "}
+                        <button type="button" className="text-button" onClick={() => setLive(null)}>
+                          Close
+                        </button>
+                      </p>
+                    </div>
+                  ) : null}
+                  {total >= 3 ? (
+                    <Tide
+                      data={weekly}
+                      label={`${loop.name}, times a week`}
+                      min={0}
+                      format={(value) => String(Math.round(value))}
+                      empty=""
+                      dateFormat={{ month: "short", day: "numeric" }}
+                    />
+                  ) : null}
+                </>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      {loops.length ? (
+        <p className="tl-line">
+          Name it, move to one concrete thing, or park it for a set time later. Down is good: the tide under each loop is
+          how often it came up, week by week.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function LoopForm({
+  loop,
+  onSave,
+  onCancel,
+}: {
+  loop?: ThoughtLoop;
+  onSave: (draft: { name: string; reply: string }) => void;
+  onCancel: () => void;
+}) {
+  const [name, setName] = useState(loop?.name ?? "");
+  const [reply, setReply] = useState(loop?.reply ?? "");
+  return (
+    <form
+      className="tl-loop-form"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!name.trim()) return;
+        onSave({ name: name.trim(), reply: reply.trim() });
+      }}
+    >
+      <input
+        value={name}
+        maxLength={120}
+        placeholder="The thought, in a few words"
+        aria-label="The thought, in a few words"
+        onChange={(event) => setName(event.target.value)}
+        autoFocus
+      />
+      <input
+        value={reply}
+        maxLength={400}
+        placeholder="What you will say back, every time"
+        aria-label="What you will say back"
+        onChange={(event) => setReply(event.target.value)}
+      />
+      <div className="tl-suggest" role="group" aria-label="Lines that work">
+        {SUGGESTED_REPLIES.map((line) => (
+          <button key={line} type="button" className={reply === line ? "chip primary small" : "chip small"} onClick={() => setReply(line)}>
+            {line}
+          </button>
+        ))}
+      </div>
+      <div className="tl-actions" style={{ marginTop: 4 }}>
+        <button type="submit" className="button primary" disabled={!name.trim()}>
+          {loop ? "Save" : "Name it"}
+        </button>
+        <button type="button" className="button secondary" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
   );
 }

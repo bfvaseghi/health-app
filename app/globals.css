@@ -2286,3 +2286,20 @@ kbd {
 .chip.small svg { width: 14px; height: 14px; }
 .check-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; color: var(--muted); font-size: 14px; cursor: pointer; }
 .check-row input { width: 18px; height: 18px; accent-color: var(--accent); }
+
+/* Thought loops: the tap, the line you say back, the tide of taps. */
+.tl-loop { padding: 14px 0 6px; border-bottom: 1px solid var(--line); }
+.tl-loop:last-child { border-bottom: 0; }
+.tl-loop .tl-actions { margin-top: 12px; }
+.tl-loop .tide { margin-top: 8px; }
+.tl-reply { margin-top: 12px; padding: 14px 16px; border-left: 2px solid var(--accent); border-radius: 0 12px 12px 0; background: var(--accent-pale); }
+.tl-reply-line { margin: 0; font-family: var(--font-display); font-style: italic; font-size: 22px; line-height: 1.25; letter-spacing: -0.01em; color: var(--ink); }
+.tl-reply-moves { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+.tl-reply .tl-line { margin-top: 10px; }
+.tl-reply .tl-line .text-button[aria-pressed="true"] { color: var(--accent-pale-ink); }
+.tl-loop-form { display: grid; gap: 8px; margin: 12px 0 10px; }
+.tl-loop-form input { min-height: 42px; padding: 9px 12px; border: 1px solid var(--line-strong); border-radius: 11px; background: var(--raised); color: var(--ink); font: inherit; font-size: 14px; }
+.tl-loop-form input:focus { outline: 0; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-pale); }
+.tl-suggest { display: flex; flex-wrap: wrap; gap: 6px; }
+.tl-suggest .chip { text-align: left; white-space: normal; line-height: 1.3; }
+@media (min-width: 761px) { .tl-loop-form { max-width: 640px; } }

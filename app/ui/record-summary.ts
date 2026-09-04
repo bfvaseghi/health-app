@@ -14,6 +14,7 @@ export function recordSummary(state: HealthState): { total: number; sentence: st
     [state.medications.filter((medication) => !medication.archived).length, "medication", "medications"],
     [state.labResults.length, "lab result", "lab results"],
     [state.thoughtJournal.length, "journal page", "journal pages"],
+    [state.loopEvents.length, "noticed thought", "noticed thoughts"],
   ];
   const parts = counts.filter(([count]) => count > 0).map(([count, one, many]) => `${count.toLocaleString()} ${count === 1 ? one : many}`);
   const total = counts.reduce((sum, [count]) => sum + count, 0);

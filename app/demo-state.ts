@@ -213,16 +213,16 @@ function demoMedicationDoses(today: string): MedicationDose[] {
 
 function demoLabs(today: string): LabResult[] {
   return [
-    { id: "demo-ldl-1", name: "LDL cholesterol", date: addDays(today, -210), value: 121, unit: "mg/dL", referenceLow: 0, referenceHigh: 100, note: "" },
-    { id: "demo-ldl-2", name: "LDL cholesterol", date: addDays(today, -120), value: 114, unit: "mg/dL", referenceLow: 0, referenceHigh: 100, note: "" },
-    { id: "demo-ldl-3", name: "LDL cholesterol", date: addDays(today, -30), value: 108, unit: "mg/dL", referenceLow: 0, referenceHigh: 100, note: "" },
-    { id: "demo-vitd-1", name: "Vitamin D", date: addDays(today, -210), value: 24, unit: "ng/mL", referenceLow: 30, referenceHigh: 100, note: "" },
-    { id: "demo-vitd-2", name: "Vitamin D", date: addDays(today, -120), value: 31, unit: "ng/mL", referenceLow: 30, referenceHigh: 100, note: "" },
-    { id: "demo-vitd-3", name: "Vitamin D", date: addDays(today, -30), value: 38, unit: "ng/mL", referenceLow: 30, referenceHigh: 100, note: "" },
-    { id: "demo-a1c-1", name: "Hemoglobin A1c", date: addDays(today, -210), value: 5.5, unit: "%", referenceLow: 4, referenceHigh: 5.6, note: "" },
-    { id: "demo-a1c-2", name: "Hemoglobin A1c", date: addDays(today, -30), value: 5.3, unit: "%", referenceLow: 4, referenceHigh: 5.6, note: "" },
-    { id: "demo-ferritin-1", name: "Ferritin", date: addDays(today, -120), value: 68, unit: "ng/mL", referenceLow: 30, referenceHigh: 400, note: "" },
-    { id: "demo-ferritin-2", name: "Ferritin", date: addDays(today, -30), value: 74, unit: "ng/mL", referenceLow: 30, referenceHigh: 400, note: "" },
+    { id: "demo-ldl-1", name: "LDL cholesterol", date: addDays(today, -210), value: 121, unit: "mg/dL", referenceLow: 0, referenceHigh: 100, note: "", ask: false },
+    { id: "demo-ldl-2", name: "LDL cholesterol", date: addDays(today, -120), value: 114, unit: "mg/dL", referenceLow: 0, referenceHigh: 100, note: "", ask: false },
+    { id: "demo-ldl-3", name: "LDL cholesterol", date: addDays(today, -30), value: 108, unit: "mg/dL", referenceLow: 0, referenceHigh: 100, note: "", ask: false },
+    { id: "demo-vitd-1", name: "Vitamin D", date: addDays(today, -210), value: 24, unit: "ng/mL", referenceLow: 30, referenceHigh: 100, note: "", ask: false },
+    { id: "demo-vitd-2", name: "Vitamin D", date: addDays(today, -120), value: 31, unit: "ng/mL", referenceLow: 30, referenceHigh: 100, note: "", ask: false },
+    { id: "demo-vitd-3", name: "Vitamin D", date: addDays(today, -30), value: 38, unit: "ng/mL", referenceLow: 30, referenceHigh: 100, note: "", ask: false },
+    { id: "demo-a1c-1", name: "Hemoglobin A1c", date: addDays(today, -210), value: 5.5, unit: "%", referenceLow: 4, referenceHigh: 5.6, note: "", ask: false },
+    { id: "demo-a1c-2", name: "Hemoglobin A1c", date: addDays(today, -30), value: 5.3, unit: "%", referenceLow: 4, referenceHigh: 5.6, note: "", ask: false },
+    { id: "demo-ferritin-1", name: "Ferritin", date: addDays(today, -120), value: 68, unit: "ng/mL", referenceLow: 30, referenceHigh: 400, note: "", ask: false },
+    { id: "demo-ferritin-2", name: "Ferritin", date: addDays(today, -30), value: 74, unit: "ng/mL", referenceLow: 30, referenceHigh: 400, note: "", ask: false },
   ];
 }
 
@@ -251,6 +251,11 @@ export function demoHealthState(today: string): HealthState {
       { id: "demo-note-1", date: addDays(today, -8), text: "Synthetic example: ask what made the rushed day feel different.", shared: true, sharedDate: addDays(today, -6) },
       { id: "demo-note-2", date: addDays(today, -2), text: "Synthetic example: practise one short pause before answering.", shared: false, sharedDate: "" },
     ],
+    thoughtLoops: [
+      { id: "demo-loop-1", name: "Replaying that conversation", reply: "I'm having the thought again. It is a thought, not a verdict. Back to the room.", createdAt: addDays(today, -55), archived: false },
+      { id: "demo-loop-2", name: "What if the review goes badly", reply: "Not now. I'll give this ten minutes at six, with a pen.", createdAt: addDays(today, -9), archived: false },
+    ],
+    loopEvents: demoLoopEvents(today),
     thoughtJournal: [
       {
         id: "demo-thought-1",
@@ -307,4 +312,37 @@ export function demoHealthState(today: string): HealthState {
       },
     },
   });
+}
+
+/**
+ * Eight weeks of one loop coming up less and less, mostly in the evenings, and
+ * a newer loop that has only just been named. Deterministic, so the demo reads
+ * the same every time.
+ */
+function demoLoopEvents(today: string): Array<{ id: string; loopId: string; at: string; date: string; move: string; passed: boolean | null }> {
+  const perWeek = [12, 10, 9, 8, 6, 5, 4, 2];
+  const hours = [21, 19, 22, 20, 8, 21, 18, 23, 20];
+  const moves = ["noticed", "named", "shifted", "named", "parked", "named", "shifted", "named", "named"];
+  const events: Array<{ id: string; loopId: string; at: string; date: string; move: string; passed: boolean | null }> = [];
+  perWeek.forEach((count, weekIndex) => {
+    const weekEnd = addDays(today, -(perWeek.length - 1 - weekIndex) * 7);
+    for (let n = 0; n < count; n += 1) {
+      const date = addDays(weekEnd, -((n * 3) % 7));
+      if (date > today) continue;
+      const hour = hours[n % hours.length];
+      events.push({
+        id: `demo-loop-1-${weekIndex}-${n}`,
+        loopId: "demo-loop-1",
+        at: `${date}T${String(hour).padStart(2, "0")}:${n % 2 ? "40" : "15"}`,
+        date,
+        move: moves[n % moves.length],
+        passed: weekIndex < 2 ? (n % 3 === 0) : n % 4 !== 0,
+      });
+    }
+  });
+  for (let n = 0; n < 5; n += 1) {
+    const date = addDays(today, -(n * 2));
+    events.push({ id: `demo-loop-2-${n}`, loopId: "demo-loop-2", at: `${date}T${n % 2 ? "07" : "13"}:05`, date, move: n % 2 ? "parked" : "noticed", passed: n === 0 ? null : true });
+  }
+  return events;
 }

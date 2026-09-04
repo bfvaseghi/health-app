@@ -32,10 +32,15 @@ import {
   upsertDailyEntry,
   upsertLabResult,
   setLabAsk,
+  upsertThoughtLoop,
+  removeThoughtLoop,
+  upsertLoopEvent,
+  removeLoopEvent,
   upsertProgressPhoto,
   upsertSleepEntry,
   upsertTherapyNote,
   upsertThoughtJournalEntry,
+  type LoopEvent,
 } from "./health-model";
 import { demoHealthState } from "./demo-state";
 import { applyImport } from "./import";
@@ -561,6 +566,11 @@ export default function Home() {
 
   const deleteTherapyNote = (id: string) => commit((current) => removeTherapyNote(current, id), "Note deleted.", true);
 
+  const saveLoop = (loop: { id?: string; name: string; reply: string }) =>
+    updateState((current) => upsertThoughtLoop(current, { ...loop, createdAt: current.thoughtLoops.find((entry) => entry.id === loop.id)?.createdAt }));
+  const deleteLoop = (id: string) => updateState((current) => removeThoughtLoop(current, id));
+  const logLoopEvent = (event: LoopEvent) => updateState((current) => upsertLoopEvent(current, event));
+  const deleteLoopEvent = (id: string) => updateState((current) => removeLoopEvent(current, id));
   const addThought = ({ title, text, source }: { title: string; text: string; source: ThoughtJournalEntry["source"] }) =>
     updateState((current) =>
       upsertThoughtJournalEntry(current, {
@@ -793,6 +803,10 @@ export default function Home() {
             onDeleteNote={deleteTherapyNote}
             onAddThought={addThought}
             onDeleteThought={deleteThought}
+            onSaveLoop={saveLoop}
+            onDeleteLoop={deleteLoop}
+            onLoopEvent={logLoopEvent}
+            onDeleteLoopEvent={deleteLoopEvent}
             onNotice={notice}
           />
         )}
