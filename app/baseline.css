@@ -8,11 +8,13 @@
 .record-heading::after { width: 28px; height: 3px; border: 0; }
 .record-heading h1 { font-size: 34px; font-weight: 650; letter-spacing: -.035em; line-height: 1.2; }
 .record-heading .text-button, .tl-section-head .text-button, .mind-page .tl-section-head .text-button { font-size: .875rem; min-height: 44px; }
-.button, .button.small, .chip { font-size: .875rem; font-weight: 600; min-height: 44px; padding: 9px 14px; border-radius: 7px; }
+.button, .button.small, .chip { font-size: .875rem; font-weight: 600; min-height: 44px; padding: 9px 14px; border-radius: var(--radius-control); }
 .button.small { min-height: 44px; }
 .text-button { min-height: 44px; font-size: .875rem; }
 .icon-button { min-width: 44px; min-height: 44px; }
 input:not([type="checkbox"]):not([type="radio"]), textarea, select { font-size: 1rem; min-width: 0; }
+/* A field is a target too. The two plan selects were 23px tall. */
+input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
 [role="tabpanel"][hidden] { display: none !important; }
 .record-tabs, .mind-tabs.record-tabs { display: grid; grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 4px; padding: 4px; border-radius: 9px; margin-bottom: 24px; }
 .record-tabs button { min-height: 44px; padding: 8px 5px; font-weight: 550; font-size: .875rem; border-radius: 6px; }
@@ -67,10 +69,10 @@ input:not([type="checkbox"]):not([type="radio"]), textarea, select { font-size: 
 .water-edit { padding-left: 40px; }
 .water-undo { padding-left: 40px; }
 
-/* Two distinct decisions; exercise instructions only appear in the second. */
-.week-setup-panel, .week-next-panel { padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); margin-bottom: 16px; }
-.week-setup-panel h2, .week-next-panel h2 { margin: 5px 0 14px; font-size: 1.625rem; letter-spacing: -.025em; line-height: 1.3; font-weight: 600; }
-.week-setup-panel > p, .week-next-panel > p { font-size: 1rem; line-height: 1.6; color: var(--muted); }
+/* The workout surface. */
+.week-setup-panel { padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); margin-bottom: 16px; }
+.week-setup-panel h2 { margin: 5px 0 14px; font-size: 1.625rem; letter-spacing: -.025em; line-height: 1.3; font-weight: 600; }
+.week-setup-panel > p { font-size: 1rem; line-height: 1.6; color: var(--muted); }
 .week-setup-panel .training-frequency { margin: 12px 0 0; padding: 18px 0; border: 0; border-top: 1px solid var(--line); background: none; }
 .week-setup-panel .training-frequency > div > span { display: none; }
 .training-frequency b { font-size: 1rem; }
@@ -159,7 +161,7 @@ input:not([type="checkbox"]):not([type="radio"]), textarea, select { font-size: 
 .more-row b { font-size: 1rem; }
 .page > .simple-history { margin-top: 18px; }
 .simple-history > summary { min-height: 44px; font-size: .875rem; }
-.modal-panel { border-radius: 14px; }
+.modal-panel { border-radius: var(--radius-modal); }
 .modal-head h2 { font-size: 1.5rem; }
 @media (max-width: 1120px) { .daily-layout { grid-template-columns: minmax(0, 1fr); } .daily-side { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
 @media (max-width: 760px) {
@@ -176,7 +178,7 @@ input:not([type="checkbox"]):not([type="radio"]), textarea, select { font-size: 
   .daily-checklist .tl-well { width: 22px; min-width: 22px; }
   .daily-checklist .tl-well svg { width: 20px; height: 20px; }
   .daily-checklist .tl-row:has(.minute-form) .minute-form { padding-left: 30px; }
-  .week-setup-panel, .week-next-panel { padding: 18px; }
+  .week-setup-panel { padding: 18px; }
   .week-setup-panel .training-frequency { flex-wrap: wrap; gap: 12px; }
   .workout-sheet-cover.next-workout-cover { padding: 20px; }
   .workout-sheet-title h2 { font-size: 1.625rem; }

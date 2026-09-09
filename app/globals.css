@@ -6,6 +6,12 @@
 @font-face { font-family: "Instrument Serif"; font-style: italic; font-weight: 400; font-display: swap; src: url("/fonts/instrument-serif-italic.woff2") format("woff2"); }
 @font-face { font-family: "Hanken Grotesk"; font-style: normal; font-weight: 300 800; font-display: swap; src: url("/fonts/hanken-grotesk.woff2") format("woff2"); }
 :root {
+  /* One radius scale. Three stylesheets used to each name their own value for
+     .button and .modal-panel, so the corner you saw was decided by import
+     order rather than by a decision. */
+  --radius-control: 7px;
+  --radius-surface: 12px;
+  --radius-modal: 14px;
   --ink: #182e40;
   --muted: #596a76;
   --faint: #626f78;
@@ -334,8 +340,6 @@ svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width:
   transition: background 0.16s, border-color 0.16s, color 0.16s, box-shadow 0.16s, transform 0.12s;
 }
 .button svg { width: 17px; height: 17px; }
-.button.primary { background: var(--accent-strong); color: var(--accent-ink); box-shadow: 0 5px 14px color-mix(in srgb, var(--accent-strong) 22%, transparent); }
-.button.primary:hover { filter: brightness(1.06); transform: translateY(-1px); }
 .button.secondary { background: var(--paper); color: var(--ink); border-color: var(--line-strong); }
 .button.secondary:hover { border-color: var(--accent); }
 .button.ghost { background: transparent; color: var(--muted); }
@@ -2108,9 +2112,6 @@ kbd {
 .tl-band text { font-family: var(--font-ui); stroke: none; fill: var(--faint); font-size: 10px; }
 .tl-band text.edge { fill: var(--ink); font-size: 11px; font-weight: 600; }
 /* Buttons and nav take the same quiet shape. */
-.button { border-radius: 12px; min-height: 44px; font-size: 13.5px; font-weight: 600; }
-.button.primary { background: var(--accent); color: var(--accent-ink); box-shadow: none; }
-.button.primary:hover { filter: brightness(1.04); transform: none; }
 .button.secondary { background: transparent; border-color: var(--line-strong); }
 .chip { border-radius: 10px; }
 @media (max-width: 760px) {
@@ -2166,7 +2167,6 @@ kbd {
 .tl-slice .text-button { display: inline; min-height: 0; padding: 0; font-size: inherit; font-weight: 600; }
 /* Modals carry the same voice: a serif statement, then the form. */
 .modal-head h2 { font-family: var(--font-display); font-weight: 400; font-size: 32px; letter-spacing: -0.01em; line-height: 1.05; }
-.modal-panel { border-radius: 20px; }
 /* On a wide screen the record stays a column you can read, not a sheet you scan. */
 @media (min-width: 761px) {
   .tl-page { max-width: 860px; }
@@ -2227,7 +2227,10 @@ kbd {
 
 /* A result on the doctor list: the status pill and the ask toggle side by side. */
 .tl-lab-status { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-.chip.small { min-height: 30px; padding: 4px 10px; font-size: 12px; }
+/* Small on the page, ordinary under a thumb: the hit area is grown with a
+   pseudo-element so the chip stays the size the layout wants. */
+.chip.small { position: relative; min-height: 30px; padding: 4px 10px; font-size: 12px; }
+.chip.small::after { content: ""; position: absolute; inset: 50% 0 auto; translate: 0 -50%; height: 44px; }
 .chip.small svg { width: 14px; height: 14px; }
 .check-row { display: flex; align-items: center; gap: 10px; margin-top: 4px; color: var(--muted); font-size: 14px; cursor: pointer; }
 .check-row input { width: 18px; height: 18px; accent-color: var(--accent); }
