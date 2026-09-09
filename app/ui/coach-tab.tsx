@@ -16,7 +16,7 @@ import { Icon } from "./icons";
 import { copyText, downloadBlob, listWords } from "./format";
 import { ConfirmButton } from "./primitives";
 import { PrescriptionColumns, WorkoutPrescription as Lift } from "./workout-prescription";
-import { workoutLabel } from "./workout-labels";
+import { workoutLabel, workoutPurpose, workoutRequired } from "./workout-labels";
 import type { Modal } from "./types";
 
 /** The plan and muscle graph use the same post-import calculation. */
@@ -119,14 +119,14 @@ export function CoachTab({
 
   return <div className="training-workspace workout-desk workout-detail">
     <div className="week-line">
-      <span><b>Week of {dateLabel(weekStart(today), { month: "short", day: "numeric" })}</b>{` · ${importedCount} of ${targetDays} logged`}{plan.deload ? " · lighter week" : ""}</span>
-      <button type="button" className="text-button" onClick={importWorkout}><Icon name="upload" />{latest ? `Import · last ${dateLabel(latest.date, { month: "short", day: "numeric" })}` : "Import from Strong"}</button>
+      <span>{importedCount === 0 ? "You have not trained yet this week" : importedCount === 1 ? "You have done 1 workout this week" : `You have done ${importedCount} workouts this week`}{plan.deload ? " · this is a lighter week on purpose" : ""}</span>
     </div>
     <section className="workout-sheet" aria-label="Next workout plan">
       <header className="workout-sheet-cover next-workout-cover">
-        <div className="workout-sheet-label"><Icon name="fitness" /><span>{hero ? isNext ? "Next workout" : "Later this week" : "No workouts remaining"}{hero?.tier === "extra" ? " · optional" : ""}</span></div>
-        <div className="workout-sheet-title"><h2 id="fitness-step-heading" tabIndex={-1}>{hero ? workoutLabel(hero) : "Your week is logged"}</h2>{hero ? <span><Icon name="clock" /> {sessionMinutes(hero)} min</span> : null}</div>
-        <p>{hero ? `${hero.exercises.length} exercises · ${hero.sets} sets` : `${importedCount} workouts logged this week`}</p>
+        <div className="workout-sheet-label"><Icon name="fitness" /><span>{hero ? isNext ? "Do this next" : "Later this week" : "Nothing left to do"}</span></div>
+        <div className="workout-sheet-title"><h2 id="fitness-step-heading" tabIndex={-1}>{hero ? workoutLabel(hero) : "Your week is done"}</h2>{hero ? <span><Icon name="clock" /> {sessionMinutes(hero)} min</span> : null}</div>
+        {/* What it is for and whether it matters, in words, above the list. */}
+        <p>{hero ? `${workoutPurpose(hero)}. ${hero.exercises.length} exercises, about ${sessionMinutes(hero)} minutes.` : "Your whole body is covered. Rest, or add one from below."}</p>
         {/* What the button does, at the button. It copies text; it does not
             build a Strong routine, and saying so here beats saying it in a
             fold nobody opens. */}
@@ -141,13 +141,20 @@ export function CoachTab({
     </section>
     {others.length ? <nav className="later-list" aria-label="The rest of this week">
       {others.map(session => <button type="button" key={session.name} onClick={() => onSelect?.(session.name === selected ? null : session.name)}>
-        <span><b>{workoutLabel(session)}</b><small>{session.tier === "extra" ? "optional · " : ""}{session.exercises.length} exercises · {sessionMinutes(session)} min</small></span>
+        <span><b>{workoutLabel(session)}</b><small>{workoutRequired(session)} · {session.exercises.length} exercises · {sessionMinutes(session)} min</small></span>
         <Icon name="chevron" />
       </button>)}
       {selected ? <button type="button" className="text-button" onClick={() => onSelect?.(null)}>Back to the next workout</button> : null}
     </nav> : null}
-    <div className="workout-finish"><Icon name="upload" /><div><b>{hero ? "After this workout" : "Update your record"}</b><p>{hero ? "Log it in Strong, then import the updated export." : "Import your latest Strong export to update the plan."}</p></div><button type="button" className="button secondary small" onClick={importWorkout}>Import completed workout</button></div>
-    <button type="button" className="coverage-link" onClick={onMuscles}><Icon name="baseline" /><span><b>Muscle coverage</b><small>{allGaps.length && !plan.deload ? `${allGaps.length} groups below target in the current plan` : "See how this workout fits your week"}</small></span><Icon name="chevron" /></button>
+    {/* When you finish, you log it in Strong and import it back. One line, at
+        the bottom, where you are when you have finished reading the workout. */}
+    <p className="after-line">
+      Done? Log it in Strong, then
+      {" "}
+      <button type="button" className="text-button" onClick={importWorkout}>import your export</button>
+      {" "}
+      to update what comes next.
+    </p>
     <details className="plan-settings standalone-settings plan-settings-fold"><summary><Icon name="settings" /> Plan settings</summary>
       <div className="tl-section-head"><span className="tl-caps">{plan.deload ? "Lighter week · 4 of 4" : `Week ${week + 1} of 4`}</span><ConfirmButton label="Restart block" confirmLabel="Clear choices & restart" className="text-button" icon="undo" onConfirm={() => onGoals(current => ({ ...current, trainingBlockStart: weekStart(today), trainingAnchorSets: trainingAnchorSets(state, today), trainingDays: [], addedSets: [] }))} /></div>
       {frequency}
@@ -155,7 +162,6 @@ export function CoachTab({
       <label className="plan-field"><span>Time limit per workout</span><select aria-label="Time limit per workout" value={state.goals.trainingSessionMinutes} onChange={event => onGoals(current => ({ ...current, trainingSessionMinutes: Number(event.target.value) }))}>{[45, 60, 75, 90, 120].map(minutes => <option key={minutes} value={minutes}>{minutes} minutes</option>)}</select></label>
       {remaining.length > 1 ? <button type="button" className="text-button" onClick={() => void exportText(planToText({ ...plan, days: remaining.length, sessions: remaining.map(session => ({ ...session, name: workoutLabel(session) })) }))}>Copy remaining week</button> : null}
     </details>
-    <details className="training-explanation"><summary>How these targets are calculated</summary><p>Targets use your imported Strong history. Open each exercise to see the previous workout and why its weight or rest changed.</p><p>Strong exports its rest timer setting, not a measurement of how long you rested.</p></details>
   </div>;
 }
 

@@ -31,10 +31,18 @@ export function WorkoutPrescription({ exercise, onDrop, showDetails = false, tar
     : exercise.bodyweight ? "Bodyweight"
     : assisted ? `${load} lb assistance`
     : `${load} lb`;
+  // Say the change itself, not a word for it. "Increase" makes you work out
+  // what changed and by how much; "Up 5 lb from last time" is the answer.
+  const step = decision.previousLoad === null || load === null ? null : Math.abs(load - decision.previousLoad);
   const change = decision.action === "unavailable" ? "Check your Strong record"
-    : exercise.bodyweight ? "Bodyweight"
-    : assisted ? decision.action === "increase" ? "Less assistance" : decision.action === "reduce" ? "More assistance" : "Same assistance"
-    : decision.action === "increase" ? "Increase" : decision.action === "reduce" ? "Reduce" : "Same weight";
+    : exercise.bodyweight ? "Same as last time"
+    : assisted
+      ? decision.action === "increase" ? `${step ? `${step} lb ` : ""}less help than last time`
+        : decision.action === "reduce" ? `${step ? `${step} lb ` : ""}more help than last time`
+        : "Same as last time"
+      : decision.action === "increase" ? `Up ${step ? `${step} lb` : ""} from last time`.replace("Up  ", "Up ")
+        : decision.action === "reduce" ? `Down ${step ? `${step} lb` : ""} from last time`.replace("Down  ", "Down ")
+        : "Same as last time";
   const lastLoad = decision.previousLoad === null || exercise.bodyweight ? "" : `${decision.previousLoad} lb${assisted ? " assistance" : ""}`;
   const equipment = /\s*\(([^)]+)\)$/.exec(exercise.exercise)?.[1];
   const name = equipment ? exercise.exercise.replace(/\s*\([^)]+\)$/, "") : exercise.exercise;

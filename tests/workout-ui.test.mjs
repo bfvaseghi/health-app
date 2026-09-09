@@ -24,12 +24,13 @@ test("the workout screen gives compact targets with no separate Train or History
   assert.match(html, /role="tab"[^>]*>Muscles<\/button>/);
   assert.doesNotMatch(html, /role="tab"[^>]*>History<\/button>/);
   assert.match(html, /aria-label="Next workout plan"/);
-  assert.match(plain(html), /Next workout Full body B/);
+  assert.match(plain(html), /Do this next Workout 2/);
   assert.doesNotMatch(html, />Train<|Step 3/);
   assert.match(plain(html), /Copy for Strong/);
-  assert.match(plain(html), /Import completed workout/);
+  // What to do when you finish, in one line rather than its own block.
+  assert.match(plain(html), /Log it in Strong/);
   assert.doesNotMatch(html, /class="lift-evidence"/, "past evidence stays behind the exercise control");
-  assert.match(html, /Same weight/);
+  assert.match(plain(html), /Same as last time/);
   assert.doesNotMatch(html, /Original plan|View what you logged|Nothing else scheduled/);
   assert.doesNotMatch(html, /<option[^>]*>[^<]*Full body A/,
     "an imported match cannot be selected as fresh workout instructions");
@@ -108,7 +109,7 @@ test("a real Strong CSV import advances the workout and carries omitted core int
     const coreSets = second.exercises.filter(lift => lift.muscle === "core").reduce((sum, lift) => sum + lift.sets, 0);
     assert.equal(coreSets, 5, "the second base replaces the omitted core set");
     const html = view(imported, "coach", date);
-    assert.match(plain(html), /Next workout Full body B/);
+    assert.match(plain(html), /Do this next Workout 2/);
     assert.doesNotMatch(html, /core-divider|workout-part/);
     for (const lift of second.exercises.filter(lift => lift.muscle === "core")) {
       assert.ok(plain(html).includes(lift.exercise.replace(/\s*\([^)]+\)$/, "")), "core exercises remain in the main workout");
@@ -125,10 +126,10 @@ test("exercise directions distinguish ordinary weight, assistance, bodyweight an
   const render = lift => plain(renderToStaticMarkup(createElement(WorkoutPrescription, { exercise: lift, showDetails: true })));
   const lift = { ...exercise, exercise: "Bench Press (Barbell)", bodyweight: false, weightLb: 105, assistanceLb: null,
     adjustment: { ...exercise.adjustment, action: "increase", previousLoad: 100, previousReps: [10, 10], previousRestSeconds: 120, reason: "Rep target met" } };
-  assert.match(render(lift), /Last logged.*100 lb.*10 \/ 10 reps.*Next workout.*105 lb.*Increase/);
+  assert.match(render(lift), /Last logged.*100 lb.*10 \/ 10 reps.*Next workout.*105 lb.*Up 5 lb from last time/);
   assert.match(render(lift), /Strong timer 2:00 → next/);
   assert.doesNotMatch(render(lift), /Rest was|you rested/);
-  assert.match(render({ ...lift, exercise: "Assisted Pull Up", weightLb: null, assistanceLb: 0 }), /Next workout.*0 lb assistance.*Less assistance/);
+  assert.match(render({ ...lift, exercise: "Assisted Pull Up", weightLb: null, assistanceLb: 0 }), /Next workout.*0 lb assistance.*less help than last time/);
   assert.match(render({ ...lift, bodyweight: true, weightLb: null, adjustment: { ...lift.adjustment, action: "keep", previousLoad: 0 } }), /Last logged.*Bodyweight.*Next workout.*Bodyweight/);
   const missing = render({ ...lift, weightLb: null, adjustment: { ...lift.adjustment, action: "unavailable", previousLoad: null, previousReps: [] } });
   assert.match(missing, /Load unavailable/);
@@ -157,6 +158,8 @@ test("Fitness opens on the workout itself, with no step to complete first", () =
   assert.match(plain(html), /Copy for Strong/);
   // The week is a line of context, and the import stays reachable from it.
   assert.match(html, /class="week-line"/);
-  assert.match(plain(html), /Week of/);
-  assert.match(plain(html), /Muscle coverage/);
+  // The week says what you have done in words, and the screen carries only
+  // the workout: muscle coverage lives on its own tab now.
+  assert.match(plain(html), /You have done \d+ workouts? this week/);
+  assert.doesNotMatch(plain(html), /Muscle coverage/);
 });
