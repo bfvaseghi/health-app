@@ -54,27 +54,26 @@ export function strengthFacts(state: HealthState, today: string, weeks: number):
   };
 }
 
-/** The verdict as a picture: the whole record's strength, one line. */
+/**
+ * The verdict as one mark a lift: rising, holding, falling.
+ *
+ * It used to be a sparkline with no axis, no scale and no endpoints — a shape
+ * you could not read a number off, sitting under a percentage you could not
+ * check against it. These segments are the same fifteen lifts the line above
+ * counts, so "13 up · 0 down · 2 holding" is something you can verify by
+ * looking. The trajectories live inside, where each has its own row.
+ */
 export function StrengthSpark({ state, today, weeks }: { state: HealthState; today: string; weeks: number }) {
-  const all = useMemo(() => strengthIndex(state, today, weeks), [state, today, weeks]);
-  // Weeks before the first measured one are not a flat start, they are no
-  // start, and drawing them left an empty half-box that read as a plateau.
-  const first = all.findIndex(point => point.value !== null);
-  const index = first < 0 ? [] : all.slice(first);
-  const values = index.map(point => point.value).filter((value): value is number => value !== null);
-  if (values.length < 2) return null;
-  const low = Math.min(...values);
-  const high = Math.max(...values);
-  const span = Math.max(high - low, 1);
-  const width = 320;
-  const height = 26;
-  const points = index
-    .map((point, i) => point.value === null ? null : `${((i / Math.max(1, index.length - 1)) * width).toFixed(1)},${(height - ((point.value - low) / span) * (height - 3) - 1.5).toFixed(1)}`)
-    .filter(Boolean)
-    .join(" ");
-  return <svg className="trend-spark strength-spark" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
-    <polyline points={points} />
-  </svg>;
+  const progress = useMemo(() => buildProgress(state, today, weeks), [state, today, weeks]);
+  if (!progress.lifts.length) return null;
+  const order = { up: 0, flat: 1, down: 2 } as const;
+  const lifts = [...progress.lifts].sort((a, b) => order[a.direction] - order[b.direction]);
+  return <div className="lift-marks">
+    {lifts.map(lift => (
+      <span key={lift.exercise} className={`is-${lift.direction}`} title={`${lift.exercise}: ${lift.percent > 0 ? "+" : ""}${lift.percent}%`} />
+    ))}
+    <span className="mini-key">One mark a lift · {progress.rising} rising, {progress.lifts.length - progress.rising - progress.falling} holding, {progress.falling} falling</span>
+  </div>;
 }
 
 export function StrengthBody({

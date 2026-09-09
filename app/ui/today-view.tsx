@@ -2,12 +2,12 @@
 
 import { FormEvent, useMemo, useState } from "react";
 import type { DailyEntry, HealthState, MedicationStatus } from "../health-model";
-import { dateLabel, medicationStatuses, mindSummary, preferredSleepEntries, buildWorkoutSessions } from "../health-model";
+import { dateLabel, medicationStatuses, preferredSleepEntries, buildWorkoutSessions } from "../health-model";
 import { currentTrainingWeek, nextSession, sessionMinutes, weekStart, workoutWeekStreak } from "../training/coach";
 import { Icon } from "./icons";
 import { RecordHeading } from "./primitives";
 import { DayStrip, Meter } from "./spark";
-import { datedCells, dailyCells, medicationCells } from "./strips";
+import { dailyCells, datedCells, medicationCells, streak as daysHit } from "./strips";
 import { WaterTracker } from "./water-tracker";
 import { workoutLabel } from "./workout-labels";
 import { formatTime, hoursLabel } from "./format";
@@ -23,9 +23,14 @@ export function TodayView({ state, today, go, open, updateDaily, onDose, onWrite
   onWriteJournal: () => void;
   journalDraft: "entry" | "edit" | null;
 }) {
-  const medications = useMemo(() => medicationStatuses(state, today, 30), [state, today]);
+  const medications = useMemo(() => medicationStatuses(state, today, 14), [state, today]);
+  const meditationCells = dailyCells(state.dailyEntries, today, 14, item => ({
+    done: (item?.meditationMinutes ?? 0) > 0,
+    partial: (item?.meditationMinutes ?? 0) > 0 && (item?.meditationMinutes ?? 0) < 10,
+    detail: (item?.meditationMinutes ?? 0) > 0 ? `${item!.meditationMinutes} min` : "none",
+  }));
+  const journalCells = datedCells(state.thoughtJournal.map(item => item.date), today, 14, "entry");
   const entry = state.dailyEntries.find(item => item.date === today);
-  const meditationDays = mindSummary(state, today, 7).meditationDays;
   const journalEntries = state.thoughtJournal.filter(item => item.date === today);
   const journaled = Boolean(entry?.journaled || journalEntries.length);
   const due = state.goals.trackMedication ? medications.filter(status => status.dueToday) : [];
@@ -49,7 +54,7 @@ export function TodayView({ state, today, go, open, updateDaily, onDose, onWrite
             detail={entry?.proteinG != null ? `${Math.round(entry.proteinG)} g${state.goals.proteinTargetG ? ` of ${state.goals.proteinTargetG} g` : ""}` : "Not logged today"}
             done={entry?.proteinG != null}
             graphic={state.goals.proteinTargetG
-              ? <Meter value={entry?.proteinG ?? 0} target={state.goals.proteinTargetG} max={state.goals.proteinTargetG * 1.25} label={`Protein ${Math.round(entry?.proteinG ?? 0)} of ${state.goals.proteinTargetG} g`} />
+              ? <Meter value={entry?.proteinG ?? 0} target={state.goals.proteinTargetG} label={`Protein ${Math.round(entry?.proteinG ?? 0)} of ${state.goals.proteinTargetG} g`} />
               : null}
           >
             <NumberEntry key={`protein:${entry?.proteinG ?? ""}`} label="Grams of protein today" suffix="g" value={entry?.proteinG ?? null} presets={state.goals.proteinTargetG ? [state.goals.proteinTargetG] : []} min={0} max={500} onSet={value => updateDaily(today, current => ({ ...current, proteinG: value }))} />
@@ -57,20 +62,20 @@ export function TodayView({ state, today, go, open, updateDaily, onDose, onWrite
           <LogRow
             icon="mind"
             title="Meditation"
-            detail={`${(entry?.meditationMinutes ?? 0) > 0 ? `${entry!.meditationMinutes} min today` : "Not today"} · ${meditationDays} of the last 7 days`}
+            detail={`${(entry?.meditationMinutes ?? 0) > 0 ? `${entry!.meditationMinutes} min today` : "Not today"} · ${daysHit(meditationCells).hits} of the last 14 days`}
             done={(entry?.meditationMinutes ?? 0) > 0}
-            graphic={<DayStrip size="small" cells={dailyCells(state.dailyEntries, today, 14, item => ({ done: (item?.meditationMinutes ?? 0) > 0, detail: (item?.meditationMinutes ?? 0) > 0 ? `${item!.meditationMinutes} min` : "none" }))} label="Meditation, last 14 days" />}
+            graphic={<DayStrip size="small" cells={meditationCells} label="Meditation, last 14 days" />}
           >
             {(entry?.meditationMinutes ?? 0) > 0 ? <button type="button" className="chip" onClick={() => go("mind", "meditation")}>Insights</button> : <button type="button" className="chip" onClick={() => updateDaily(today, current => ({ ...current, meditationMinutes: 10 }))}>Log 10 min</button>}
           </LogRow>
           <LogRow
             icon="journal"
             title="Journal"
-            detail={journalEntries.length ? `${journalEntries.length} ${journalEntries.length === 1 ? "entry" : "entries"} today` : entry?.journaled ? "Written elsewhere" : "No entry today"}
+            detail={`${journalEntries.length ? `${journalEntries.length} today` : entry?.journaled ? "Written elsewhere" : "Not today"} · ${daysHit(journalCells).hits} of the last 14 days`}
             done={journaled}
-            graphic={<DayStrip size="small" cells={datedCells(state.thoughtJournal.map(item => item.date), today, 14, "entry")} label="Journal, last 14 days" />}
+            graphic={<DayStrip size="small" cells={journalCells} label="Journal, last 14 days" />}
           >
-            <button type="button" className="chip" onClick={() => journalDraft || !journalEntries.length ? onWriteJournal() : go("mind", "journal")}>{journalDraft ? "Continue" : journalEntries.length ? "Read" : "Write"}</button>
+            <button type="button" className="chip" onClick={() => onWriteJournal()}>{journalDraft ? "Continue" : "Write"}</button>
           </LogRow>
         </div>
       </section>
@@ -129,7 +134,7 @@ function MedRows({
           <span className="tl-well"><Icon name="medication" /></span>
           <button type="button" className="tl-row-copy tl-row-link" onClick={() => go("meds")}>
             <b>{status.medication.name}</b>
-            <small>{status.taken} of {status.due} {status.medication.schedule === "daily" ? "days" : "doses"} · last 30 days</small>
+            <small>{status.taken} of {status.due} {status.medication.schedule === "daily" ? "days" : "doses"} · last 14 days</small>
             <DayStrip size="small" cells={medicationCells(state, status.medication, today, 14)} label={`${status.medication.name}, last 14 days`} />
           </button>
           <button type="button" className={`chip${status.today === true ? " primary" : ""}`} aria-label={`${status.medication.name}: ${status.today === true ? "taken today; undo" : "mark taken today"}`} aria-pressed={status.today === true} onClick={() => onDose(status.medication.id, today, true)}><Icon name="check" />{status.today === true ? "Taken today" : status.today === false ? "Missed · change" : "Mark taken"}</button>

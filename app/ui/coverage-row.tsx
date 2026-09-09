@@ -83,9 +83,10 @@ export function coverageFacts(outlook: MuscleOutlook[], state: HealthState, toda
   const exposed = needsExtra.length
     ? `${needsExtra.length} of them ${needsExtra.length === 1 ? "needs" : "need"} the extra ${needsExtra.length === 1 ? "workout" : "workouts"}`
     : null;
+  const covered = outlook.length - short.length;
   if (!short.length) {
     return {
-      headline: "All 11 on target",
+      headline: `All ${outlook.length} muscle groups covered`,
       tone: "neutral",
       subline: exposed,
       short,
@@ -94,11 +95,9 @@ export function coverageFacts(outlook: MuscleOutlook[], state: HealthState, toda
   }
   const names = short.map(row => row.label.toLowerCase());
   return {
-    headline: short.length <= 3
-      ? `Short: ${names.join(", ")}`
-      : `${short.length} short: ${names.slice(0, 3).join(", ")} +${short.length - 3}`,
+    headline: `${covered} of ${outlook.length} covered`,
     tone: "warn",
-    subline: exposed,
+    subline: `Short: ${names.slice(0, 4).join(", ")}${names.length > 4 ? ` +${names.length - 4}` : ""}`,
     short,
     logged: true,
   };
@@ -113,35 +112,29 @@ export function coverageFacts(outlook: MuscleOutlook[], state: HealthState, toda
  * notch drawn on top of the fill rather than a band painted underneath it, so
  * it stays visible once it has been met.
  */
-const TARGET_LINE = 0.5;
-
+/**
+ * The answer as eleven marks: filled means that muscle got its week's sets.
+ *
+ * The previous version drew eleven part-filled bars against each muscle's own
+ * target with a line across them. It was honest and completely undecodable —
+ * no axis, no numbers, no key on screen, so a filled bar and a half-filled bar
+ * meant nothing you could name. A picture that needs a legend you cannot see
+ * is decoration.
+ *
+ * So: one mark a muscle, two states, and the words above it say the same thing.
+ * The full chart underneath has the numbers, the axis and the labels; this is
+ * only the verdict, drawn.
+ */
 export function MiniCoverage({ outlook }: { outlook: MuscleOutlook[] }) {
-  // Each bar is drawn against its own target rather than a shared ceiling, so
-  // the target lands at the same height on all eleven and becomes one straight
-  // line across the strip. The question this picture answers is "is anything
-  // short", and a single line you are above or below answers it without being
-  // read. Absolute set counts are comparable on the full chart below, which
-  // does use one shared scale.
-  const height = (row: MuscleOutlook, value: number) =>
-    `${Math.min(100, (value / Math.max(1, row.target.min)) * TARGET_LINE * 100)}%`;
-  return <div className="mini-coverage" aria-hidden="true">
+  return <div className="mini-coverage">
     {outlook.map(row => {
-      const state = row.status === "under" ? "is-under" : row.status === "over" ? "is-over" : "is-in";
-      return <span key={row.muscle} className={`mini-bar ${state}`}>
-        <span>
-          {/* Tallest first: each segment paints over the one behind it, so the
-              bar reads as one column in three strengths — done, still to do,
-              and the part that only happens if you do the extra workouts. */}
-          {row.comingOptional > 0 ? <i className="optional" style={{ height: height(row, row.projected) }} /> : null}
-          <i className="planned" style={{ height: height(row, row.done + row.comingRequired) }} />
-          <i className="done" style={{ height: height(row, row.done) }} />
-          {/* The target, at the same height on every bar. Eleven segments at
-              one level read as a single line you are above or below. */}
-          <i className="notch" style={{ bottom: `${TARGET_LINE * 100}%` }} />
-        </span>
+      const short = row.status === "under";
+      return <span key={row.muscle} className={`mini-mark${short ? " is-short" : ""}`} title={`${row.label}: ${sets(row.projected)} of ${row.target.min}–${row.target.max} sets`}>
+        <i aria-hidden="true" />
         <small>{SHORT[row.muscle]}</small>
       </span>;
     })}
+    <span className="mini-key">Filled = at or above its weekly sets</span>
   </div>;
 }
 

@@ -445,11 +445,9 @@ test("lab and goal normalization produce safe, deterministic records", () => {
   assert.equal(goals.trackMedication, false);
   assert.equal(goals.weightGoalLb, null);
   assert.equal(goals.weightDirection, "gain");
-  assert.equal(goals.lastCopied, null);
   assert.deepEqual(Object.keys(goals).sort(), [
     "addedSets",
     "bodyFatTargetPercent",
-    "lastCopied",
     "phaseStart",
     "proteinTargetG",
     "sleepConsistencyMinutes",

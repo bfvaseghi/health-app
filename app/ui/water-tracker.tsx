@@ -36,7 +36,7 @@ export function WaterTracker({ date, value, target, updateDaily }: {
       <span className="tl-row-copy">
         <b>Water</b>
         <small role="status">{value == null ? "Not logged" : `${litres(value)}${target ? ` of ${litres(target)}` : ""} today`}</small>
-        {target ? <Meter value={value ?? 0} target={target} max={target * 1.25} label={`Water ${litres(value ?? 0)} of ${litres(target)}`} /> : null}
+        {target ? <Meter value={value ?? 0} target={target} label={`Water ${litres(value ?? 0)} of ${litres(target)}`} /> : null}
       </span>
       <button type="button" className="chip" onClick={() => add(250)} disabled={(value ?? 0) >= 20_000}>+250 mL</button>
       <button type="button" className="icon-button" aria-label="Edit water" aria-expanded={editing} onClick={() => setEditing(current => !current)}><Icon name="pencil" /></button>

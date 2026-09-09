@@ -36,13 +36,19 @@ test("the shut stack answers all four questions with no tabs and no step numbers
   assert.match(plain(html), /NEXT UP/);
   assert.match(plain(html), /COVERAGE/);
   assert.match(plain(html), /STRENGTH/);
-  // Strong has no text import, so nothing here claims it can load a routine.
+  // Strong has no text import, so nothing here claims it can load a routine —
+  // and neither button explains itself with a line of encouragement.
   assert.match(plain(html), /Open in the gym/);
   assert.match(plain(html), /Copy as text/);
-  assert.doesNotMatch(plain(html), /Copy for Strong|Paste it into Strong/);
+  assert.doesNotMatch(plain(html), /Copy for Strong|Paste it into Strong|Big numbers|For Notes or reading/);
   assert.match(html, /class="mini-coverage"/);
   assert.match(html, /class="week-pips"/);
-  assert.match(html, /strength-spark/);
+  // Both pictures decode without a key you cannot see: one mark a muscle, one
+  // mark a lift, each with the words that say which state is which.
+  assert.equal((html.match(/class="mini-mark/g) ?? []).length, MUSCLES.length);
+  assert.match(html, /class="lift-marks"/);
+  assert.match(plain(html), /Filled = at or above its weekly sets/);
+  assert.match(plain(html), /One mark a lift/);
   // Every contradictory or unfinished string the old section carried.
   assert.doesNotMatch(plain(html), /Nothing is behind|Two-workout base|ALL CURRENT|last updated|Copies the text to paste in/);
 });
@@ -62,13 +68,12 @@ test("the empty stack draws eleven target notches and opens nothing", () => {
   const html = view(emptyHealthState(new Date(`${TODAY}T12:00:00Z`)));
   // The eleven weekly targets are worth seeing before there is any data to put
   // against them — that is when you most want to know what a week adds up to.
-  assert.equal((html.match(/class="mini-bar/g) ?? []).length, MUSCLES.length);
-  assert.equal((html.match(/class="notch"/g) ?? []).length, MUSCLES.length);
+  assert.equal((html.match(/class="mini-mark/g) ?? []).length, MUSCLES.length);
   assert.match(plain(html), /Nothing logged yet/);
   assert.match(plain(html), /No workout yet/);
   assert.match(plain(html), /Needs your Strong export/);
   assert.match(plain(html), /Import from Strong/);
-  assert.match(plain(html), /From Strong · nothing imported yet/);
+  assert.match(plain(html), /No Strong export yet/);
   // A row with nothing in it renders no button and no chevron, because an
   // empty row that opens onto an empty screen is a promise it cannot keep.
   assert.doesNotMatch(html, /class="answer-row is-empty"[^>]*>\s*<button/);
@@ -194,24 +199,24 @@ test("exercise directions distinguish weight, assistance, bodyweight, a stall re
   assert.doesNotMatch(missing, /null lb|Keep 0/);
 });
 
-test("the stamp states provenance and direction without prose", () => {
+test("the stamp reports how old the record is, and nothing else", () => {
   const base = demoHealthState(TODAY);
-  assert.match(plain(view({ ...base, importedAt: `${TODAY}T09:00:00.000Z` })), /From Strong · imported today/);
+  assert.match(plain(view({ ...base, importedAt: `${TODAY}T09:00:00.000Z` })), /Imported today · \d+ workouts/);
   assert.doesNotMatch(plain(view(base)), /Up to date/);
 
   // A record saved before imports were stamped says so rather than borrowing a
   // date from the newest workout, which measures training, not the log.
   const legacy = plain(view({ ...base, importedAt: null }));
-  assert.match(legacy, /imported: not recorded/);
-  assert.doesNotMatch(legacy, /imported today/);
+  assert.match(legacy, /last import not recorded/);
+  assert.doesNotMatch(legacy, /Imported today/);
 
-  const copied = view({ ...base, importedAt: `${TODAY}T09:00:00.000Z`, goals: { ...base.goals, lastCopied: { at: `${TODAY}T10:00:00.000Z`, session: "Legs + back" } } });
-  assert.match(plain(copied), /To Strong · copied Legs \+ back on Sep 8/);
-  assert.match(copied, /record-stamp is-waiting/);
+  // Copying a workout out is not a fault, and used to turn the stamp amber.
+  assert.doesNotMatch(plain(view(base)), /To Strong|From Strong/);
+  assert.doesNotMatch(view(base), /record-stamp is-waiting/);
 
   const stale = { ...base, workoutSets: base.workoutSets.filter(set => set.date <= addDays(TODAY, -9)) };
   assert.match(view(stale), /record-stamp is-stale/);
-  assert.match(plain(view(stale)), /last workout \d+ days ago/);
+  assert.match(plain(view(stale)), /Last workout \d+ days ago/);
 });
 
 test("rows open independently, so a number and its working can be read together", () => {

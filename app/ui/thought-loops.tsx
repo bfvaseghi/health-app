@@ -6,7 +6,7 @@ import { addDays, dateLabel, localDateTime } from "../health-model";
 import { recordId } from "../record-id";
 import { Icon } from "./icons";
 import { DayStrip } from "./spark";
-import { datedCells } from "./strips";
+import { datedCells, streak } from "./strips";
 import { ConfirmButton } from "./primitives";
 import { Tide } from "./tide";
 import { formatTime } from "./format";
@@ -33,8 +33,6 @@ export function ThoughtLoops({ state, today, onSave, onDelete, onEvent, onDelete
   const [lastSaved, setLastSaved] = useState<string | null>(null);
   const [count, setCount] = useState(6);
   const event = composer?.eventId ? events.find(item => item.id === composer.eventId) : undefined;
-  const recent = events.filter(item => item.date >= addDays(today, -6));
-  const daysLogged = new Set(recent.map(item => item.date)).size;
   const weekly = Array.from({ length: 8 }, (_, index) => {
     const date = addDays(today, -(7 - index) * 7);
     return { date, value: events.filter(item => item.date >= addDays(date, -6) && item.date <= date).length };
@@ -56,15 +54,23 @@ export function ThoughtLoops({ state, today, onSave, onDelete, onEvent, onDelete
     }} />
   </section>;
 
+  const ruminationCells = datedCells(events.map(item => item.date), today, 14, "log");
+  const loggedCells = streak(ruminationCells);
   return <section className="thought-response-home rumination-home" aria-labelledby="loops-title">
     <div className="tl-section-head"><h2 className="mind-section-title" id="loops-title">Rumination</h2><button type="button" className="button primary small" onClick={() => setComposer({})}><Icon name="plus" /> Log rumination</button></div>
     <p className="response-intro">How often it returned, and what helped you move on.</p>
     {/* The count, and the fortnight it was counted from. A number alone cannot
         show whether this is a bad week or a normal one. */}
-    <div className="rumination-overview">
-      <strong>{daysLogged} <span>of the last 7 days</span></strong>
-      <span>with a rumination log</span>
-      <DayStrip cells={datedCells(events.map(item => item.date), today, 14, "log")} label="Rumination logs, last 14 days" />
+    {/* The count and the picture come from the same fortnight — the number
+        said 7 days over a 14-cell strip, which is the kind of mismatch that
+        makes a chart read as noise. */}
+    <div className="record-block is-flat">
+      <div className="record-block-value">
+        <strong>{loggedCells.hits}<span className="of">/14</span></strong>
+        <span>days with a rumination log</span>
+      </div>
+      <DayStrip cells={ruminationCells} label="Rumination logs, last 14 days" />
+      <div className="record-block-scale"><span>{dateLabel(addDays(today, -13), { month: "short", day: "numeric" })}</span><span>today</span></div>
     </div>
     {lastSaved && events.some(item => item.id === lastSaved) ? <div className="response-saved" role="status"><Icon name="check" /><span>Saved</span><button type="button" className="text-button" onClick={() => { onDeleteEvent(lastSaved); setLastSaved(null); }}>Undo</button></div> : null}
     {events.length ? <section className="response-history rumination-recent" aria-label="Recent rumination logs"><h3>Latest log</h3><ol>

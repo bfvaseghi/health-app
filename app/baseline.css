@@ -260,22 +260,14 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
 
 /* Eleven bars on one shared ceiling, so equal set counts draw equal heights.
    The target floor is a notch on top of the fill, not a band underneath it. */
-.mini-coverage { position: relative; display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 5px; padding-top: 4px; }
-.mini-bar { display: grid; gap: 7px; justify-items: center; min-width: 0; }
-.mini-bar > span { position: relative; display: block; width: 100%; height: 56px; background: var(--soft); border-radius: 3px; overflow: hidden; }
-.mini-bar i { position: absolute; left: 0; right: 0; bottom: 0; display: block; }
-.mini-bar i.done { background: var(--accent); }
-.mini-bar i.planned { background: color-mix(in srgb, var(--accent) 48%, var(--soft)); }
-.mini-bar i.optional { background: color-mix(in srgb, var(--accent) 20%, var(--soft)); }
-/* The target line: same height on all eleven, so it reads as one rule. */
-.mini-bar i.notch { height: 2px; background: var(--ink); opacity: .6; }
-
-.mini-bar.is-under i.done { background: var(--warn); }
-.mini-bar.is-under i.planned { background: color-mix(in srgb, var(--warn) 45%, var(--soft)); }
-.mini-bar.is-under i.optional { background: color-mix(in srgb, var(--warn) 20%, var(--soft)); }
-.mini-bar.is-under > span { box-shadow: inset 0 0 0 1px var(--warn); }
-.mini-bar.is-over i.done { background: var(--chart-bar); }
-.mini-bar small { font-size: .625rem; letter-spacing: .03em; color: var(--faint); }
+/* Eleven marks, two states, and four words saying which is which. */
+.mini-coverage { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 7px; }
+.mini-mark { display: grid; justify-items: center; gap: 5px; flex: 1 1 0; min-width: 0; }
+.mini-mark > i { display: block; width: 100%; height: 22px; border-radius: 3px; background: var(--accent); }
+.mini-mark.is-short > i { background: none; box-shadow: inset 0 0 0 2px var(--warn); }
+.mini-mark small { font-size: .625rem; letter-spacing: .03em; color: var(--faint); }
+.mini-mark.is-short small { color: var(--warn); }
+.mini-key { flex: 0 0 100%; font-size: .6875rem; color: var(--faint); }
 
 .lens-tabs { margin-bottom: 14px; }
 .chart-key-caption { margin: -12px 0 12px; font-size: .75rem; color: var(--muted); }
@@ -382,11 +374,14 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
 .day-strip > i.is-open { background: none; box-shadow: inset 0 0 0 1px var(--line); }
 .day-strip > i.is-none { background: none; box-shadow: inset 0 0 0 1px var(--line); opacity: .4; }
 
-.meter { position: relative; height: 10px; border-radius: 2px; background: var(--soft); overflow: hidden; }
-.meter-fill { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 2px; }
+.meter { position: relative; height: 10px; border-radius: 3px; background: var(--soft); overflow: hidden; }
+.meter-fill { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 3px; }
 .meter.is-warn .meter-fill { background: var(--warn); }
 .meter.is-quiet .meter-fill { background: var(--chart-bar); }
-.meter-notch { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); }
+/* Target met: the bar is full. Past it: full, and visibly so, rather than
+   growing past a line that was never the end of the scale. */
+.meter.is-full { box-shadow: inset 0 0 0 1px var(--accent); }
+.meter.is-over .meter-fill { background: repeating-linear-gradient(115deg, var(--accent) 0 7px, color-mix(in srgb, var(--accent) 62%, var(--paper)) 7px 14px); }
 
 .mini-bars { position: relative; display: flex; align-items: flex-end; gap: 2px; height: 30px; }
 .mini-bars > i { position: relative; flex: 1 1 0; min-width: 0; height: 100%; display: flex; align-items: flex-end; }
@@ -401,14 +396,14 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
    block. Same language as the Fitness stack: the page ground is the surface,
    sections are hairlines and a left rail, and the picture sits on the row. */
 
-.record-list { border-top: 1px solid var(--line); margin-top: 4px; }
-.record-list > .record-block:last-child { border-bottom: 0; }
-.record-block.is-flat { padding-left: 0; border-bottom: 0; }
+.record-list { display: grid; gap: 14px; margin-top: 8px; }
+.record-list > .record-block:last-child { border-bottom: 1px solid var(--line); }
+.record-block.is-flat { padding: 0 0 18px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: none; }
 .record-block.is-flat::before { display: none; }
-.record-block { position: relative; padding: 20px 0 22px 14px; border-bottom: 1px solid var(--line); }
+.record-block { position: relative; padding: 18px 18px 20px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); }
 /* Inset, so consecutive blocks are separate strokes rather than one
    unbroken line down the page. */
-.record-block::before { content: ""; position: absolute; left: 0; top: 14px; bottom: 16px; width: 2px; border-radius: 1px; background: var(--accent-pale); }
+.record-block::before { content: ""; position: absolute; left: 0; top: 16px; bottom: 16px; width: 3px; border-radius: 0 2px 2px 0; background: var(--accent-pale); }
 .record-block.is-warn::before { background: var(--warn); }
 .record-block.is-done::before { background: var(--accent); }
 .record-block.is-quiet::before { background: var(--line-strong); }
@@ -478,3 +473,18 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
 .gym-numbers > span { font-size: 1rem; font-variant-numeric: tabular-nums; }
 .gym-numbers small { font-size: .75rem; color: var(--muted); }
 .gym-foot { margin: 20px 0 0; font-size: .875rem; color: var(--muted); }
+.gym-change { font-weight: 600; }
+.gym-change.increase { color: var(--accent-strong); }
+.gym-change.reduce, .gym-change.reset { color: var(--warn); }
+.gym-change.keep, .gym-change.unavailable { color: var(--muted); font-weight: 500; }
+:root:not([data-theme="dark"]) .gym-change.increase { color: var(--accent); }
+
+/* One mark a lift, so the count above it is something you can check. */
+.lift-marks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 4px; }
+.lift-marks > span:not(.mini-key) { flex: 1 1 0; min-width: 6px; height: 22px; border-radius: 3px; background: var(--chart-bar); }
+.lift-marks > span.is-up { background: var(--accent); }
+.lift-marks > span.is-down { background: var(--warn); }
+.lift-marks > .mini-key { flex: 0 0 100%; min-width: 0; height: auto; background: none; font-size: .6875rem; color: var(--faint); }
+.prompt-source { margin-top: 12px; }
+.prompt-source > summary { min-height: 32px; display: flex; align-items: center; font-size: .75rem; color: var(--muted); cursor: pointer; }
+.prompt-source p { margin: 4px 0 0; font-size: .8125rem; line-height: 1.55; color: var(--muted); max-width: 56ch; }

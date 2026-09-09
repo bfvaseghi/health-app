@@ -278,6 +278,9 @@ function ThoughtJournal({
             {JOURNAL_PROMPTS.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
           </select>
         </label>
+        {/* Where the exercise comes from and what was actually measured, so
+            the claim is checkable rather than taken on trust. */}
+        <details className="prompt-source"><summary>Where this comes from</summary><p>{prompt.source}</p></details>
       </div>}
       {writing ? (
       <form className="thought-form" onSubmit={submit}>

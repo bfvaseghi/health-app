@@ -96,7 +96,7 @@ export function FitnessView({
           tone={hasHistory ? "primary" : "empty"}
           graphic={hasHistory ? <WeekPips facts={next} /> : null}
           action={hasHistory
-            ? <TakeItWithYou facts={next} onGym={() => setGym(true)} onGoals={onGoals} onNotice={onNotice} />
+            ? <TakeItWithYou facts={next} onGym={() => setGym(true)} onNotice={onNotice} />
             : <button type="button" className="button primary" onClick={() => open({ kind: "import", source: "strong" })}><Icon name="upload" />Import from Strong</button>}
           open={rows.next}
           onToggle={() => toggle("next")}

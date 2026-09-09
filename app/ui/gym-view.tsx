@@ -58,7 +58,10 @@ export function GymView({ session, label, onClose }: {
               <span className="gym-numbers">
                 <b>{weight}</b>
                 <span>{exercise.sets} × {exercise.repRange}</span>
-                <small>rest {timerLabel(exercise.restSeconds)}{change.kind === "keep" ? "" : ` · ${change.text}`}</small>
+                {/* Always said, including "Held" — a blank meant you could not
+                    tell a lift that stayed put from one the app forgot. */}
+                <small className={`gym-change ${change.kind}`}>{change.kind === "keep" ? "Held" : change.text}{change.note ? ` · ${change.note}` : ""}</small>
+                <small>rest {timerLabel(exercise.restSeconds)}</small>
               </span>
             </li>
           );

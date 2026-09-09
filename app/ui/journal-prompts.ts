@@ -2,15 +2,18 @@
  * The journal opens on a question, not an empty box.
  *
  * "What is on your mind?" is the hardest thing to answer on the days you most
- * want a journal, and an empty textarea asks exactly that. Every prompt here
- * asks for something small and specific instead, and every one of them points
- * at what went well, what you managed, or how you would speak to someone else
- * in your position — because a record of only the bad days is a record that
- * makes bad days look like all of them.
+ * want a journal, and an empty textarea asks exactly that.
  *
- * Plainly worded on purpose. No encouragement, no exclamation marks, and no
- * claims about what writing will do for you: the prompt describes the thing to
- * write, and that is all it does.
+ * Every prompt here is a writing exercise that has actually been trialled,
+ * worded as close to the tested instruction as a phone screen allows — which
+ * matters more than it sounds. "Three good things" without "and why did it
+ * happen" is a list; the causal half is the part that was measured. Expressive
+ * writing without the twenty-minute bound is rumination. So each one carries
+ * its source, and the sources are honest about what was found rather than
+ * promising it will work for you.
+ *
+ * Plainly worded on purpose. No encouragement and no exclamation marks: the
+ * prompt describes the thing to write, and that is all it does.
  */
 
 export type JournalPrompt = {
@@ -21,56 +24,66 @@ export type JournalPrompt = {
   question: string;
   /** Sits in the empty box as an example of the shape of an answer. */
   placeholder: string;
+  /** Where the exercise comes from, and what was actually measured. */
+  source: string;
 };
 
 export const JOURNAL_PROMPTS: JournalPrompt[] = [
   {
     id: "three-good",
     label: "Three good things",
-    question: "Three things that went well today. For each one, why did it happen?",
-    placeholder: "1.\n2.\n3.",
+    question: "Three things that went well today. Next to each one, write why it happened.",
+    placeholder: "1.  …because\n2.  …because\n3.  …because",
+    source: "Seligman, Steen, Park & Peterson (2005). The \u201cthree good things\u201d exercise: a randomised, placebo-controlled trial that measured lower depressive symptoms and higher happiness at one and six months. The \u201cwhy\u201d is the working part, not the list.",
+  },
+  {
+    id: "gratitude-letter",
+    label: "A letter you owe",
+    question: "Write to someone who was kind to you and was never properly thanked. Say what they did and what it changed.",
+    placeholder: "Dear …",
+    source: "Seligman et al. (2005), the gratitude visit. Produced the largest short-term rise in the same trial. You do not have to send it.",
+  },
+  {
+    id: "best-self",
+    label: "Best possible self",
+    question: "Imagine that everything has gone as well as it realistically could, some years from now, after you worked for it. Describe that life.",
+    placeholder: "Where you are, what a normal day looks like.",
+    source: "King (2001), and replications since: writing about a \u201cbest possible self\u201d for a few sessions raised mood and optimism against a neutral-writing control.",
   },
   {
     id: "savour",
-    label: "One good moment",
-    question: "One good moment from today, described closely enough to bring it back.",
-    placeholder: "Where you were, what you noticed, how long it lasted.",
+    label: "Savouring",
+    question: "One good moment today, described closely — what you saw, heard and felt, and how long it lasted.",
+    placeholder: "Where you were, what you noticed.",
+    source: "Bryant & Veroff's savouring work: attending to a positive experience in detail, rather than passing over it, is what extends its effect.",
   },
   {
-    id: "managed",
-    label: "What you got through",
-    question: "Something difficult you got through today, however small.",
-    placeholder: "What it was, and what you did about it.",
-  },
-  {
-    id: "kindness",
+    id: "self-compassion",
     label: "As you would to a friend",
-    question: "Take a hard part of today and write to yourself about it the way you would write to a friend it happened to.",
+    question: "Take something you are being hard on yourself about. Write to yourself about it in the words you would use for a friend it had happened to.",
     placeholder: "What happened, then what you would say to them.",
+    source: "Neff and Germer's self-compassion writing, and Leary et al. (2007): treating your own difficulty the way you would treat someone else's lowers self-criticism without lowering standards.",
   },
   {
-    id: "helped",
-    label: "What helped",
-    question: "Something you did today that made the day better. How would you do it again?",
-    placeholder: "The thing, and what made it possible.",
+    id: "activation",
+    label: "One thing tomorrow",
+    question: "One thing you will do tomorrow that usually lifts the day, however small. Write when you will do it.",
+    placeholder: "The thing, and the time.",
+    source: "Behavioural activation (Lewinsohn; Jacobson et al., 1996): scheduling a specific activity at a specific time is the active ingredient, and it works as well alone as inside full cognitive therapy.",
   },
   {
-    id: "person",
-    label: "Someone who mattered",
-    question: "Someone who made a difference today, and what they did.",
-    placeholder: "Who, and what happened.",
-  },
-  {
-    id: "ahead",
-    label: "Looking forward",
-    question: "One thing coming up that you want to happen.",
-    placeholder: "What it is, and when.",
+    id: "expressive",
+    label: "Twenty minutes on a hard thing",
+    question: "Set twenty minutes. Write continuously about something difficult and how you feel about it. Do not stop to tidy it.",
+    placeholder: "Keep writing. Spelling does not matter.",
+    source: "Pennebaker's expressive-writing paradigm (Pennebaker & Beall, 1986): 15\u201320 minutes on consecutive days. It often feels worse on the day and better over the following weeks. Skip it if you are in crisis.",
   },
   {
     id: "open",
     label: "Anything",
     question: "Anything you want to put down.",
     placeholder: "",
+    source: "No protocol. Here for the days none of the others fit.",
   },
 ];
 

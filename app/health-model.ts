@@ -233,14 +233,6 @@ export type GoalSettings = {
   trainingBlockStart: string;
   /** Frozen direct-set baseline by muscle for this block. */
   trainingAnchorSets: Record<string, number>;
-  /**
-   * The last workout you copied out, and when.
-   *
-   * This is the only evidence the app has that the ball is in Strong's court:
-   * you took a workout out of here and have not brought a newer record back.
-   * Null once an import arrives carrying work done after the copy.
-   */
-  lastCopied: { at: string; session: string } | null;
 };
 
 /** One change you made to one lift in one session of one week. */
@@ -315,7 +307,6 @@ export const defaultGoals: GoalSettings = {
   addedSets: [],
   trainingBlockStart: "",
   trainingAnchorSets: {},
-  lastCopied: null,
 };
 
 export function emptyHealthState(now = new Date()): HealthState {
@@ -817,15 +808,7 @@ export function normalizeGoals(value: unknown): GoalSettings {
         .map(([key, value]) => [key, finiteNumber(value, 0, 30)] as const)
         .filter((entry): entry is [string, number] => entry[1] !== null),
     ),
-    lastCopied: normalizeLastCopied(goals.lastCopied),
   };
-}
-
-function normalizeLastCopied(value: unknown): GoalSettings["lastCopied"] {
-  const entry = recordValue(value);
-  const at = typeof entry.at === "string" && validIsoDate(entry.at.slice(0, 10)) ? entry.at : null;
-  const session = safeText(entry.session, 80);
-  return at && session ? { at, session } : null;
 }
 
 /**

@@ -180,25 +180,23 @@ export function WeekPips({ facts }: { facts: NextUpFacts }) {
 }
 
 /** The two ways to take the workout with you: read it big, or copy the text. */
-export function TakeItWithYou({ facts, onGym, onGoals, onNotice }: {
+export function TakeItWithYou({ facts, onGym, onNotice }: {
   facts: NextUpFacts;
   onGym: () => void;
-  onGoals: (goals: GoalSettings | ((current: GoalSettings) => GoalSettings)) => void;
   onNotice: (message: string) => void;
 }) {
   if (!facts.hero) return null;
   return <div className="take-with-you">
     <button type="button" className="button primary" onClick={onGym}>
       <Icon name="fitness" />
-      <span>Open in the gym<small>Big numbers, one lift a line</small></span>
+      Open in the gym
     </button>
-    <CopyForStrong facts={facts} onGoals={onGoals} onNotice={onNotice} />
+    <CopyForStrong facts={facts} onNotice={onNotice} />
   </div>;
 }
 
-export function CopyForStrong({ facts, onGoals, onNotice }: {
+export function CopyForStrong({ facts, onNotice }: {
   facts: NextUpFacts;
-  onGoals: (goals: GoalSettings | ((current: GoalSettings) => GoalSettings)) => void;
   onNotice: (message: string) => void;
 }) {
   const [busy, setBusy] = useState(false);
@@ -207,14 +205,12 @@ export function CopyForStrong({ facts, onGoals, onNotice }: {
     setBusy(true);
     if (await copyText(facts.copyText as string)) onNotice("Workout text copied.");
     else { downloadBlob("baseline-workout.txt", new Blob([facts.copyText as string], { type: "text/plain" })); onNotice("Workout text downloaded."); }
-    // The stamp at the top of the section flips to "To Strong" because of this.
-    onGoals(current => ({ ...current, lastCopied: { at: new Date().toISOString(), session: facts.headline } }));
     setBusy(false);
   };
   return <button type="button" className="button secondary copy-strong" disabled={busy} onClick={() => void run()}>
     <Icon name="copy" />
     {/* Strong has no text import, so this cannot load a routine into it. It
         copies the workout as plain text — for Notes, a message, or reading. */}
-    <span>Copy as text<small>Strong can&rsquo;t import text. For Notes or reading.</small></span>
+    Copy as text
   </button>;
 }

@@ -50,26 +50,26 @@ export function DayStrip({ cells, label, size = "regular" }: {
 }
 
 /**
- * A value against a target.
+ * A value against a target. The bar IS the target.
  *
- * The target is a notch drawn on top of the fill rather than a band behind it,
- * so it stays visible once it has been passed — the same rule the muscle chart
- * uses, so the two read the same way.
+ * It used to run to 1.25× the target with the target marked at 80%, which got
+ * both readings wrong at once: hitting the goal looked unfinished, and going
+ * past it ran off beyond a line that was not the end of anything. A progress
+ * bar has one job — full means done — so the scale ends at the target, and a
+ * surplus is shown by the bar changing state rather than by growing.
  */
-export function Meter({ value, target, max, label, tone = "accent" }: {
+export function Meter({ value, target, label, tone = "accent" }: {
   value: number;
   target?: number | null;
-  /** The end of the scale. Defaults to the target, or the value if it is over. */
-  max?: number;
   label: string;
   tone?: "accent" | "warn" | "quiet";
 }) {
-  const ceiling = Math.max(max ?? 0, target ?? 0, value, 1);
-  const pct = (amount: number) => `${Math.min(100, Math.max(0, (amount / ceiling) * 100))}%`;
+  const goal = Math.max(target ?? 0, 1);
+  const filled = Math.min(1, Math.max(0, value / goal));
+  const over = target ? value > target : false;
   return (
-    <div className={`meter is-${tone}`} role="img" aria-label={label}>
-      <span className="meter-fill" style={{ width: pct(value) }} />
-      {target ? <span className="meter-notch" style={{ left: pct(target) }} /> : null}
+    <div className={`meter is-${tone}${over ? " is-over" : ""}${filled >= 1 ? " is-full" : ""}`} role="img" aria-label={label}>
+      <span className="meter-fill" style={{ width: `${filled * 100}%` }} />
     </div>
   );
 }
