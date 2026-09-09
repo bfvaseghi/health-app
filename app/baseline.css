@@ -68,35 +68,14 @@ input:not([type="checkbox"]):not([type="radio"]), textarea, select { font-size: 
 .water-undo { padding-left: 40px; }
 
 /* Two distinct decisions; exercise instructions only appear in the second. */
-.fitness-flow { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 0 22px; }
-.fitness-flow button { display: flex; align-items: center; gap: 10px; min-height: 52px; padding: 8px 14px; border-radius: 8px; font-size: 1rem; color: var(--muted); text-align: left; }
-.fitness-flow button > span { display: grid; place-items: center; flex: none; width: 28px; height: 28px; border: 1px solid var(--line-strong); border-radius: 50%; font-size: .875rem; }
-.fitness-flow button[aria-current="step"] { background: var(--paper); color: var(--ink); box-shadow: inset 0 0 0 1px var(--line); }
-.fitness-flow button[aria-current="step"] > span { background: var(--cover); color: var(--cover-ink); border-color: var(--cover); }
-.fitness-flow button:disabled { opacity: .45; cursor: default; }
 .week-setup-panel, .week-next-panel { padding: 24px; border: 1px solid var(--line); border-radius: 12px; background: var(--paper); margin-bottom: 16px; }
 .week-setup-panel h2, .week-next-panel h2 { margin: 5px 0 14px; font-size: 1.625rem; letter-spacing: -.025em; line-height: 1.3; font-weight: 600; }
 .week-setup-panel > p, .week-next-panel > p { font-size: 1rem; line-height: 1.6; color: var(--muted); }
-.week-setup-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
-.logged-count { display: flex; align-items: center; gap: 5px; color: var(--muted); font-size: .875rem; white-space: nowrap; }
-.logged-count svg { width: 16px; height: 16px; }
 .week-setup-panel .training-frequency { margin: 12px 0 0; padding: 18px 0; border: 0; border-top: 1px solid var(--line); background: none; }
 .week-setup-panel .training-frequency > div > span { display: none; }
 .training-frequency b { font-size: 1rem; }
 .frequency-picker { gap: 7px; }
 .frequency-picker button { min-width: 44px; min-height: 44px; border-radius: 7px; font-size: 1rem; }
-.week-setup-panel .week-plan-explanation { font-size: .875rem; margin: 0 0 18px; }
-.strong-receipt, .workout-finish { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; padding-top: 18px; border-top: 1px solid var(--line); }
-.strong-receipt > svg, .workout-finish > svg { width: 20px; height: 20px; flex: none; color: var(--muted); }
-.strong-receipt > div, .workout-finish > div { flex: 1 1 200px; }
-.strong-receipt b, .workout-finish b { display: block; font-size: .875rem; font-weight: 550; }
-.strong-receipt span, .workout-finish p { display: block; font-size: .875rem; color: var(--muted); margin: 3px 0 0; }
-.week-next-panel { border-left: 3px solid var(--accent); padding-left: 22px; }
-.week-next-panel > p { margin: -5px 0 20px; font-size: .9375rem; }
-.week-next-panel > .button { min-width: 195px; justify-content: space-between; gap: 20px; }
-.later-workouts { margin-top: 20px; border-top: 1px solid var(--line); }
-.later-workouts summary { min-height: 44px; padding-top: 14px; color: var(--muted); cursor: pointer; font-size: .875rem; }
-.later-workouts button { display: flex; align-items: center; justify-content: space-between; width: 100%; padding-block: 12px; min-height: 44px; text-align: left; font-size: .9375rem; }
 .coverage-link { display: flex; align-items: center; width: 100%; gap: 14px; padding: 18px 4px; text-align: left; border-bottom: 1px solid var(--line); }
 .coverage-link > span { flex: 1; }
 .coverage-link b, .coverage-link small { display: block; }
@@ -107,8 +86,6 @@ input:not([type="checkbox"]):not([type="radio"]), textarea, select { font-size: 
 .workout-sheet-cover.next-workout-cover { padding: 24px; }
 .workout-sheet-title h2 { font-size: 1.875rem; font-weight: 600; }
 .workout-sheet-cover .button { margin-top: 16px; }
-.prescription-table-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding: 18px 24px 14px; border-bottom: 1px solid var(--line); font-size: .875rem; }
-.prescription-table-heading > span:last-child { color: var(--muted); }
 .workout-detail .session-exercises { padding: 0 24px; }
 .compact-lift.workout-prescription { padding: 0; border-bottom: 1px solid var(--line); }
 .compact-lift:last-child { border-bottom: 0; }
@@ -133,7 +110,11 @@ input:not([type="checkbox"]):not([type="radio"]), textarea, select { font-size: 
 .lift-evidence small { color: var(--muted); font-size: .8125rem; }
 .lift-evidence b { font-size: 1rem; font-weight: 600; }
 .compact-lift .prescription-reason { font-size: .875rem; }
-.workout-finish { margin-top: 20px; border-top: 0; padding: 16px 0; }
+.workout-finish { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 20px; border-top: 0; padding: 16px 0; }
+.workout-finish > svg { width: 20px; height: 20px; flex: none; color: var(--muted); }
+.workout-finish > div { flex: 1 1 200px; }
+.workout-finish b { display: block; font-size: .875rem; font-weight: 550; }
+.workout-finish p { display: block; font-size: .875rem; color: var(--muted); margin: 3px 0 0; }
 
 /* Each tracker has a working card, then quiet expandable records. */
 .mind-page [role="tabpanel"] > .mind-panel-section, .mind-page .thought-response-home, .mind-page .response-workspace, .urges-page .urges-panel { margin-top: 0; padding: 24px; background: var(--paper); border: 1px solid var(--line); border-radius: 12px; box-shadow: none; }
@@ -197,15 +178,8 @@ input:not([type="checkbox"]):not([type="radio"]), textarea, select { font-size: 
   .daily-checklist .tl-row:has(.minute-form) .minute-form { padding-left: 30px; }
   .week-setup-panel, .week-next-panel { padding: 18px; }
   .week-setup-panel .training-frequency { flex-wrap: wrap; gap: 12px; }
-  .fitness-flow { gap: 6px; }
-  .fitness-flow button { font-size: .875rem; padding: 8px; gap: 7px; }
-  .fitness-flow button > span { width: 25px; height: 25px; }
-  .strong-receipt, .workout-finish { gap: 10px; }
-  .strong-receipt > div, .workout-finish > div { flex-basis: calc(100% - 40px); }
-  .strong-receipt > button, .workout-finish > button { margin-left: 30px; }
   .workout-sheet-cover.next-workout-cover { padding: 20px; }
   .workout-sheet-title h2 { font-size: 1.625rem; }
-  .prescription-table-heading { padding-inline: 16px; }
   .workout-detail .session-exercises { padding-inline: 16px; }
   .compact-targets { margin-left: 0; gap: 8px; }
   .compact-targets strong { font-size: 1rem; }
@@ -227,3 +201,26 @@ input:not([type="checkbox"]):not([type="radio"]), textarea, select { font-size: 
 @media (max-width: 360px) { .record-tabs button { font-size: .8125rem; } .dose-card-body { grid-template-columns: minmax(0, 1fr); } .dose-card .consistency-number { max-width: none; margin-left: 38px; } .dose-card .consistency-number > strong > span { display: inline; } .daily-checklist .tl-row { flex-wrap: wrap; } }
 
 .compact-lift .lift-summary[aria-expanded="true"] .compact-lift-title > svg { transform: rotate(90deg); }
+
+/* The week is one line of context above the workout, not a screen you finish
+   before the workout is allowed to appear. */
+.week-line { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 16px; font-size: .875rem; color: var(--muted); }
+.week-line b { font-weight: 600; color: var(--ink); }
+.week-line .text-button { min-height: 44px; }
+
+/* Said once, above the rows, indented to sit over the numbers it names. */
+.prescription-columns { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, .75fr); gap: 12px; margin: 0 24px; padding: 16px 0 10px 40px; border-bottom: 1px solid var(--line); font-size: .8125rem; letter-spacing: .01em; color: var(--muted); }
+
+/* What the button does, under the button's own label. */
+.copy-strong { align-items: center; text-align: left; }
+.copy-strong > span { display: grid; }
+.copy-strong small { font-weight: 400; opacity: .8; font-size: .75rem; margin-top: 1px; }
+
+/* The rest of the week: a short list, not a fold inside a preview panel. */
+.later-list { margin-top: 18px; border-top: 1px solid var(--line); }
+.later-list > button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 52px; padding: 12px 4px; text-align: left; border-bottom: 1px solid var(--line); }
+.later-list > button > span { display: grid; }
+.later-list b { font-size: .9375rem; font-weight: 550; }
+.later-list small { font-size: .8125rem; color: var(--muted); margin-top: 2px; }
+.later-list > button > svg { width: 18px; height: 18px; color: var(--muted); flex: none; }
+.later-list > .text-button { margin-top: 10px; }

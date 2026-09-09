@@ -199,6 +199,83 @@ const paths: Record<string, ReactNode> = {
       <circle cx="19" cy="12" r="1.2" />
     </>
   ),
+
+  // Movement patterns. One glyph for each thing a lift asks of you, so a
+  // session reads as a shape before it reads as eight names. Drawn to stay
+  // legible at 18px: a bar, a limb, a direction, nothing more.
+  "pattern-press": (
+    <>
+      <path d="M3 5h18M6 2.5v5M18 2.5v5" />
+      <path d="M6.5 21 10 7M17.5 21 14 7" />
+    </>
+  ),
+  "pattern-pull": (
+    <>
+      <path d="M3 4h18M6 1.5v5M18 1.5v5" />
+      <path d="M7 6.5 12 15l5-8.5" />
+      <path d="M12 15v6" />
+    </>
+  ),
+  "pattern-squat": (
+    <>
+      <path d="M4 4h13M6.5 2v4M14.5 2v4" />
+      <path d="M15 7 6 13.5 14 20" />
+      <path d="M12 21h8" />
+    </>
+  ),
+  "pattern-hinge": (
+    <>
+      <path d="M3 6h14v15" />
+      <path d="M7 6v9.5" />
+      <path d="M2.5 16.5h9M4.5 14.5v4M9.5 14.5v4" />
+    </>
+  ),
+  "pattern-curl": (
+    <>
+      <path d="M7 21V11" />
+      <path d="M7 11a8 8 0 0 1 10-3" />
+      <path d="M15.5 4.5h5M18 3v5" />
+    </>
+  ),
+  "pattern-extension": (
+    <>
+      <path d="M7 3v10" />
+      <path d="M7 13a8 8 0 0 0 10 3" />
+      <path d="M15.5 19.5h5M18 18v5" />
+    </>
+  ),
+  "pattern-raise": (
+    <>
+      <path d="M12 8v13" />
+      <path d="M4 9 12 8l8 1" />
+      <circle cx="3" cy="9.5" r="1.6" />
+      <circle cx="21" cy="9.5" r="1.6" />
+    </>
+  ),
+  "pattern-calf": (
+    <>
+      <path d="M10 2v11" />
+      <path d="M10 13c0 4-3 4-3 6h13" />
+      <path d="M4 21h16" />
+    </>
+  ),
+  "pattern-core": (
+    <>
+      <circle cx="5.5" cy="4.5" r="2" />
+      <path d="M7 6 16 12l-9 6" />
+      <path d="M3 21h18" />
+    </>
+  ),
+  "pattern-carry": (
+    <>
+      <path d="M4 4v6M20 4v6" />
+      <rect x="1.5" y="10" width="5" height="9" rx="1.4" />
+      <rect x="17.5" y="10" width="5" height="9" rx="1.4" />
+      <path d="M9.5 8h5" />
+    </>
+  ),
+  "pattern-cardio": <path d="M2 13h4l2.5-7 3.5 14 2.5-9 1.5 3H22" />,
+  "pattern-lift": <path d="M6.5 6.5v11M17.5 6.5v11M3 9.5v5M21 9.5v5M6.5 12h11" />,
 };
 
 // View ids double as icon names in the navigation, so views whose glyph is

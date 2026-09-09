@@ -15,7 +15,7 @@ import { fitnessTabs, type FitnessTab, type Modal } from "./types";
  */
 export function FitnessView({
   state,
-  tab, onTab, loadImage, startAtWorkout = false,
+  tab, onTab, loadImage,
   editableState,
   today,
   open,
@@ -28,7 +28,6 @@ export function FitnessView({
 }: {
   state: HealthState;
   tab: FitnessTab;
-  startAtWorkout?: boolean;
   onTab: (tab: FitnessTab) => void;
   loadImage?: (id: string) => Promise<Blob | null>;
   editableState: HealthState;
@@ -41,13 +40,7 @@ export function FitnessView({
   onGoals: (goals: GoalSettings | ((current: GoalSettings) => GoalSettings)) => void;
   onNotice: (message: string) => void;
 }) {
-  const [stage, setStage] = useState<"week" | "workout">(startAtWorkout ? "workout" : "week");
   const [selected, setSelected] = useState<string | null>(null);
-  const changeStage = (step: "week" | "workout") => {
-    setStage(step);
-    window.scrollTo({ top: 0, behavior: "auto" });
-    window.requestAnimationFrame(() => document.querySelector<HTMLButtonElement>('.fitness-flow [aria-current="step"]')?.focus({ preventScroll: true }));
-  };
   const navigate = (next: FitnessTab) => {
     onTab(next);
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -83,7 +76,7 @@ export function FitnessView({
         </div>
       <div id="fitness-panel-coach" role="tabpanel" aria-labelledby="fitness-tab-coach" hidden={tab !== "coach"}>
       {tab === "coach" && (
-        <CoachTab stage={stage} onStage={changeStage} selected={selected} onSelect={setSelected} state={state} today={today} open={open} onGoals={onGoals} onNotice={onNotice} onMuscles={() => navigate("muscles")} />
+        <CoachTab selected={selected} onSelect={setSelected} state={state} today={today} open={open} onGoals={onGoals} onNotice={onNotice} onMuscles={() => navigate("muscles")} />
       )}
       </div>
       <div id="fitness-panel-progress" role="tabpanel" aria-labelledby="fitness-tab-progress" hidden={tab !== "progress"}>
@@ -91,7 +84,7 @@ export function FitnessView({
       </div>
       <div id="fitness-panel-muscles" role="tabpanel" aria-labelledby="fitness-tab-muscles" hidden={tab !== "muscles"}>
       {tab === "muscles" && (
-        <CoachTab stage={stage} onStage={changeStage} selected={selected} onSelect={setSelected} state={state} today={today} open={open} onGoals={onGoals} onNotice={onNotice} mode="muscles" onMuscles={() => navigate("muscles")} onWorkout={() => navigate("coach")} />
+        <CoachTab selected={selected} onSelect={setSelected} state={state} today={today} open={open} onGoals={onGoals} onNotice={onNotice} mode="muscles" onMuscles={() => navigate("muscles")} onWorkout={() => navigate("coach")} />
       )}
       </div>
       <div id="fitness-panel-body" role="tabpanel" aria-labelledby="fitness-tab-body" hidden={tab !== "body"}>

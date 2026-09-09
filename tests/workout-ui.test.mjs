@@ -13,28 +13,36 @@ import { WorkoutPrescription } from "../app/ui/workout-prescription.tsx";
 const TODAY = "2026-09-08";
 const noop = () => {};
 const plain = html => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
-const view = (state, tab = "coach", today = TODAY, startAtWorkout = true) => renderToStaticMarkup(createElement(FitnessView, {
-  state, editableState: state, today, tab, startAtWorkout, onTab: noop, open: noop,
+const view = (state, tab = "coach", today = TODAY) => renderToStaticMarkup(createElement(FitnessView, {
+  state, editableState: state, today, tab, onTab: noop, open: noop,
   onAddPhoto: async () => {}, onUpdatePhoto: noop, onDeletePhoto: noop, onDeleteDay: noop, onGoals: noop, onNotice: noop,
 }));
 
-test("the workout step gives compact targets with no separate Train or History tab", () => {
+test("the workout screen gives compact targets with no separate Train or History tab", () => {
   const state = demoHealthState(TODAY);
   const html = view(state);
   assert.match(html, /role="tab"[^>]*>Muscles<\/button>/);
   assert.doesNotMatch(html, /role="tab"[^>]*>History<\/button>/);
   assert.match(html, /aria-label="Next workout plan"/);
   assert.match(plain(html), /Next workout Full body B/);
-  assert.match(html, /aria-label="Workout steps"/);
   assert.doesNotMatch(html, />Train<|Step 3/);
   assert.match(plain(html), /Copy for Strong/);
   assert.match(plain(html), /Import completed workout/);
-  assert.match(plain(html), /Your targets/);
   assert.doesNotMatch(html, /class="lift-evidence"/, "past evidence stays behind the exercise control");
   assert.match(html, /Same weight/);
   assert.doesNotMatch(html, /Original plan|View what you logged|Nothing else scheduled/);
   assert.doesNotMatch(html, /<option[^>]*>[^<]*Full body A/,
     "an imported match cannot be selected as fresh workout instructions");
+});
+
+test("the column head is stated once, not on every exercise row", () => {
+  const state = demoHealthState(TODAY);
+  const html = view(state);
+  assert.equal((html.match(/class="prescription-columns"/g) ?? []).length, 1);
+  // The words appear in the head and nowhere else, however many lifts there are.
+  for (const pattern of [/Sets × reps/g, /\bRest\b/g]) {
+    assert.equal((plain(html).match(pattern) ?? []).length, 1, `${pattern} is repeated on the rows`);
+  }
 });
 
 test("Muscles immediately renders all eleven groups and distinguishes logged from planned sets", () => {
@@ -124,14 +132,19 @@ test("missing imports show an actionable first step and no invented workout", ()
 });
 
 
-test("the default plan screen guides week setup before showing exercise instructions", () => {
+test("Fitness opens on the workout itself, with no step to complete first", () => {
   const state = demoHealthState(TODAY);
-  const html = view(state, "coach", TODAY, false);
-  assert.match(plain(html), /Set your week/);
-  assert.match(html, /aria-current="step"[^>]*><span>1/);
-  assert.match(plain(html), /Show my workout/);
-  assert.match(plain(html), /Last workout imported/);
+  const html = view(state, "coach", TODAY);
+  // The rejected design: a numbered stepper whose first step was a settings
+  // screen, and whose second step was the workout it had just previewed.
+  assert.doesNotMatch(html, /aria-label="Workout steps"/);
+  assert.doesNotMatch(html, /aria-current="step"/);
+  assert.doesNotMatch(plain(html), /Set your week|Show my workout/);
+  // The exercise instructions are on screen the moment the section opens.
+  assert.match(html, /class="lift-summary"/);
+  assert.match(plain(html), /Copy for Strong/);
+  // The week is a line of context, and the import stays reachable from it.
+  assert.match(html, /class="week-line"/);
+  assert.match(plain(html), /Week of/);
   assert.match(plain(html), /Muscle coverage/);
-  assert.doesNotMatch(html, /class="lift-summary"|Copy for Strong/);
-  assert.equal((html.match(/class="button primary"/g) ?? []).length, 1);
 });

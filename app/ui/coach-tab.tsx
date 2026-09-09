@@ -15,13 +15,13 @@ import { muscleLabels } from "../training/muscles";
 import { Icon } from "./icons";
 import { copyText, downloadBlob, listWords } from "./format";
 import { ConfirmButton } from "./primitives";
-import { WorkoutPrescription as Lift } from "./workout-prescription";
+import { PrescriptionColumns, WorkoutPrescription as Lift } from "./workout-prescription";
 import { workoutLabel } from "./workout-labels";
 import type { Modal } from "./types";
 
 /** The plan and muscle graph use the same post-import calculation. */
 export function CoachTab({
-  state, today, open, onGoals, onNotice, onMuscles, onWorkout, mode = "workout", stage = "week", onStage, selected = null, onSelect,
+  state, today, open, onGoals, onNotice, onMuscles, onWorkout, mode = "workout", selected = null, onSelect,
 }: {
   state: HealthState;
   today: string;
@@ -31,8 +31,6 @@ export function CoachTab({
   onMuscles: () => void;
   onWorkout?: () => void;
   mode?: "workout" | "muscles";
-  stage?: "week" | "workout";
-  onStage?: (stage: "week" | "workout") => void;
   selected?: string | null;
   onSelect?: (name: string | null) => void;
 }) {
@@ -73,9 +71,7 @@ export function CoachTab({
     <div className="frequency-picker" role="group" aria-label="Weekly workout goal">{DAY_CHOICES.map(value => <button type="button" key={value} aria-label={`${value} workouts`} aria-pressed={targetDays === value} onClick={() => setDays(value)}>{value}</button>)}</div>
   </div>;
 
-  const steps = <nav className="fitness-flow" aria-label="Workout steps">{(["week", "workout"] as const).map((step, index) => <button key={step} type="button" aria-current={(hasHistory ? stage : "week") === step ? "step" : undefined} disabled={step === "workout" && !hasHistory} onClick={() => onStage?.(step)}><span>{index + 1}</span>{step === "week" ? "Set your week" : "Your workout"}</button>)}</nav>;
-
-  if (!hasHistory) return <div className="training-workspace workout-desk">{steps}<section className="week-setup-panel">
+  if (!hasHistory) return <div className="training-workspace workout-desk"><section className="week-setup-panel">
     <span className="section-eyebrow"><Icon name="upload" /> Your Strong record</span>
     <h2>Start with your workout history</h2>
     <p>Import your Strong export to get a plan based on the exercises and weights you already use.</p>
@@ -107,47 +103,51 @@ export function CoachTab({
     addedSets: current.addedSets.filter(entry => !(entry.weekStart === weekStart(today) && entry.session === session.name && entry.exercise === exercise)),
   }));
 
-  if (stage === "week") return <div className="training-workspace workout-desk">{steps}
-    <section className="week-setup-panel">
-      <div className="week-setup-heading"><div><span className="section-eyebrow">Week of {dateLabel(weekStart(today), { month: "short", day: "numeric" })}</span><h2>Set your week</h2></div><span className="logged-count"><Icon name="check" />{importedCount} logged</span></div>
-      {frequency}
-      <p className="week-plan-explanation">{state.goals.trainingSplit === "full-body" ? "A and B are your full-body base. Extra visits add to them." : "Your upper and lower workouts adapt to the visits available."}</p>
-      <div className="strong-receipt"><Icon name="upload" /><div><b>{latest ? `Last workout imported · ${dateLabel(latest.date, { month: "short", day: "numeric" })}` : "No imported workouts"}</b><span>Finished another workout in Strong?</span></div><button type="button" className="button secondary small" onClick={importWorkout}>Update record</button></div>
-    </section>
-    <section className="week-next-panel" aria-label="Next workout preview">
-      <span className="section-eyebrow">Up next{next.session?.tier === "extra" ? " · optional" : ""}</span>
-      <h2>{next.session ? workoutLabel(next.session) : "Your week is logged"}</h2>
-      <p>{next.session ? `${next.session.exercises.length} exercises · ${sessionMinutes(next.session)} minutes` : `${importedCount} workouts imported this week`}</p>
-      {next.session ? <button type="button" className="button primary" onClick={() => { onSelect?.(null); onStage?.("workout"); }}>Show my workout <Icon name="arrow" /></button> : <button type="button" className="button secondary" onClick={onMuscles}>Review muscle coverage <Icon name="arrow" /></button>}
-      {remaining.length > 1 ? <details className="later-workouts"><summary>Then {remaining.length - 1} more {remaining.length === 2 ? "workout" : "workouts"}</summary>{remaining.slice(1).map(session => <button type="button" key={session.name} onClick={() => { onSelect?.(session.name); onStage?.("workout"); }}><span>{workoutLabel(session)}{session.tier === "extra" ? " · optional" : ""}</span><Icon name="chevron" /></button>)}</details> : null}
-    </section>
-    <button type="button" className="coverage-link" onClick={onMuscles}><Icon name="baseline" /><span><b>Muscle coverage</b><small>{allGaps.length && !plan.deload ? `${allGaps.length} groups below target in the current plan` : "See logged sets and your remaining plan"}</small></span><Icon name="chevron" /></button>
-    <details className="plan-settings standalone-settings plan-settings-fold"><summary><Icon name="settings" /> Plan settings</summary>
-      <div className="tl-section-head"><span className="tl-caps">{plan.deload ? "Lighter week · 4 of 4" : `Week ${week + 1} of 4`}</span><ConfirmButton label="Restart block" confirmLabel="Clear choices & restart" className="text-button" icon="undo" onConfirm={() => onGoals(current => ({ ...current, trainingBlockStart: weekStart(today), trainingAnchorSets: trainingAnchorSets(state, today), trainingDays: [], addedSets: [] }))} /></div>
-      <label className="plan-field"><span>Plan structure</span><select aria-label="Plan structure" value={state.goals.trainingSplit} onChange={event => onGoals(current => ({ ...current, trainingSplit: event.target.value as GoalSettings["trainingSplit"] }))}><option value="full-body">Two full-body workouts + optional extras</option><option value="upper-lower">Upper / lower split</option></select></label>
-      <label className="plan-field"><span>Time limit per workout</span><select aria-label="Time limit per workout" value={state.goals.trainingSessionMinutes} onChange={event => onGoals(current => ({ ...current, trainingSessionMinutes: Number(event.target.value) }))}>{[45, 60, 75, 90, 120].map(minutes => <option key={minutes} value={minutes}>{minutes} minutes</option>)}</select></label>
-      {remaining.length > 1 ? <button type="button" className="text-button" onClick={() => void exportText(planToText({ ...plan, days: remaining.length, sessions: remaining.map(session => ({ ...session, name: workoutLabel(session) })) }))}>Copy remaining week</button> : null}
-    </details>
-  </div>;
+  // One screen, not two. The week used to be a step you completed before you
+  // were allowed to see the workout, and the step's own panel then previewed
+  // the workout it was gating. What the week actually contributes is a line of
+  // context, so that is what it is now: the workout is the page.
+  const others = remaining.filter(session => session.name !== hero?.name);
 
-  return <div className="training-workspace workout-desk workout-detail">{steps}
+  return <div className="training-workspace workout-desk workout-detail">
+    <div className="week-line">
+      <span><b>Week of {dateLabel(weekStart(today), { month: "short", day: "numeric" })}</b>{` · ${importedCount} of ${targetDays} logged`}{plan.deload ? " · lighter week" : ""}</span>
+      <button type="button" className="text-button" onClick={importWorkout}><Icon name="upload" />{latest ? `Import · last ${dateLabel(latest.date, { month: "short", day: "numeric" })}` : "Import from Strong"}</button>
+    </div>
     <section className="workout-sheet" aria-label="Next workout plan">
       <header className="workout-sheet-cover next-workout-cover">
         <div className="workout-sheet-label"><Icon name="fitness" /><span>{hero ? isNext ? "Next workout" : "Later this week" : "No workouts remaining"}{hero?.tier === "extra" ? " · optional" : ""}</span></div>
         <div className="workout-sheet-title"><h2 id="fitness-step-heading" tabIndex={-1}>{hero ? workoutLabel(hero) : "Your week is logged"}</h2>{hero ? <span><Icon name="clock" /> {sessionMinutes(hero)} min</span> : null}</div>
-        <p>{hero ? `${hero.exercises.length} exercises · ${hero.sets} sets${plan.deload ? " · lighter week" : ""}` : `${importedCount} workouts logged this week`}</p>
-        {hero ? <button type="button" className="button primary small" onClick={() => void exportText(sessionToText(plan, { ...hero, name: workoutLabel(hero) }))}><Icon name="copy" />Copy for Strong</button> : null}
+        <p>{hero ? `${hero.exercises.length} exercises · ${hero.sets} sets` : `${importedCount} workouts logged this week`}</p>
+        {/* What the button does, at the button. It copies text; it does not
+            build a Strong routine, and saying so here beats saying it in a
+            fold nobody opens. */}
+        {hero ? <button type="button" className="button primary small copy-strong" onClick={() => void exportText(sessionToText(plan, { ...hero, name: workoutLabel(hero) }))}><Icon name="copy" /><span>Copy for Strong<small>Copies the text to paste in</small></span></button> : null}
       </header>
       {hero ? <>
-        <div className="prescription-table-heading"><span>Your targets</span><span>Tap an exercise for the last log &amp; changes</span></div>
+        <PrescriptionColumns />
         <div className="session-exercises" aria-label={`${workoutLabel(hero)}, exercises`}>
-          {hero.exercises.map((exercise, index) => <Lift key={`${hero.name}:${exercise.exercise}`} number={index + 1} exercise={exercise} targetLabel={isNext ? "Next workout" : "This workout"} onDrop={exercise.byHand ? () => drop(hero, exercise.exercise) : undefined} />)}
+          {hero.exercises.map(exercise => <Lift key={`${hero.name}:${exercise.exercise}`} exercise={exercise} targetLabel={isNext ? "Next workout" : "This workout"} onDrop={exercise.byHand ? () => drop(hero, exercise.exercise) : undefined} />)}
         </div>
       </> : null}
     </section>
+    {others.length ? <nav className="later-list" aria-label="The rest of this week">
+      {others.map(session => <button type="button" key={session.name} onClick={() => onSelect?.(session.name === selected ? null : session.name)}>
+        <span><b>{workoutLabel(session)}</b><small>{session.tier === "extra" ? "optional · " : ""}{session.exercises.length} exercises · {sessionMinutes(session)} min</small></span>
+        <Icon name="chevron" />
+      </button>)}
+      {selected ? <button type="button" className="text-button" onClick={() => onSelect?.(null)}>Back to the next workout</button> : null}
+    </nav> : null}
     <div className="workout-finish"><Icon name="upload" /><div><b>{hero ? "After this workout" : "Update your record"}</b><p>{hero ? "Log it in Strong, then import the updated export." : "Import your latest Strong export to update the plan."}</p></div><button type="button" className="button secondary small" onClick={importWorkout}>Import completed workout</button></div>
     <button type="button" className="coverage-link" onClick={onMuscles}><Icon name="baseline" /><span><b>Muscle coverage</b><small>{allGaps.length && !plan.deload ? `${allGaps.length} groups below target in the current plan` : "See how this workout fits your week"}</small></span><Icon name="chevron" /></button>
-    <details className="training-explanation"><summary>How these targets are calculated</summary><p>Targets use your imported Strong history. Open each exercise to see the previous workout and why its weight or rest changed.</p><p>Copy for Strong copies text; paste the targets into your routine. Strong exports its rest timer setting, not a measurement of how long you rested.</p></details>
+    <details className="plan-settings standalone-settings plan-settings-fold"><summary><Icon name="settings" /> Plan settings</summary>
+      <div className="tl-section-head"><span className="tl-caps">{plan.deload ? "Lighter week · 4 of 4" : `Week ${week + 1} of 4`}</span><ConfirmButton label="Restart block" confirmLabel="Clear choices & restart" className="text-button" icon="undo" onConfirm={() => onGoals(current => ({ ...current, trainingBlockStart: weekStart(today), trainingAnchorSets: trainingAnchorSets(state, today), trainingDays: [], addedSets: [] }))} /></div>
+      {frequency}
+      <label className="plan-field"><span>Plan structure</span><select aria-label="Plan structure" value={state.goals.trainingSplit} onChange={event => onGoals(current => ({ ...current, trainingSplit: event.target.value as GoalSettings["trainingSplit"] }))}><option value="full-body">Two full-body workouts + optional extras</option><option value="upper-lower">Upper / lower split</option></select></label>
+      <label className="plan-field"><span>Time limit per workout</span><select aria-label="Time limit per workout" value={state.goals.trainingSessionMinutes} onChange={event => onGoals(current => ({ ...current, trainingSessionMinutes: Number(event.target.value) }))}>{[45, 60, 75, 90, 120].map(minutes => <option key={minutes} value={minutes}>{minutes} minutes</option>)}</select></label>
+      {remaining.length > 1 ? <button type="button" className="text-button" onClick={() => void exportText(planToText({ ...plan, days: remaining.length, sessions: remaining.map(session => ({ ...session, name: workoutLabel(session) })) }))}>Copy remaining week</button> : null}
+    </details>
+    <details className="training-explanation"><summary>How these targets are calculated</summary><p>Targets use your imported Strong history. Open each exercise to see the previous workout and why its weight or rest changed.</p><p>Strong exports its rest timer setting, not a measurement of how long you rested.</p></details>
   </div>;
 }
 

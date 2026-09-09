@@ -807,7 +807,6 @@ export default function Home() {
         {view === "fitness" && (
           <FitnessView
             key={fitnessRevision}
-            startAtWorkout={fitnessRevision > 0}
             tab={fitnessTab}
             onTab={setFitnessTab}
             loadImage={demoMode ? loadDemoPhoto : undefined}
