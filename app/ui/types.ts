@@ -15,12 +15,14 @@ import type { SleepSource } from "../health-model";
 export type View = "today" | "sleep" | "fitness" | "mind" | "meds" | "labs" | "summary" | "data" | "more" | "compare" | "urges";
 
 /**
- * Two things, not four. The workout is why you opened the app; everything else
- * is how it is going. Muscle coverage was never a peer of your workout — it is
- * the reason the workout looks the way it does, so it sits under the workout
- * and under progress rather than owning a tab.
+ * The tabs are the loop, in order, numbered.
+ *
+ * Bring your Strong record in, read what to do, check nothing has been missed,
+ * see whether it is working. Naming them after subjects — Plan, Muscles,
+ * Strength, Body — told you what each page contained but never what to do with
+ * the app. Numbering them says it without a paragraph.
  */
-export type FitnessTab = "workout" | "progress";
+export type FitnessTab = "import" | "workout" | "coverage" | "progress";
 
 export type Period = 14 | 30 | 90;
 export type SaveStatus = "loading" | "saved" | "saving" | "local" | "error" | "demo";
@@ -67,9 +69,11 @@ export const navOrder: View[] = ["today", "sleep", "fitness", "mind", "urges", "
 // a sub-page of somewhere else, which is what it stopped being.
 export const mobileNavOrder: View[] = ["today", "sleep", "fitness", "mind", "urges", "meds", "more"];
 
-export const fitnessTabs: Array<{ tab: FitnessTab; label: string }> = [
-  { tab: "workout", label: "Workout" },
-  { tab: "progress", label: "Progress" },
+export const fitnessTabs: Array<{ tab: FitnessTab; step: number; label: string }> = [
+  { tab: "import", step: 1, label: "Import" },
+  { tab: "workout", step: 2, label: "Workout" },
+  { tab: "coverage", step: 3, label: "Coverage" },
+  { tab: "progress", step: 4, label: "Progress" },
 ];
 
 export const bodyMetrics: Array<{ metric: BodyMetric; label: string; unit: string }> = [

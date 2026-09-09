@@ -58,6 +58,12 @@ export function CoachTab({
     else { downloadBlob("baseline-workout.txt", new Blob([text], { type: "text/plain" })); onNotice("Workout text downloaded."); }
   };
   const importWorkout = () => open({ kind: "import", source: "strong" });
+  // What has gone longest without work, and how old the record is. Both
+  // branches below need them: the workout to say what it closes, the coverage
+  // page to show every group.
+  const behind = behindMuscles(state, today);
+  const freshness = muscleFreshness(state, today);
+  const age = recordAge(state, today);
   // The muscle graph is the eleven weekly targets. It is worth reading before
   // anything is imported — that is when you most want to know what the week is
   // supposed to add up to — so the empty state announces the missing import
@@ -66,6 +72,21 @@ export function CoachTab({
     <div className="training-section-heading"><div><h2>Muscle groups</h2><p>Week of {dateLabel(weekStart(today), { month: "short", day: "numeric" })}</p></div></div>
     {hasHistory ? null : <div className="workout-finish"><Icon name="upload" /><div><b>Nothing imported yet</b><p>These are the weekly targets. Import your Strong export to see what you have logged against them.</p></div><button type="button" className="button secondary small" onClick={importWorkout}>Import Strong export</button></div>}
     <Balance outlook={outlook} plan={plan} state={state} today={today} onGoals={onGoals} />
+    <section className="coverage-strip" aria-label="When each muscle group was last trained">
+      <div className="coverage-strip-head">
+        <span className="tl-caps">Every muscle group</span>
+        <span>{behind.length ? `${behind.length} behind` : "all current"}</span>
+      </div>
+      <ul>
+        {freshness.map(entry => (
+          <li key={entry.muscle} className={entry.days === null || entry.days >= 7 ? "is-behind" : ""}>
+            <b>{entry.label}</b>
+            <small>{sinceLabel(entry.days)}</small>
+          </li>
+        ))}
+      </ul>
+    </section>
+
     {/* Shown for every plan structure. The two-visit promise is the reason
         this app plans a week at all, so a week that cannot keep it has to say
         so — an upper/lower week most of all, since its opening pair carries
@@ -100,13 +121,7 @@ export function CoachTab({
 
   const others = remaining.filter(session => session.name !== hero?.name);
 
-  // A recommendation has to be able to say how it knows. These are the two
-  // facts behind it: what has gone longest without work, and how old the
-  // record it is reading from is.
-  const behind = behindMuscles(state, today);
   const closes = hero ? sessionCloses(hero, behind) : [];
-  const freshness = muscleFreshness(state, today);
-  const age = recordAge(state, today);
 
   return <div className="training-workspace workout-desk workout-detail">
     <section className="workout-sheet" aria-label="Next workout plan">
@@ -133,20 +148,6 @@ export function CoachTab({
           {hero.exercises.map(exercise => <Lift key={`${hero.name}:${exercise.exercise}`} exercise={exercise} targetLabel={isNext ? "Next workout" : "This workout"} onDrop={exercise.byHand ? () => drop(hero, exercise.exercise) : undefined} />)}
         </div>
       </> : null}
-      <section className="coverage-strip" aria-label="When each muscle group was last trained">
-        <div className="coverage-strip-head">
-          <span className="tl-caps">Every muscle group</span>
-          <span>{behind.length ? `${behind.length} behind` : "all current"}</span>
-        </div>
-        <ul>
-          {freshness.map(entry => (
-            <li key={entry.muscle} className={entry.days === null || entry.days >= 7 ? "is-behind" : ""}>
-              <b>{entry.label}</b>
-              <small>{sinceLabel(entry.days)}</small>
-            </li>
-          ))}
-        </ul>
-      </section>
       {hero ? <details className="why-this">
         <summary>Why this workout</summary>
         <p>{`It trains ${sessionAreas(hero).slice(0, -1).join(", ")} and ${sessionAreas(hero).slice(-1)[0]}.`}</p>

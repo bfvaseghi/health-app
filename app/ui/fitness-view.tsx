@@ -4,18 +4,18 @@ import { useState } from "react";
 import type { GoalSettings, HealthState, ProgressPhoto } from "../health-model";
 import { BodyTab } from "./body-tab";
 import { CoachTab } from "./coach-tab";
+import { ImportStep } from "./import-step";
 import { ProgressTab } from "./progress-tab";
 import { RecordHeading } from "./primitives";
 import { fitnessTabs, type FitnessTab, type Modal } from "./types";
 
 /**
- * Two tabs, because there are two questions.
+ * Four numbered steps, which are the loop this app actually runs on.
  *
- * Workout answers the one you came for: what am I doing today. Progress
- * answers the other one, occasionally: is this working. Muscle coverage used
- * to be a third tab of equal weight, which put the planner's own diagnostic
- * beside the thing you actually wanted; it now sits under progress, where you
- * go when you want to check the week adds up.
+ * Import your Strong record, read what to do, check nothing has been missed,
+ * see whether it is working. Tabs named after subjects said what each page
+ * held; numbering them says what to do with the app, which is the thing that
+ * was never clear.
  */
 export function FitnessView({
   state,
@@ -74,35 +74,41 @@ export function FitnessView({
                 navigate(fitnessTabs[next].tab);
               }}
             >
+              <span className="step-n">{entry.step}</span>
               {entry.label}
             </button>
           ))}
         </div>
+      <div id="fitness-panel-import" role="tabpanel" aria-labelledby="fitness-tab-import" hidden={tab !== "import"}>
+      {tab === "import" && <ImportStep state={state} today={today} open={open} />}
+      </div>
       <div id="fitness-panel-workout" role="tabpanel" aria-labelledby="fitness-tab-workout" hidden={tab !== "workout"}>
       {tab === "workout" && (
         <CoachTab selected={selected} onSelect={setSelected} state={state} today={today} open={open} onGoals={onGoals} onNotice={onNotice} />
+      )}
+      </div>
+      <div id="fitness-panel-coverage" role="tabpanel" aria-labelledby="fitness-tab-coverage" hidden={tab !== "coverage"}>
+      {tab === "coverage" && (
+        <CoachTab selected={selected} onSelect={setSelected} state={state} today={today} open={open} onGoals={onGoals} onNotice={onNotice} mode="muscles" />
       )}
       </div>
       <div id="fitness-panel-progress" role="tabpanel" aria-labelledby="fitness-tab-progress" hidden={tab !== "progress"}>
       {tab === "progress" && (
         <>
           <ProgressTab state={state} today={today} />
-          {/* The week's coverage, where you come to check whether it adds up
-              rather than while you are reading today's lifts. */}
-          <CoachTab selected={selected} onSelect={setSelected} state={state} today={today} open={open} onGoals={onGoals} onNotice={onNotice} mode="muscles" />
           <BodyTab
-          state={state}
-          editableState={editableState}
-          today={today}
-          open={open}
-          onAddPhoto={onAddPhoto}
-          onUpdatePhoto={onUpdatePhoto}
-          onDeletePhoto={onDeletePhoto}
-          onDeleteDay={onDeleteDay}
-          onNotice={onNotice}
-          onGoals={onGoals}
-          loadImage={loadImage}
-        />
+            state={state}
+            editableState={editableState}
+            today={today}
+            open={open}
+            onAddPhoto={onAddPhoto}
+            onUpdatePhoto={onUpdatePhoto}
+            onDeletePhoto={onDeletePhoto}
+            onDeleteDay={onDeleteDay}
+            onNotice={onNotice}
+            onGoals={onGoals}
+            loadImage={loadImage}
+          />
         </>
       )}
       </div>
