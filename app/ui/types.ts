@@ -57,7 +57,10 @@ export const viewLabels: Record<View, string> = {
 };
 
 export const navOrder: View[] = ["today", "sleep", "fitness", "mind", "urges", "meds", "labs", "summary", "compare"];
-export const mobileNavOrder: View[] = ["today", "sleep", "fitness", "mind", "meds", "more"];
+// Urges is a top-level section, so it is in the bar on a phone too. Reaching a
+// section you log against several times a day through a "More" menu makes it
+// a sub-page of somewhere else, which is what it stopped being.
+export const mobileNavOrder: View[] = ["today", "sleep", "fitness", "mind", "urges", "meds", "more"];
 
 export const fitnessTabs: Array<{ tab: FitnessTab; label: string }> = [
   { tab: "coach", label: "Plan" },

@@ -639,7 +639,7 @@ export default function Home() {
     if (saveStatus === "error") return "Not saved";
     return "Saved on this device";
   }, [saveStatus, savedAt]);
-  const mobileActive: View = ["labs", "summary", "data", "compare", "urges"].includes(view) ? "more" : view;
+  const mobileActive: View = ["labs", "summary", "data", "compare"].includes(view) ? "more" : view;
   const visibleState = useMemo(
     () => appleOverlay ? mergeRecords(state, appleOverlay) : state,
     [state, appleOverlay],
