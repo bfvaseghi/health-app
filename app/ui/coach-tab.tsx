@@ -71,6 +71,24 @@ export function CoachTab({
     <div className="frequency-picker" role="group" aria-label="Weekly workout goal">{DAY_CHOICES.map(value => <button type="button" key={value} aria-label={`${value} workouts`} aria-pressed={targetDays === value} onClick={() => setDays(value)}>{value}</button>)}</div>
   </div>;
 
+  // The muscle graph is the eleven weekly targets. It is worth reading before
+  // anything is imported — that is when you most want to know what the week is
+  // supposed to add up to — so the empty state announces the missing import
+  // rather than standing in for the graph.
+  if (mode === "muscles") return <div className="training-workspace muscle-workspace">
+    <div className="training-section-heading"><div><h2>Muscle groups</h2><p>Week of {dateLabel(weekStart(today), { month: "short", day: "numeric" })}</p></div>{hasHistory ? <button type="button" className="text-button" onClick={onWorkout}>Open workout <Icon name="arrow" /></button> : null}</div>
+    {hasHistory ? frequency : <div className="workout-finish"><Icon name="upload" /><div><b>Nothing imported yet</b><p>These are the weekly targets. Import your Strong export to see what you have logged against them.</p></div><button type="button" className="button secondary small" onClick={importWorkout}>Import Strong export</button></div>}
+    <Balance outlook={outlook} plan={plan} state={state} today={today} onGoals={onGoals} />
+    {hasHistory && state.goals.trainingSplit === "full-body" ? <section className="base-plan-check" aria-label="Two-workout coverage">
+      <h3><Icon name="fitness" /> Two-workout base</h3>
+      <p>{plan.deload ? "Lighter week: fewer sets in A and B." : baseGaps.length ? `${baseOutlook.length - baseGaps.length} of ${baseOutlook.length} muscle targets covered by logged work + remaining base workouts.` : "Logged work + remaining A and B cover all muscle targets."}</p>
+      {baseGaps.length && !plan.deload ? <p className="training-shortfall">Below target: {listWords(baseGaps.map(row => row.label.toLowerCase()))}.</p> : null}
+      {foundationMinutes ? <button type="button" className="button secondary small" onClick={() => onGoals(current => ({ ...current, trainingSessionMinutes: foundationMinutes }))}>Use {foundationMinutes}-minute workouts to fit the base</button> : null}
+    </section> : null}
+    <details className="training-explanation"><summary>How sets count</summary><p>Direct work counts as 1 set. Work as a supporting muscle counts as ½. Core counts direct sets only. Planned sets are still to do, including any optional visits you selected.</p><p>{plan.deload ? "The chart keeps the usual targets visible during this lighter week." : "The shaded band marks the weekly target. Open a muscle to see its exercises or adjust the remaining sets."}</p></details>
+    {hasHistory && (planned.missing.length || unknown.length) ? <Notes missing={planned.missing.map(muscle => muscleLabels[muscle].toLowerCase())} unknown={unknown} /> : null}
+  </div>;
+
   if (!hasHistory) return <div className="training-workspace workout-desk"><section className="week-setup-panel">
     <span className="section-eyebrow"><Icon name="upload" /> Your Strong record</span>
     <h2>Start with your workout history</h2>
@@ -78,20 +96,6 @@ export function CoachTab({
     <button type="button" className="button primary" onClick={importWorkout}><Icon name="upload" />Import Strong export</button>
     {state.workoutSets.length ? <p className="field-note">At least 10 logged sets are needed.</p> : null}
   </section></div>;
-
-  if (mode === "muscles") return <div className="training-workspace muscle-workspace">
-    <div className="training-section-heading"><div><h2>Muscle groups</h2><p>Week of {dateLabel(weekStart(today), { month: "short", day: "numeric" })}</p></div><button type="button" className="text-button" onClick={onWorkout}>Open workout <Icon name="arrow" /></button></div>
-    {frequency}
-    <Balance outlook={outlook} plan={plan} state={state} today={today} onGoals={onGoals} />
-    {state.goals.trainingSplit === "full-body" ? <section className="base-plan-check" aria-label="Two-workout coverage">
-      <h3><Icon name="fitness" /> Two-workout base</h3>
-      <p>{plan.deload ? "Lighter week: fewer sets in A and B." : baseGaps.length ? `${baseOutlook.length - baseGaps.length} of ${baseOutlook.length} muscle targets covered by logged work + remaining base workouts.` : "Logged work + remaining A and B cover all muscle targets."}</p>
-      {baseGaps.length && !plan.deload ? <p className="training-shortfall">Below target: {listWords(baseGaps.map(row => row.label.toLowerCase()))}.</p> : null}
-      {foundationMinutes ? <button type="button" className="button secondary small" onClick={() => onGoals(current => ({ ...current, trainingSessionMinutes: foundationMinutes }))}>Use {foundationMinutes}-minute workouts to fit the base</button> : null}
-    </section> : null}
-    <details className="training-explanation"><summary>How sets count</summary><p>Direct work counts as 1 set. Work as a supporting muscle counts as ½. Core counts direct sets only. Planned sets are still to do, including any optional visits you selected.</p><p>{plan.deload ? "The chart keeps the usual targets visible during this lighter week." : "The shaded band marks the weekly target. Open a muscle to see its exercises or adjust the remaining sets."}</p></details>
-    {planned.missing.length || unknown.length ? <Notes missing={planned.missing.map(muscle => muscleLabels[muscle].toLowerCase())} unknown={unknown} /> : null}
-  </div>;
 
   const next = nextSession(plan, state, today);
   // Only unfinished workouts can become instructions. A matched import is data,

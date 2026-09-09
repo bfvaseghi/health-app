@@ -45,6 +45,18 @@ test("the column head is stated once, not on every exercise row", () => {
   }
 });
 
+test("Muscles shows the eleven targets before anything is imported", () => {
+  // The graph used to be replaced by the workout tab's import prompt, so the
+  // one screen that says what a week should add up to was unreachable until
+  // you already had a history.
+  const html = view(emptyHealthState(new Date(`${TODAY}T12:00:00Z`)), "muscles");
+  assert.match(html, /aria-label="Weekly muscle group graph"/);
+  assert.equal((html.match(/class="muscle-chart-row"/g) ?? []).length, MUSCLES.length);
+  assert.match(plain(html), /Nothing imported yet/);
+  assert.match(plain(html), /Import Strong export/);
+  assert.doesNotMatch(plain(html), /Start with your workout history/);
+});
+
 test("Muscles immediately renders all eleven groups and distinguishes logged from planned sets", () => {
   const state = demoHealthState(TODAY);
   const html = view(state, "muscles");
