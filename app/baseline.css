@@ -260,9 +260,9 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
 
 /* Eleven bars on one shared ceiling, so equal set counts draw equal heights.
    The target floor is a notch on top of the fill, not a band underneath it. */
-.mini-coverage { position: relative; display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 6px; }
-.mini-bar { display: grid; gap: 6px; justify-items: center; min-width: 0; }
-.mini-bar > span { position: relative; display: block; width: 100%; height: 36px; background: var(--soft); border-radius: 2px; overflow: hidden; }
+.mini-coverage { position: relative; display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 5px; padding-top: 4px; }
+.mini-bar { display: grid; gap: 7px; justify-items: center; min-width: 0; }
+.mini-bar > span { position: relative; display: block; width: 100%; height: 56px; background: var(--soft); border-radius: 3px; overflow: hidden; }
 .mini-bar i { position: absolute; left: 0; right: 0; bottom: 0; display: block; }
 .mini-bar i.done { background: var(--accent); }
 .mini-bar i.planned { background: color-mix(in srgb, var(--accent) 48%, var(--soft)); }
@@ -275,7 +275,7 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
 .mini-bar.is-under i.optional { background: color-mix(in srgb, var(--warn) 20%, var(--soft)); }
 .mini-bar.is-under > span { box-shadow: inset 0 0 0 1px var(--warn); }
 .mini-bar.is-over i.done { background: var(--chart-bar); }
-.mini-bar small { font-size: .5625rem; letter-spacing: .04em; color: var(--faint); }
+.mini-bar small { font-size: .625rem; letter-spacing: .03em; color: var(--faint); }
 
 .lens-tabs { margin-bottom: 14px; }
 .chart-key-caption { margin: -12px 0 12px; font-size: .75rem; color: var(--muted); }
@@ -402,14 +402,19 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
    sections are hairlines and a left rail, and the picture sits on the row. */
 
 .record-list { border-top: 1px solid var(--line); margin-top: 4px; }
-.record-block { position: relative; padding: 16px 0 16px 14px; border-bottom: 1px solid var(--line); }
-.record-block::before { content: ""; position: absolute; left: 0; top: 0; bottom: -1px; width: 2px; background: var(--accent-pale); }
+.record-list > .record-block:last-child { border-bottom: 0; }
+.record-block.is-flat { padding-left: 0; border-bottom: 0; }
+.record-block.is-flat::before { display: none; }
+.record-block { position: relative; padding: 20px 0 22px 14px; border-bottom: 1px solid var(--line); }
+/* Inset, so consecutive blocks are separate strokes rather than one
+   unbroken line down the page. */
+.record-block::before { content: ""; position: absolute; left: 0; top: 14px; bottom: 16px; width: 2px; border-radius: 1px; background: var(--accent-pale); }
 .record-block.is-warn::before { background: var(--warn); }
 .record-block.is-done::before { background: var(--accent); }
 .record-block.is-quiet::before { background: var(--line-strong); }
 
 .record-block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
-.record-block-head > h3, .record-block-head > b { margin: 0; font-size: 1rem; font-weight: 600; letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; }
+.record-block-head > h3, .record-block-head > b { margin: 0; font-size: 1.0625rem; font-weight: 650; letter-spacing: -.015em; display: flex; align-items: center; gap: 8px; }
 .record-block-head svg { width: 17px; height: 17px; flex: none; color: var(--muted); }
 .record-block-head .text-button { flex: none; font-size: .8125rem; }
 
@@ -431,3 +436,45 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
 .tl-row-copy { min-width: 0; }
 .rumination-overview > .day-strip { flex: 0 0 100%; margin-top: 10px; max-width: 300px; }
 .tl-row-copy > .day-strip { margin-top: 8px; max-width: 220px; }
+
+/* ------------------------------------------------------------- the journal
+
+   It opens on a question. An empty box asks "what do you want to say?", which
+   is the hardest thing to answer on the days a journal is most worth keeping. */
+.journal-prompt { position: relative; margin: 4px 0 18px; padding: 16px 0 16px 14px; border-bottom: 1px solid var(--line); }
+.journal-prompt::before { content: ""; position: absolute; left: 0; top: 0; bottom: -1px; width: 2px; background: var(--accent); }
+.journal-prompt .tl-caps { color: var(--faint); }
+.journal-prompt p { margin: 6px 0 0; font-size: 1.125rem; line-height: 1.45; font-weight: 500; letter-spacing: -.01em; max-width: 40ch; }
+.journal-prompt .inline-field { margin: 14px 0 0; }
+.journal-prompt .inline-field > span { font-size: .75rem; color: var(--muted); }
+
+.journal-record { display: grid; gap: 8px; padding: 0 0 16px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.journal-record > span { font-size: .8125rem; color: var(--muted); display: flex; align-items: baseline; gap: 8px; }
+.journal-record strong { font-size: 1.25rem; font-weight: 600; color: var(--ink); font-variant-numeric: tabular-nums; }
+.journal-record em { font-style: normal; margin-left: auto; }
+.journal-record .day-strip { max-width: 300px; }
+
+/* ---------------------------------------------------- taking it to the gym
+
+   Strong has no text import, so nothing here can load a routine into it. The
+   thing that actually helps is bigger numbers you can read off a bench. */
+.take-with-you { display: grid; gap: 10px; }
+.take-with-you .button { width: 100%; align-items: center; text-align: left; }
+.take-with-you .button > span { display: grid; }
+.take-with-you .button small { font-weight: 400; opacity: .8; font-size: .75rem; margin-top: 1px; }
+
+.gym-view { position: fixed; inset: 0; z-index: 60; overflow-y: auto; background: var(--canvas); padding: 18px 18px 40px; }
+.gym-view > header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid var(--line-strong); }
+.gym-view > header > div { display: grid; gap: 3px; }
+.gym-view > header b { font-size: 1.0625rem; font-weight: 600; }
+.gym-view ol { list-style: none; margin: 0; padding: 0; }
+.gym-view li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; align-items: baseline; gap: 4px 12px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.gym-index { font-size: .8125rem; color: var(--faint); font-variant-numeric: tabular-nums; }
+.gym-lift { display: grid; gap: 2px; min-width: 0; }
+.gym-lift b { font-size: 1.25rem; font-weight: 600; letter-spacing: -.02em; line-height: 1.15; }
+.gym-lift small { font-size: .75rem; color: var(--muted); }
+.gym-numbers { display: grid; justify-items: end; gap: 2px; text-align: right; }
+.gym-numbers b { font-size: 1.5rem; font-weight: 650; letter-spacing: -.025em; font-variant-numeric: tabular-nums; line-height: 1.1; }
+.gym-numbers > span { font-size: 1rem; font-variant-numeric: tabular-nums; }
+.gym-numbers small { font-size: .75rem; color: var(--muted); }
+.gym-foot { margin: 20px 0 0; font-size: .875rem; color: var(--muted); }

@@ -8,7 +8,8 @@ import type { Muscle } from "../training/muscles";
 import { BodyTab } from "./body-tab";
 import { CoverageBody, MiniCoverage, coverageFacts } from "./coverage-row";
 import { AnswerRow } from "./answer-row";
-import { CopyForStrong, NextUpBody, WeekPips, nextUpFacts } from "./next-up-row";
+import { NextUpBody, TakeItWithYou, WeekPips, nextUpFacts } from "./next-up-row";
+import { GymView } from "./gym-view";
 import { RecordStamp } from "./record-stamp";
 import { StrengthBody, StrengthSpark, strengthFacts } from "./strength-row";
 import { Icon } from "./icons";
@@ -65,6 +66,7 @@ export function FitnessView({
   const [selected, setSelected] = useState<string | null>(null);
   const [focus, setFocus] = useState<Muscle | null>(null);
   const [weeks, setWeeks] = useState(12);
+  const [gym, setGym] = useState(false);
 
   const { plan } = useMemo(() => currentTrainingWeek(state, today), [state, today]);
   const outlook = useMemo(() => weekOutlook(plan, state, today), [plan, state, today]);
@@ -94,7 +96,7 @@ export function FitnessView({
           tone={hasHistory ? "primary" : "empty"}
           graphic={hasHistory ? <WeekPips facts={next} /> : null}
           action={hasHistory
-            ? <CopyForStrong facts={next} onGoals={onGoals} onNotice={onNotice} />
+            ? <TakeItWithYou facts={next} onGym={() => setGym(true)} onGoals={onGoals} onNotice={onNotice} />
             : <button type="button" className="button primary" onClick={() => open({ kind: "import", source: "strong" })}><Icon name="upload" />Import from Strong</button>}
           open={rows.next}
           onToggle={() => toggle("next")}
@@ -173,6 +175,7 @@ export function FitnessView({
           />
         </AnswerRow>
       </div>
+      {gym && next.hero ? <GymView session={next.hero} label={next.headline} onClose={() => setGym(false)} /> : null}
     </div>
   );
 }

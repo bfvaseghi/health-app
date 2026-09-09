@@ -18,8 +18,10 @@ test("meditation leads with calendar-day consistency and exposes saved insights"
   const html = render(TodayPractices, { state, today, updateDaily: noop });
   assert.equal(mindSummary(state, today, 7).meditationDays, 4);
   const main = plain(html.slice(0, html.indexOf('<details')));
-  assert.match(main, /Done today/);
-  assert.match(main, /4 out of 7/);
+  // The count is drawn as the fortnight behind it, and a short sitting draws
+  // a half cell so a run of ten-minute days does not look like a run of hours.
+  assert.match(main, /days meditated/);
+  assert.match(html, /aria-label="Meditation, last 14 days"/);
   assert.match(main, /Insights/);
   assert.ok(main.includes(state.dailyEntries.find(entry => entry.date === today).meditationNote));
   const onlyNotes = normalizeHealthState({ ...emptyHealthState(), dailyEntries: [{ date: today, meditationNote: "An insight without minutes" }, { date: addDays(today, -1), meditationMinutes: 0 }, { date: addDays(today, 1), meditationMinutes: 10 }] });

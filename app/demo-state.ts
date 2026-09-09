@@ -197,7 +197,9 @@ function demoWorkoutSets(today: string): WorkoutSet[] {
     { exercise: "Hanging Leg Raise", sets: 5, weightLb: null, reps: 15, restSeconds: 75 },
   ]);
 
-  if (addDays(monday, 2) <= today) addSession(0, 2, "07:00", "Full body 2", 4_500, [
+  // Thursday, so the sample usually has one session logged and one waiting —
+  // a week in progress shows more of the app than a week already finished.
+  if (addDays(monday, 3) <= today) addSession(0, 3, "07:00", "Full body 2", 4_500, [
     { exercise: "Romanian Deadlift (Barbell)", sets: 4, weightLb: 205, reps: 8, restSeconds: 180 },
     { exercise: "Incline Bench Press (Dumbbell)", sets: 4, weightLb: 65, reps: 10, restSeconds: 150 },
     { exercise: "Lat Pulldown (Cable)", sets: 4, weightLb: 130, reps: 10, restSeconds: 150 },
@@ -293,6 +295,7 @@ export function demoHealthState(today: string, asOfTime = "12:00"): HealthState 
         date: today,
         createdAt: `${today}T${journalTime}:00`,
         source: "manual",
+        prompt: "helped",
         title: "A little more room",
         text: "I left my phone at home for a short walk. The task I had been putting off felt smaller when I got back. Tomorrow I want to leave the same space before opening my inbox.",
       },
@@ -301,6 +304,7 @@ export function demoHealthState(today: string, asOfTime = "12:00"): HealthState 
         date: addDays(today, -1),
         createdAt: `${addDays(today, -1)}T20:15:00.000Z`,
         source: "manual",
+        prompt: "managed",
         title: "An unfinished task",
         text: "I changed the order of two tasks. The first took longer than expected.",
       },
@@ -309,6 +313,7 @@ export function demoHealthState(today: string, asOfTime = "12:00"): HealthState 
         date: addDays(today, -4),
         createdAt: `${addDays(today, -4)}T09:30:00.000Z`,
         source: "apple-notes",
+        prompt: "kindness",
         title: "After a meeting",
         text: "I had a question but did not ask it. I wrote it down afterward.",
       },
@@ -317,6 +322,7 @@ export function demoHealthState(today: string, asOfTime = "12:00"): HealthState 
         date: addDays(today, -9),
         createdAt: `${addDays(today, -9)}T18:40:00.000Z`,
         source: "manual",
+        prompt: "three-good",
         title: "An open decision",
         text: "I made a shortlist of two options and set a date to choose.",
       },

@@ -140,7 +140,7 @@ test("the demo includes each elapsed workout day across the whole week", () => {
     const sessions = buildWorkoutSessions(state.workoutSets);
     // The current week is the two full-body sessions the app plans, so the
     // sample shows the loop in its steady state rather than a shortfall.
-    assert.equal(sessions.length, 19 + (day >= 2 ? 1 : 0));
+    assert.equal(sessions.length, 19 + (day >= 3 ? 1 : 0));
     assert.ok(sessions.every((session) => session.date <= date));
     assert.ok(sessions.filter((session) => session.date >= monday).every((session) => session.sets >= 12));
   }

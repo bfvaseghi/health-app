@@ -36,7 +36,10 @@ test("the shut stack answers all four questions with no tabs and no step numbers
   assert.match(plain(html), /NEXT UP/);
   assert.match(plain(html), /COVERAGE/);
   assert.match(plain(html), /STRENGTH/);
-  assert.match(plain(html), /Copy for Strong Copies text\. Paste it into Strong\./);
+  // Strong has no text import, so nothing here claims it can load a routine.
+  assert.match(plain(html), /Open in the gym/);
+  assert.match(plain(html), /Copy as text/);
+  assert.doesNotMatch(plain(html), /Copy for Strong|Paste it into Strong/);
   assert.match(html, /class="mini-coverage"/);
   assert.match(html, /class="week-pips"/);
   assert.match(html, /strength-spark/);

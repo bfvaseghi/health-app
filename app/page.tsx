@@ -596,7 +596,7 @@ export default function Home() {
   const deleteHabit = (id: string) => commit((current) => removeHabit(current, id), "Habit deleted.", true);
   const logHabitEvent = (event: HabitEvent) => updateState((current) => upsertHabitEvent(current, event));
   const deleteHabitEvent = (id: string) => updateState(current => removeHabitEvent(current, id));
-  const addThought = ({ id, title, text, source }: { id?: string; title: string; text: string; source: ThoughtJournalEntry["source"] }) =>
+  const addThought = ({ id, title, text, source, prompt }: { id?: string; title: string; text: string; source: ThoughtJournalEntry["source"]; prompt: string }) =>
     commit((current) => {
       const original = current.thoughtJournal.find((entry) => entry.id === id);
       return upsertThoughtJournalEntry(current, {
@@ -606,6 +606,7 @@ export default function Home() {
         title,
         text,
         source: original?.source ?? source,
+        prompt,
       });
     }, "Entry saved.");
 

@@ -3,9 +3,12 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import type { DailyEntry, HealthState, LoopEvent, TherapyNote, ThoughtJournalEntry } from "../health-model";
 import { ThoughtLoops, type LoopDraft } from "./thought-loops";
-import { addDays, dateLabel, mindSummary } from "../health-model";
+import { addDays, dateLabel } from "../health-model";
 import { meditationWeeklyMinutes } from "../series";
 import { Icon } from "./icons";
+import { JOURNAL_PROMPTS, promptForDate, promptsById } from "./journal-prompts";
+import { DayStrip } from "./spark";
+import { dailyCells, datedCells, streak } from "./strips";
 import { ConfirmButton, RecordHeading } from "./primitives";
 import { Tide } from "./tide";
 import type { MindTab } from "./types";
@@ -39,7 +42,7 @@ export function MindView({
   onAddNote: (text: string) => void;
   onToggleNote: (note: TherapyNote) => void;
   onDeleteNote: (id: string) => void;
-  onAddThought: (entry: { id?: string; title: string; text: string; source: ThoughtJournalEntry["source"] }) => void;
+  onAddThought: (entry: { id?: string; title: string; text: string; source: ThoughtJournalEntry["source"]; prompt: string }) => void;
   onDeleteThought: (id: string) => void;
   onSaveLoop: (loop: LoopDraft) => void;
   onDeleteLoop: (id: string) => void;
@@ -189,7 +192,7 @@ function ThoughtJournal({
   today: string;
   therapyNotes: TherapyNote[];
   onAddToTherapy: (text: string) => void;
-  onAdd: (entry: { id?: string; title: string; text: string; source: ThoughtJournalEntry["source"] }) => void;
+  onAdd: (entry: { id?: string; title: string; text: string; source: ThoughtJournalEntry["source"]; prompt: string }) => void;
   onDelete: (id: string) => void;
   onNotice: (message: string) => void;
 }) {
@@ -201,6 +204,11 @@ function ThoughtJournal({
   const [writing, setWriting] = useState(false);
   const [searching, setSearching] = useState(false);
   const [query, setQuery] = useState("");
+  // Today's question, rotated by date so it holds still while you answer it
+  // and is a different one tomorrow. Changing it is a deliberate act.
+  const suggested = promptForDate(today);
+  const [promptId, setPromptId] = useState(suggested.id);
+  const prompt = promptsById.get(promptId) ?? suggested;
   useEffect(() => { if (composeRequest > 0) setWriting(true); }, [composeRequest]);
   useEffect(() => { onDraftChange(writing ? editingId ? "edit" : "entry" : null); }, [writing, editingId, onDraftChange]);
 
@@ -224,14 +232,17 @@ function ThoughtJournal({
     event.preventDefault();
     const value = text.trim();
     if (!value) return;
-    onAdd({ id: editingId, title: title.trim(), text: value, source });
+    onAdd({ id: editingId, title: title.trim() || prompt.label, text: value, source, prompt: prompt.id });
     setEditingId(undefined);
     setTitle("");
     setText("");
     setSource("manual");
+    setPromptId(suggested.id);
     setWriting(false);
   }
 
+  const writtenCells = datedCells(entries.map(entry => entry.date), today, 14, "entry");
+  const written = streak(writtenCells);
   const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   const matched = words.length ? entries.filter((entry) => {
     const haystack = `${entry.title} ${entry.text} ${entry.date} ${dateLabel(entry.date, { month: "long", day: "numeric", year: "numeric" })}`.toLocaleLowerCase();
@@ -255,14 +266,26 @@ function ThoughtJournal({
           </button>
         )}
       </div>
-      {writing || !entries.length ? <p className="mind-section-description">Record what you are feeling, what set off a recurring thought, or what you want to explore in therapy.</p> : null}
+      {/* The question, always on screen. An empty box asks "what do you want
+          to say?", which is the hardest thing to answer on the days this is
+          most worth doing. */}
+      {editingId ? null : <div className="journal-prompt">
+        <span className="tl-caps">{prompt.label}</span>
+        <p>{prompt.question}</p>
+        <label className="plan-field inline-field">
+          <span>Write about</span>
+          <select aria-label="Journal prompt" value={promptId} onChange={event => setPromptId(event.target.value)}>
+            {JOURNAL_PROMPTS.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
+          </select>
+        </label>
+      </div>}
       {writing ? (
       <form className="thought-form" onSubmit={submit}>
         {editingId ? <p className="mind-section-description">Editing entry from {dateLabel(entries.find(entry => entry.id === editingId)?.date ?? today, { month: "short", day: "numeric", year: "numeric" })}</p> : null}
         <input
           value={title}
           maxLength={160}
-          placeholder="Title (optional)"
+          placeholder={editingId ? "Title (optional)" : `Title — defaults to "${prompt.label}"`}
           aria-label="Entry title"
           onChange={(event) => setTitle(event.target.value)}
         />
@@ -270,8 +293,8 @@ function ThoughtJournal({
           autoFocus
           value={text}
           maxLength={10_000}
-          placeholder="What is on your mind?"
-          aria-label="Mental health journal entry"
+          placeholder={prompt.placeholder}
+          aria-label={`Journal entry: ${prompt.question}`}
           onChange={(event) => {
             setText(event.target.value);
             if (!event.target.value) setSource("manual");
@@ -292,6 +315,16 @@ function ThoughtJournal({
       ) : null}
 
       {entries.length ? <div className="journal-history">
+        {/* How often you have written, drawn. A number on its own cannot show
+            a run or where the gap fell, which is the only thing worth knowing
+            about a habit. No streak celebration: the record is the record. */}
+        <div className="journal-record">
+          <span>
+            <strong>{written.hits}</strong> of the last 14 days
+            {written.run ? <em>{written.run} in a row</em> : null}
+          </span>
+          <DayStrip cells={writtenCells} label="Journal entries, last 14 days" />
+        </div>
         <div className="journal-history-head"><h3 className="journal-history-title">Recent entries</h3>
       {entries.length ? (
         searching ? <div className="journal-search">
@@ -308,13 +341,13 @@ function ThoughtJournal({
                 <summary>
                   <span className="entry-date" aria-hidden="true"><b>{dateLabel(entry.date, { day: "numeric" })}</b><small>{dateLabel(entry.date, { month: "short" })}</small></span>
                   <span className="entry-summary-copy"><b>{entry.title || dateLabel(entry.date, { weekday: "long", month: "long", day: "numeric" })}</b>
-                  <small>{entry.date === today ? "Today" : dateLabel(entry.date, { month: "short", day: "numeric", year: "numeric" })}{entry.source === "apple-notes" ? " · Apple Notes" : ""}</small>
+                  <small>{entry.date === today ? "Today" : dateLabel(entry.date, { month: "short", day: "numeric", year: "numeric" })}{entry.prompt && promptsById.has(entry.prompt) ? ` · ${promptsById.get(entry.prompt)!.label}` : ""}{entry.source === "apple-notes" ? " · Apple Notes" : ""}</small>
                   <span className="entry-preview">{entry.text}</span></span>
                   <Icon name="chevron" />
                 </summary>
                 <p className="tl-thought-text">{entry.text}</p>
                 <div className="journal-tools">
-                  <button type="button" className="text-button" disabled={writing} onClick={() => { setEditingId(entry.id); setTitle(entry.title); setText(entry.text); setSource(entry.source); setWriting(true); document.getElementById("thought-journal-title")?.scrollIntoView({ block: "start" }); }}>Edit entry</button>
+                  <button type="button" className="text-button" disabled={writing} onClick={() => { setEditingId(entry.id); setTitle(entry.title); setText(entry.text); setSource(entry.source); setPromptId(entry.prompt || "open"); setWriting(true); document.getElementById("thought-journal-title")?.scrollIntoView({ block: "start" }); }}>Edit entry</button>
                   <button type="button" className="text-button" disabled={therapyNotes.some((note) => note.text === therapyText(entry))} onClick={() => { onAddToTherapy(therapyText(entry)); onNotice("Added to therapy topics."); }}>
                     {therapyNotes.some((note) => note.text === therapyText(entry)) ? "Added to therapy" : "Add to therapy"}
                   </button>
@@ -335,7 +368,7 @@ function ThoughtJournal({
         </p>
       ) : null}
       </div> : null}
-      {!entries.length && !writing ? <p className="mind-status">Your saved entries will appear here.</p> : null}
+      {!entries.length && !writing ? <p className="mind-status">Saved entries appear here, newest first.</p> : null}
     </section>
   );
 }
@@ -348,7 +381,6 @@ export function TodayPractices({ state, today, updateDaily }: {
   const currentDay = state.dailyEntries.find(item => item.date === today);
   const minutes = currentDay?.meditationMinutes ?? null;
   const weekly = useMemo(() => meditationWeeklyMinutes(state, today, 8), [state, today]);
-  const recentWeek = useMemo(() => mindSummary(state, today, 7), [state, today]);
   const [editingDate, setEditingDate] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [note, setNote] = useState("");
@@ -360,11 +392,25 @@ export function TodayPractices({ state, today, updateDaily }: {
     setEditingDate(date);
   };
   const logMinutes = (value: number) => updateDaily(today, current => ({ ...current, meditationMinutes: value }));
+  // Ten minutes or more reads as a full cell, less as a half — so a run of
+  // short sittings does not look identical to a run of long ones.
+  const meditationCells = dailyCells(state.dailyEntries, today, 14, item => ({
+    done: (item?.meditationMinutes ?? 0) > 0,
+    partial: (item?.meditationMinutes ?? 0) > 0 && (item?.meditationMinutes ?? 0) < 10,
+    detail: (item?.meditationMinutes ?? 0) > 0 ? `${item!.meditationMinutes} min` : "none",
+  }));
+  const sat = streak(meditationCells);
   return <section className="mind-panel-section meditation-practice" aria-labelledby="meditation-title">
     <h2 className="mind-section-title" id="meditation-title">Meditation</h2>
-    <div className="practice-overview">
-      <div className="practice-today"><Icon name={(minutes ?? 0) > 0 ? "check" : "mind"} /><div><strong>{(minutes ?? 0) > 0 ? "Done today" : minutes === 0 ? "No meditation today" : "Not logged today"}</strong>{(minutes ?? 0) > 0 ? <span>{minutes} minutes</span> : null}</div></div>
-      <div className="consistency-number" role="status"><strong>{recentWeek.meditationDays} <span>out of 7</span></strong><span>days meditated · last 7 days</span></div>
+    {/* The count, then the fortnight it was counted from. Cells are taller
+        where more minutes were done, so the shape of a practice shows. */}
+    <div className="record-block is-flat">
+      <div className="record-block-value">
+        <strong>{sat.hits}<span className="of">/14</span></strong>
+        <span>days meditated · {sat.run ? `${sat.run} in a row` : (minutes ?? 0) > 0 ? `${minutes} min today` : "not today"}</span>
+      </div>
+      <DayStrip cells={meditationCells} label="Meditation, last 14 days" />
+      <div className="record-block-scale"><span>{dateLabel(addDays(today, -13), { month: "short", day: "numeric" })}</span><span>today</span></div>
     </div>
     {editingDate ? <form className="meditation-form insight-form" onSubmit={event => {
       event.preventDefault();

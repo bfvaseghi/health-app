@@ -120,6 +120,12 @@ export type ThoughtJournalEntry = {
   source: "manual" | "apple-notes";
   title: string;
   createdAt: string;
+  /**
+   * Which journal prompt this answers, by id. Empty for free writing and for
+   * every entry written before there were prompts — those stay exactly as they
+   * were, and nothing infers a prompt for them after the fact.
+   */
+  prompt: string;
 };
 
 /**
@@ -753,6 +759,7 @@ export function normalizeThoughtJournalEntry(value: unknown): ThoughtJournalEntr
     source,
     title: safeText(entry.title, 160),
     createdAt,
+    prompt: safeText(entry.prompt, 40),
   };
 }
 
@@ -2392,9 +2399,9 @@ export function habitsCsv(habits: Habit[], events: HabitEvent[]): string {
 
 export function thoughtJournalCsv(entries: ThoughtJournalEntry[]): string {
   return toCsv(
-    ["id", "date", "created_at", "source", "title", "text"],
+    ["id", "date", "created_at", "source", "prompt", "title", "text"],
     [...entries].sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((entry) => [
-      entry.id, entry.date, entry.createdAt, entry.source, entry.title, entry.text,
+      entry.id, entry.date, entry.createdAt, entry.source, entry.prompt, entry.title, entry.text,
     ]),
   );
 }
