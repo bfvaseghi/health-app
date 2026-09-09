@@ -6,6 +6,8 @@ import { addDays, dateLabel, isDue, medicationStatuses } from "../health-model";
 import { adherenceSeries } from "../series";
 import { Icon } from "./icons";
 import { ConfirmButton, RecordHeading } from "./primitives";
+import { DayStrip } from "./spark";
+import { medicationCells, streak } from "./strips";
 import { Tide } from "./tide";
 import type { Modal } from "./types";
 
@@ -14,10 +16,14 @@ const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frida
 /**
  * What you are on, and whether you took it.
  *
- * One tick a day could only ever be a lie about two of them. A daily tablet, a
- * daily medication and a weekly medication are three different questions: two are daily and
- * one is a weekly injection, and a tracker that marked the injection missed on
- * the six days it was not due is one you would stop reading.
+ * One tick a day could only ever be a lie about two of them. A daily tablet and
+ * a weekly injection are different questions, and a tracker that marked the
+ * injection missed on the six days it was not due is one you would stop reading.
+ *
+ * The count is now drawn as the days it was counted from. "29 out of 30" is a
+ * number you have to trust; thirty cells with one hole in them is a number you
+ * can check, and it tells you the thing the count cannot — where the miss was,
+ * and whether you are on a run right now.
  */
 export function MedsView({
   state,
@@ -40,38 +46,83 @@ export function MedsView({
   return (
     <div className="page tl-page meds-page">
       <RecordHeading title="Meds" action={<button type="button" className="text-button" onClick={() => open({ kind: "medication" })}><Icon name="plus" /> Add</button>} />
-      <div className="daily-dose-heading"><h2>Today</h2><div className="period-picker" role="group" aria-label="Medication consistency period">{([7, 30] as const).map(days => <button key={days} type="button" aria-pressed={windowDays === days} onClick={() => setWindowDays(days)}>{days} days</button>)}</div></div>
+      <div className="daily-dose-heading">
+        <h2>Today</h2>
+        <div className="period-picker" role="group" aria-label="Medication consistency period">
+          {([7, 30] as const).map(days => <button key={days} type="button" aria-pressed={windowDays === days} onClick={() => setWindowDays(days)}>{days} days</button>)}
+        </div>
+      </div>
       {!statuses.length ? <p className="tl-line">Add your medication and its schedule to get started.</p> : null}
-      <section className="dose-list clean-doses" aria-label="Medication completion and consistency">
-        {statuses.map(status => <article key={status.medication.id} className="dose-card" aria-label={status.medication.name}>
-          <div className="dose-card-heading"><h3><Icon name="medication" />{status.medication.name}</h3><button type="button" className="text-button" aria-label={`Options for ${status.medication.name}`} aria-expanded={changing === status.medication.id} onClick={() => setChanging(value => value === status.medication.id ? null : status.medication.id)}>Edit</button></div>
-          <div className="dose-card-body">
-            <div className="dose-today-status">
-              {status.dueToday ? <button type="button" className={`dose-completion${status.today === true ? " is-taken" : ""}`} aria-pressed={status.today === true} aria-label={`${status.medication.name}: ${status.today === true ? "taken today; undo" : "mark taken today"}`} onClick={() => onDose(status.medication.id, today, status.today === true ? null : true)}><span className="completion-check"><Icon name="check" /></span><span>{status.today === true ? "Taken today" : status.today === false ? "Missed today" : "Mark taken today"}</span></button> : <strong className="dose-not-due">Not due today</strong>}
+
+      <div className="record-list" aria-label="Medication completion and consistency">
+        {statuses.map(status => {
+          const cells = medicationCells(state, status.medication, today, windowDays);
+          const run = streak(cells).run;
+          const missed = cells.filter(cell => cell.state === "miss").length;
+          // A single miss three weeks ago is history, not a problem. The rail
+          // only goes amber for a lapse inside the last week.
+          const recentMiss = cells.slice(-7).some(cell => cell.state === "miss");
+          return <article
+            key={status.medication.id}
+            className={`record-block${recentMiss ? " is-warn" : status.today === true ? " is-done" : ""}`}
+            aria-label={status.medication.name}
+          >
+            <div className="record-block-head">
+              <h3><Icon name="medication" />{status.medication.name}</h3>
+              <button type="button" className="text-button" aria-label={`Options for ${status.medication.name}`} aria-expanded={changing === status.medication.id} onClick={() => setChanging(value => value === status.medication.id ? null : status.medication.id)}>Edit</button>
+            </div>
+
+            {/* The count, then the days it was counted from. */}
+            <div className="record-block-value">
+              <strong>{status.taken}<span className="of">/{status.due}</span></strong>
+              <span>{status.medication.schedule === "daily" ? "days taken" : "doses taken"} · {run ? `${run} in a row` : missed ? `${missed} missed` : "no run yet"}</span>
+            </div>
+            <DayStrip cells={cells} label={`${status.medication.name}, last ${windowDays} days`} />
+            <div className="record-block-scale">
+              <span>{dateLabel(addDays(today, -(windowDays - 1)), { month: "short", day: "numeric" })}</span>
+              <span>today</span>
+            </div>
+
+            <div className="record-block-actions">
+              {status.dueToday
+                ? <button type="button" className={`dose-completion${status.today === true ? " is-taken" : ""}`} aria-pressed={status.today === true} aria-label={`${status.medication.name}: ${status.today === true ? "taken today; undo" : "mark taken today"}`} onClick={() => onDose(status.medication.id, today, status.today === true ? null : true)}>
+                    <span className="completion-check"><Icon name="check" /></span>
+                    <span>{status.today === true ? "Taken today" : status.today === false ? "Missed today" : "Mark taken today"}</span>
+                  </button>
+                : <strong className="dose-not-due">Not due today</strong>}
               <span className="dose-schedule">{status.medication.schedule === "daily" ? "Daily" : status.dueToday ? "Weekly dose" : status.nextDue ? `Next ${dateLabel(status.nextDue, { weekday: "short", month: "short", day: "numeric" })}` : "Weekly dose"}</span>
             </div>
-            <div className="consistency-number" role="status"><strong>{status.taken} <span>out of {status.due}</span></strong><span>{status.medication.schedule === "daily" ? "days taken" : "scheduled doses taken"} · last {windowDays} days</span></div>
-          </div>
-          {changing === status.medication.id ? <div className="dose-options" role="group" aria-label={`${status.medication.name} options`}>
-            {status.dueToday ? <><button type="button" className="text-button" onClick={() => { onDose(status.medication.id, today, status.today === true ? false : true); setChanging(null); }}>{status.today === true ? "Mark missed" : "Mark taken"}</button>{status.today == null ? <button type="button" className="text-button" onClick={() => { onDose(status.medication.id, today, false); setChanging(null); }}>Mark missed</button> : <button type="button" className="text-button" onClick={() => { onDose(status.medication.id, today, null); setChanging(null); }}>Clear today</button>}</> : null}
-            <button type="button" className="text-button" onClick={() => open({ kind: "medication", id: status.medication.id })}>Edit schedule</button>
-          </div> : null}
-        </article>)}
-      </section>
-      {statuses.length ? <details className="simple-history dose-management"><summary>Past doses &amp; schedules</summary>
+
+            {changing === status.medication.id ? <div className="dose-options" role="group" aria-label={`${status.medication.name} options`}>
+              {status.dueToday ? <>
+                <button type="button" className="text-button" onClick={() => { onDose(status.medication.id, today, status.today === true ? false : true); setChanging(null); }}>{status.today === true ? "Mark missed" : "Mark taken"}</button>
+                {status.today == null
+                  ? <button type="button" className="text-button" onClick={() => { onDose(status.medication.id, today, false); setChanging(null); }}>Mark missed</button>
+                  : <button type="button" className="text-button" onClick={() => { onDose(status.medication.id, today, null); setChanging(null); }}>Clear today</button>}
+              </> : null}
+              <button type="button" className="text-button" onClick={() => open({ kind: "medication", id: status.medication.id })}>Edit schedule</button>
+            </div> : null}
+          </article>;
+        })}
+      </div>
+
+      {statuses.length ? <details className="counted-fold"><summary>Past doses &amp; schedules ({statuses.length})</summary>
         {statuses.map(status => <MedHistory key={status.medication.id} state={state} medicationId={status.medication.id} medication={status.medication} today={today} onDose={onDose}>
           <div className="medication-management"><span>{status.medication.schedule === "daily" ? "Daily" : `Every ${WEEKDAYS[status.medication.dueDay ?? 1]}`}</span><div className="row-actions"><button type="button" className="text-button" aria-label={`Edit ${status.medication.name}`} onClick={() => open({ kind: "medication", id: status.medication.id })}>Edit schedule</button><ConfirmButton label={`Delete ${status.medication.name} and dose history`} onConfirm={() => onDeleteMedication(status.medication.id)} /></div></div>
           <p className="medication-history-summary">Last {windowDays} days: {status.taken} taken · {status.missed} missed · {status.unanswered} not logged.</p>
         </MedHistory>)}
-        <details className="simple-history medication-trend"><summary>Dose trend</summary><p className="medication-history-summary">Percentage of logged doses marked taken over the previous 30 days. Unlogged doses are excluded.</p><Tide data={adherence} label="Logged doses marked taken, rolling 30-day percentage" unit="%" min={Math.max(0, Math.min(90, ...adherence.map(point => point.value ?? 100)) - 4)} max={100.5} format={value => String(Math.round(value))} empty="No dose history yet." /></details>
+        <details className="counted-fold medication-trend"><summary>Dose trend (30 days)</summary>
+          <p className="medication-history-summary">Percentage of logged doses marked taken over the previous 30 days. Unlogged doses are excluded.</p>
+          <Tide data={adherence} label="Logged doses marked taken, rolling 30-day percentage" unit="%" min={Math.max(0, Math.min(90, ...adherence.map(point => point.value ?? 100)) - 4)} max={100.5} format={value => String(Math.round(value))} empty="No dose history yet." />
+        </details>
       </details> : null}
     </div>
   );
 }
 
 /**
- * Fourteen days of one medication, oldest first: taken, missed, unlogged, or
- * simply not due — enough to see a lapse without opening a report.
+ * Fourteen days of one medication, oldest first, each day editable: taken,
+ * missed, unlogged, or simply not due.
  */
 function MedHistory({
   state,

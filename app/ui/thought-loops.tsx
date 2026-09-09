@@ -5,6 +5,8 @@ import type { HealthState, LoopEvent, LoopMove, LoopRecurrence, ThoughtLoop } fr
 import { addDays, dateLabel, localDateTime } from "../health-model";
 import { recordId } from "../record-id";
 import { Icon } from "./icons";
+import { DayStrip } from "./spark";
+import { datedCells } from "./strips";
 import { ConfirmButton } from "./primitives";
 import { Tide } from "./tide";
 import { formatTime } from "./format";
@@ -57,7 +59,13 @@ export function ThoughtLoops({ state, today, onSave, onDelete, onEvent, onDelete
   return <section className="thought-response-home rumination-home" aria-labelledby="loops-title">
     <div className="tl-section-head"><h2 className="mind-section-title" id="loops-title">Rumination</h2><button type="button" className="button primary small" onClick={() => setComposer({})}><Icon name="plus" /> Log rumination</button></div>
     <p className="response-intro">How often it returned, and what helped you move on.</p>
-    <div className="rumination-overview"><strong>{daysLogged} <span>of the last 7 days</span></strong><span>with a rumination log</span></div>
+    {/* The count, and the fortnight it was counted from. A number alone cannot
+        show whether this is a bad week or a normal one. */}
+    <div className="rumination-overview">
+      <strong>{daysLogged} <span>of the last 7 days</span></strong>
+      <span>with a rumination log</span>
+      <DayStrip cells={datedCells(events.map(item => item.date), today, 14, "log")} label="Rumination logs, last 14 days" />
+    </div>
     {lastSaved && events.some(item => item.id === lastSaved) ? <div className="response-saved" role="status"><Icon name="check" /><span>Saved</span><button type="button" className="text-button" onClick={() => { onDeleteEvent(lastSaved); setLastSaved(null); }}>Undo</button></div> : null}
     {events.length ? <section className="response-history rumination-recent" aria-label="Recent rumination logs"><h3>Latest log</h3><ol>
       {events.slice(0, 1).map(item => <RuminationRow key={item.id} event={item} onEdit={() => setComposer({ eventId: item.id })} />)}

@@ -113,21 +113,31 @@ export function coverageFacts(outlook: MuscleOutlook[], state: HealthState, toda
  * notch drawn on top of the fill rather than a band painted underneath it, so
  * it stays visible once it has been met.
  */
+const TARGET_LINE = 0.5;
+
 export function MiniCoverage({ outlook }: { outlook: MuscleOutlook[] }) {
-  const ceiling = Math.max(20, ...outlook.map(row => row.projected));
+  // Each bar is drawn against its own target rather than a shared ceiling, so
+  // the target lands at the same height on all eleven and becomes one straight
+  // line across the strip. The question this picture answers is "is anything
+  // short", and a single line you are above or below answers it without being
+  // read. Absolute set counts are comparable on the full chart below, which
+  // does use one shared scale.
+  const height = (row: MuscleOutlook, value: number) =>
+    `${Math.min(100, (value / Math.max(1, row.target.min)) * TARGET_LINE * 100)}%`;
   return <div className="mini-coverage" aria-hidden="true">
     {outlook.map(row => {
-      const pct = (value: number) => `${Math.min(100, (value / ceiling) * 100)}%`;
       const state = row.status === "under" ? "is-under" : row.status === "over" ? "is-over" : "is-in";
       return <span key={row.muscle} className={`mini-bar ${state}`}>
         <span>
           {/* Tallest first: each segment paints over the one behind it, so the
               bar reads as one column in three strengths — done, still to do,
               and the part that only happens if you do the extra workouts. */}
-          {row.comingOptional > 0 ? <i className="optional" style={{ height: pct(row.projected) }} /> : null}
-          <i className="planned" style={{ height: pct(row.done + row.comingRequired) }} />
-          <i className="done" style={{ height: pct(row.done) }} />
-          <i className="notch" style={{ bottom: pct(row.target.min) }} />
+          {row.comingOptional > 0 ? <i className="optional" style={{ height: height(row, row.projected) }} /> : null}
+          <i className="planned" style={{ height: height(row, row.done + row.comingRequired) }} />
+          <i className="done" style={{ height: height(row, row.done) }} />
+          {/* The target, at the same height on every bar. Eleven segments at
+              one level read as a single line you are above or below. */}
+          <i className="notch" style={{ bottom: `${TARGET_LINE * 100}%` }} />
         </span>
         <small>{SHORT[row.muscle]}</small>
       </span>;

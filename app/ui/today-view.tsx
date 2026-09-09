@@ -6,6 +6,8 @@ import { dateLabel, medicationStatuses, mindSummary, preferredSleepEntries, buil
 import { currentTrainingWeek, nextSession, sessionMinutes, weekStart, workoutWeekStreak } from "../training/coach";
 import { Icon } from "./icons";
 import { RecordHeading } from "./primitives";
+import { DayStrip, Meter } from "./spark";
+import { datedCells, dailyCells, medicationCells } from "./strips";
 import { WaterTracker } from "./water-tracker";
 import { workoutLabel } from "./workout-labels";
 import { formatTime, hoursLabel } from "./format";
@@ -39,15 +41,35 @@ export function TodayView({ state, today, go, open, updateDaily, onDose, onWrite
       <section className="daily-checklist" aria-labelledby="daily-checklist-title">
         <div className="surface-heading"><h2 id="daily-checklist-title">Daily check-in</h2><button type="button" className="text-button" onClick={() => open({ kind: "checkin", date: today })}>Edit day</button></div>
         <div className="tl-rows">
-          {state.goals.trackMedication && medications.length ? <MedRows statuses={medications} due={due} today={today} go={go} onDose={onDose} /> : null}
-          <WaterTracker key={today} date={today} value={entry?.waterMl ?? null} updateDaily={updateDaily} />
-          <LogRow icon="fuel" title="Protein" detail={entry?.proteinG != null ? `${Math.round(entry.proteinG)} g${state.goals.proteinTargetG ? ` / ${state.goals.proteinTargetG} g` : ""}` : "Not logged today"} done={entry?.proteinG != null}>
+          {state.goals.trackMedication && medications.length ? <MedRows state={state} statuses={medications} due={due} today={today} go={go} onDose={onDose} /> : null}
+          <WaterTracker key={today} date={today} value={entry?.waterMl ?? null} target={state.goals.waterTargetMl} updateDaily={updateDaily} />
+          <LogRow
+            icon="fuel"
+            title="Protein"
+            detail={entry?.proteinG != null ? `${Math.round(entry.proteinG)} g${state.goals.proteinTargetG ? ` of ${state.goals.proteinTargetG} g` : ""}` : "Not logged today"}
+            done={entry?.proteinG != null}
+            graphic={state.goals.proteinTargetG
+              ? <Meter value={entry?.proteinG ?? 0} target={state.goals.proteinTargetG} max={state.goals.proteinTargetG * 1.25} label={`Protein ${Math.round(entry?.proteinG ?? 0)} of ${state.goals.proteinTargetG} g`} />
+              : null}
+          >
             <NumberEntry key={`protein:${entry?.proteinG ?? ""}`} label="Grams of protein today" suffix="g" value={entry?.proteinG ?? null} presets={state.goals.proteinTargetG ? [state.goals.proteinTargetG] : []} min={0} max={500} onSet={value => updateDaily(today, current => ({ ...current, proteinG: value }))} />
           </LogRow>
-          <LogRow icon="mind" title="Meditation" detail={`${(entry?.meditationMinutes ?? 0) > 0 ? `${entry!.meditationMinutes} min today` : "Not logged today"} · ${meditationDays} of 7 days`} done={(entry?.meditationMinutes ?? 0) > 0}>
+          <LogRow
+            icon="mind"
+            title="Meditation"
+            detail={`${(entry?.meditationMinutes ?? 0) > 0 ? `${entry!.meditationMinutes} min today` : "Not today"} · ${meditationDays} of the last 7 days`}
+            done={(entry?.meditationMinutes ?? 0) > 0}
+            graphic={<DayStrip size="small" cells={dailyCells(state.dailyEntries, today, 14, item => ({ done: (item?.meditationMinutes ?? 0) > 0, detail: (item?.meditationMinutes ?? 0) > 0 ? `${item!.meditationMinutes} min` : "none" }))} label="Meditation, last 14 days" />}
+          >
             {(entry?.meditationMinutes ?? 0) > 0 ? <button type="button" className="chip" onClick={() => go("mind", "meditation")}>Insights</button> : <button type="button" className="chip" onClick={() => updateDaily(today, current => ({ ...current, meditationMinutes: 10 }))}>Log 10 min</button>}
           </LogRow>
-          <LogRow icon="journal" title="Journal" detail={journalEntries.length ? `${journalEntries.length} ${journalEntries.length === 1 ? "entry" : "entries"} today` : entry?.journaled ? "Written elsewhere" : "No entry today"} done={journaled}>
+          <LogRow
+            icon="journal"
+            title="Journal"
+            detail={journalEntries.length ? `${journalEntries.length} ${journalEntries.length === 1 ? "entry" : "entries"} today` : entry?.journaled ? "Written elsewhere" : "No entry today"}
+            done={journaled}
+            graphic={<DayStrip size="small" cells={datedCells(state.thoughtJournal.map(item => item.date), today, 14, "entry")} label="Journal, last 14 days" />}
+          >
             <button type="button" className="chip" onClick={() => journalDraft || !journalEntries.length ? onWriteJournal() : go("mind", "journal")}>{journalDraft ? "Continue" : journalEntries.length ? "Read" : "Write"}</button>
           </LogRow>
         </div>
@@ -71,12 +93,14 @@ export function TodayView({ state, today, go, open, updateDaily, onDose, onWrite
 }
 
 function MedRows({
+  state,
   statuses,
   due,
   today,
   go,
   onDose,
 }: {
+  state: HealthState;
   statuses: MedicationStatus[];
   due: MedicationStatus[];
   today: string;
@@ -105,7 +129,8 @@ function MedRows({
           <span className="tl-well"><Icon name="medication" /></span>
           <button type="button" className="tl-row-copy tl-row-link" onClick={() => go("meds")}>
             <b>{status.medication.name}</b>
-            <small>{status.taken} out of {status.due} {status.medication.schedule === "daily" ? "days" : "doses"} · last 30 days</small>
+            <small>{status.taken} of {status.due} {status.medication.schedule === "daily" ? "days" : "doses"} · last 30 days</small>
+            <DayStrip size="small" cells={medicationCells(state, status.medication, today, 14)} label={`${status.medication.name}, last 14 days`} />
           </button>
           <button type="button" className={`chip${status.today === true ? " primary" : ""}`} aria-label={`${status.medication.name}: ${status.today === true ? "taken today; undo" : "mark taken today"}`} aria-pressed={status.today === true} onClick={() => onDose(status.medication.id, today, true)}><Icon name="check" />{status.today === true ? "Taken today" : status.today === false ? "Missed · change" : "Mark taken"}</button>
         </div>
@@ -114,17 +139,25 @@ function MedRows({
   );
 }
 
+/**
+ * One thing to log, its number, and the days that number came from.
+ *
+ * The row used to be a name and a bare statistic — "4 of 7 days" — which tells
+ * you nothing a picture of those seven days would not tell you better.
+ */
 function LogRow({
   icon,
   title,
   detail,
   done,
+  graphic,
   children,
 }: {
   icon: string;
   title: string;
   detail: string;
   done: boolean;
+  graphic?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -135,6 +168,7 @@ function LogRow({
       <span className="tl-row-copy">
         <b>{title}</b>
         <small>{detail}</small>
+        {graphic}
       </span>
       {children}
     </div>

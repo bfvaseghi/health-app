@@ -460,6 +460,7 @@ test("lab and goal normalization produce safe, deterministic records", () => {
     "trainingDays",
     "trainingSessionMinutes",
     "trainingSplit",
+    "waterTargetMl",
     "weeklyRateLb",
     "weightDirection",
     "weightGoalLb",

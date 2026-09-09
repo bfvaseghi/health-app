@@ -183,27 +183,30 @@ function demoWorkoutSets(today: string): WorkoutSet[] {
     ]);
   }
 
-  // Monday always precedes or equals the date shown by the demo.
-  addSession(0, 0, "07:00", "Lower", 3_450, [
+  // This week is the two full-body sessions the app plans, actually done — so
+  // the sample shows the thing working rather than a permanent shortfall. The
+  // earlier weeks stay upper/lower, which is where the trends and the stall
+  // come from.
+  addSession(0, 0, "07:00", "Full body 1", 4_200, [
     { exercise: "Squat (Barbell)", sets: 4, weightLb: 225, reps: [8, 8, 8, 10], restSeconds: 180 },
-    { exercise: "Romanian Deadlift (Barbell)", sets: 3, weightLb: 205, reps: 8, restSeconds: 180 },
-    { exercise: "Standing Calf Raise (Machine)", sets: 2, weightLb: 140, reps: 12, restSeconds: 90 },
-    { exercise: "Hanging Leg Raise", sets: 4, weightLb: null, reps: 15, restSeconds: 75 },
-  ]);
-
-  if (addDays(monday, 2) <= today) addSession(0, 2, "07:00", "Upper", 3_900, [
-    { exercise: "Incline Bench Press (Dumbbell)", sets: 4, weightLb: 65, reps: 10, restSeconds: 150 },
-    { exercise: "Bent Over Row (Barbell)", sets: 3, weightLb: 155, reps: 8, restSeconds: 150 },
+    { exercise: "Bench Press (Barbell)", sets: 4, weightLb: 190, reps: 8, restSeconds: 150 },
+    { exercise: "Bent Over Row (Barbell)", sets: 4, weightLb: 155, reps: 8, restSeconds: 150 },
     { exercise: "Overhead Press (Barbell)", sets: 3, weightLb: 105, reps: 8, restSeconds: 180 },
     { exercise: "Bicep Curl (Dumbbell)", sets: 3, weightLb: 30, reps: 10, restSeconds: 90 },
-    { exercise: "Triceps Pushdown (Cable)", sets: 2, weightLb: 50, reps: 10, restSeconds: 90 },
-    { exercise: "Face Pull (Cable)", sets: 2, weightLb: 45, reps: 10, restSeconds: 90 },
-    { exercise: "Lateral Raise (Dumbbell)", sets: 2, weightLb: 20, reps: 10, restSeconds: 90 },
+    { exercise: "Standing Calf Raise (Machine)", sets: 3, weightLb: 140, reps: 12, restSeconds: 90 },
+    { exercise: "Hanging Leg Raise", sets: 5, weightLb: null, reps: 15, restSeconds: 75 },
   ]);
-  if (addDays(monday, 4) <= today) addSession(0, 4, "07:00", "Lower", 3_450, [
-    { exercise: "Squat (Barbell)", sets: 4, weightLb: 225, reps: 8, restSeconds: 180 },
-    { exercise: "Romanian Deadlift (Barbell)", sets: 3, weightLb: 205, reps: 8, restSeconds: 180 },
-    { exercise: "Standing Calf Raise (Machine)", sets: 2, weightLb: 140, reps: 12, restSeconds: 90 },
+
+  if (addDays(monday, 2) <= today) addSession(0, 2, "07:00", "Full body 2", 4_500, [
+    { exercise: "Romanian Deadlift (Barbell)", sets: 4, weightLb: 205, reps: 8, restSeconds: 180 },
+    { exercise: "Incline Bench Press (Dumbbell)", sets: 4, weightLb: 65, reps: 10, restSeconds: 150 },
+    { exercise: "Lat Pulldown (Cable)", sets: 4, weightLb: 130, reps: 10, restSeconds: 150 },
+    { exercise: "Leg Press (Machine)", sets: 3, weightLb: 300, reps: 10, restSeconds: 180 },
+    { exercise: "Seated Leg Curl (Machine)", sets: 3, weightLb: 100, reps: 12, restSeconds: 90 },
+    { exercise: "Lateral Raise (Dumbbell)", sets: 3, weightLb: 20, reps: 12, restSeconds: 90 },
+    { exercise: "Triceps Pushdown (Cable)", sets: 3, weightLb: 50, reps: 10, restSeconds: 90 },
+    { exercise: "Face Pull (Cable)", sets: 3, weightLb: 45, reps: 12, restSeconds: 90 },
+    { exercise: "Standing Calf Raise (Machine)", sets: 3, weightLb: 140, reps: 12, restSeconds: 90 },
     { exercise: "Hanging Leg Raise", sets: 4, weightLb: null, reps: 15, restSeconds: 75 },
   ]);
 

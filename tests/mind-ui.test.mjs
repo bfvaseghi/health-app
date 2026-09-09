@@ -56,9 +56,11 @@ test("medications show today's completion and honest scheduled-dose counts above
     const html = render(MedsView, { state, today: asOf, open: noop, onDose: noop, onDeleteMedication: noop });
     const main = plain(html.slice(0, html.indexOf('<details')));
     for (const status of medicationStatuses(state, asOf, 30)) {
-      assert.ok(main.includes(`${status.taken} out of ${status.due}`));
+      assert.match(main, new RegExp(`${status.taken}\\s*/${status.due}`), `${status.medication.name} count`);
+      // The count is drawn as the days it was counted from, so a run is
+      // something you can see rather than something you have to trust.
+      assert.ok(html.includes(`aria-label="${status.medication.name}, last 30 days"`), `${status.medication.name} strip`);
     }
-    assert.match(main, /last 30 days/);
     assert.match(html, /aria-label="Medication consistency period"/);
     assert.match(main, asOf === today ? /Taken today/ : /Not due today/);
     assert.doesNotMatch(main, /consecutive|Percentage|not logged\./);

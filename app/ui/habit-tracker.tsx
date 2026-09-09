@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import type { Habit, HabitDraft, HabitEvent, HealthState } from "../health-model";
-import { habitSummary, habitWeekly, localDateTime, dateLabel } from "../health-model";
+import { addDays, habitSummary, habitWeekly, localDateTime, dateLabel } from "../health-model";
 import { CaffeineHabit, CaffeineSettings } from "./caffeine-habit";
 import { formatTime } from "./format";
 import { Icon } from "./icons";
+import { DayStrip } from "./spark";
 import { ConfirmButton } from "./primitives";
 import { Tide } from "./tide";
 
@@ -73,7 +74,17 @@ export function CuttingBack({
                   <div className="tl-section-head" style={{ alignItems: "flex-start" }}>
                     <span className="tl-row-copy">
                       <h3 className="habit-name">{habit.name}</h3>
-                      {!habit.caffeine ? <small>{`Acted on it ${summary.week === 1 ? "once" : `${summary.week} times`} this week`}</small> : null}
+                      {!habit.caffeine ? <>
+                        <small>{`Acted on it ${summary.week === 1 ? "once" : `${summary.week} times`} this week`}</small>
+                        {/* Each day marked with what happened on it: an urge
+                            that passed, or one that did not. A count of slips
+                            says nothing about the shape of the fortnight. */}
+                        <DayStrip
+                          size="small"
+                          cells={urgeCells(records, today, 14)}
+                          label={`${habit.name}, last 14 days`}
+                        />
+                      </> : null}
                     </span>
                     <details className="urge-manage"><summary>Manage</summary><div className="row-actions">
                       <button type="button" className="text-button" aria-label={`Settings for ${habit.name}`} onClick={() => setEditing(habit.id)}>
@@ -153,4 +164,25 @@ function HabitForm({ habit, preset, onSave, onCancel }: { habit?: Habit; preset?
       </div>
     </form>
   );
+}
+
+/**
+ * A fortnight of one habit: green where an urge passed, amber where it did not,
+ * outline where nothing was logged. A slip on the same day as a pass still
+ * shows as a slip, because that is the thing worth seeing.
+ */
+function urgeCells(records: Array<{ date: string; kind: string }>, today: string, days: number) {
+  const byDate = new Map<string, string>();
+  for (const event of records) {
+    if (event.kind === "slip" || !byDate.has(event.date)) byDate.set(event.date, event.kind);
+  }
+  return Array.from({ length: days }, (_, index) => {
+    const date = addDays(today, index - (days - 1));
+    const kind = byDate.get(date);
+    return {
+      date,
+      state: kind === "slip" ? "miss" as const : kind ? "on" as const : "open" as const,
+      label: `${dateLabel(date, { weekday: "short", month: "short", day: "numeric" })}: ${kind === "slip" ? "acted on it" : kind ? "urge passed" : "nothing logged"}`,
+    };
+  });
 }

@@ -1177,8 +1177,21 @@ export function baseCoverage(plan: Plan): { complete: boolean; shortfall: Muscle
 function scaleForDeload(): number { return WEEK_SCALE[BLOCK_WEEKS - 1]; }
 
 /** The base is allocated before optional visits, independently of the weekly maximum. */
+/**
+ * How many sessions the week is built around when nothing has been chosen.
+ *
+ * Two, deliberately. Two full-body sessions already reach every muscle group's
+ * weekly target on their own — the planner grows each session to carry the week
+ * when there are only two of them — so a bigger default was not buying coverage,
+ * it was splitting the same work across four visits and then labelling half of
+ * them "extra". That is what made the week impossible to read: you were shown
+ * four workouts, told two were optional, and then told you were short if you
+ * skipped them. Two is the whole week, and it is enough.
+ */
+export const DEFAULT_DAYS = 2;
+
 export function buildPlan(state: HealthState, asOf = todayLocal(), daysOverride?: number, week = 0): Plan {
-  const days = Math.min(MAX_DAYS, Math.max(2, daysOverride ?? recommendDays(state, asOf).days));
+  const days = Math.min(MAX_DAYS, Math.max(2, daysOverride ?? DEFAULT_DAYS));
   const minutes = state.goals.trainingSessionMinutes;
   if (state.goals.trainingSplit === "upper-lower") {
     const plan = buildSplitPlan(state, asOf, days, week);
@@ -1302,7 +1315,9 @@ export function trainingAnchorSets(state: HealthState, asOf = todayLocal()): Rec
 export function buildBlock(state: HealthState, asOf = todayLocal(), chosen: number[] = []): Plan[] {
   return Array.from({ length: BLOCK_WEEKS }, (_, index) => {
     const picked = chosen[index];
-    const days = picked && picked >= 2 ? Math.min(MAX_DAYS, picked) : MAX_DAYS;
+    // Nothing chosen means two, not the maximum. Building four by default and
+    // then labelling half of them "extra" is what made the week unreadable.
+    const days = picked && picked >= 2 ? Math.min(MAX_DAYS, picked) : DEFAULT_DAYS;
     return buildPlan(state, asOf, days, index);
   });
 }

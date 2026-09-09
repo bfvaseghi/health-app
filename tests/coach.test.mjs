@@ -2300,6 +2300,7 @@ test("the current week refits weekend sessions and honors explicit day choices",
     }
   }
   const sunday = demoHealthState("2026-09-06");
+  sunday.goals.trainingDays = [4, 4, 4, 4];
   sunday.workoutSets = sunday.workoutSets.filter((set) => set.date < "2026-09-01");
   const plan = currentTrainingWeek(sunday, "2026-09-06").plan;
   assert.equal(plan.days, 4, "base identities survive a Sunday refit");
@@ -2364,10 +2365,11 @@ test("four-workout goals adjust without invalidating completed sessions", () => 
   const state = demoHealthState(monday);
   state.goals.trainingSplit = "upper-lower";
   state.goals.trainingSessionMinutes = 120;
+  state.goals.trainingDays = [4, 4, 4, 4];
   state.workoutSets = state.workoutSets.filter((entry) => entry.date < monday);
   const original = currentTrainingWeek(state, monday).plan;
   assert.equal(original.days, 4);
-  assert.ok(buildBlock(state, monday).every((entry) => entry.days === 4));
+  assert.ok(buildBlock(state, monday, state.goals.trainingDays).every((entry) => entry.days === 4));
   const first = original.sessions.find((session) => session.name === "Upper A");
   const draft = startWorkout(first, new Date(`${monday}T18:00:00`));
   draft.sets.slice(0, 8).forEach((entry) => { entry.reps = "8"; entry.done = true; });
@@ -2391,6 +2393,7 @@ test("four-workout goals adjust without invalidating completed sessions", () => 
 test("Sunday has one available visit and a completed visit uses it", () => {
   const date = "2026-09-13";
   const state = demoHealthState(date);
+  state.goals.trainingDays = [4, 4, 4, 4];
   state.workoutSets = state.workoutSets.filter((entry) => entry.date < weekStart(date));
   let {plan} = currentTrainingWeek(state, date);
   assert.equal(remainingSessions(plan, state, date).length, 1);
@@ -2408,6 +2411,7 @@ test("a new week prioritizes recently omitted muscles without adding catch-up vo
   const state = demoHealthState(date);
   state.goals.trainingSplit = "upper-lower";
   state.goals.trainingSessionMinutes = 120;
+  state.goals.trainingDays = [4, 4, 4, 4];
   state.workoutSets = state.workoutSets.filter((entry) => entry.date < "2026-09-07");
   const base = buildPlan(state, "2026-09-07", 4, 0);
   for (const [index, session] of base.sessions.filter((entry) => entry.shape === "upper").entries()) {
@@ -2653,15 +2657,26 @@ test('extra workouts cannot hide an infeasible two-workout time limit or missing
 test('the base outlook cannot use optional work to hide gaps after a different imported workout', () => {
   const date = '2026-09-08';
   const state = demoHealthState(date);
+  state.goals.trainingDays = [4, 4, 4, 4];
+  // A week whose only logged workout is lower-body: the base pair plus that
+  // import does not reach every target, and only the optional sessions do.
+  // The point of baseOnly is that it must not be rescued by them.
+  const monday = weekStart(date);
+  state.workoutSets = state.workoutSets.filter(set => set.date < monday);
+  for (const [exercise, count, weightLb] of [['Squat (Barbell)', 4, 225], ['Romanian Deadlift (Barbell)', 3, 205], ['Standing Calf Raise (Machine)', 2, 140], ['Hanging Leg Raise', 4, null]]) {
+    for (let index = 1; index <= count; index += 1) {
+      state.workoutSets.push({ date: monday, startedAt: `${monday}T07:00:00`, workoutName: 'Lower', exercise, setNumber: index, weightLb, reps: 8, distance: null, seconds: null, rpe: 8, restSeconds: 150, durationSeconds: 3_450 });
+    }
+  }
   const plan = currentTrainingWeek(state, date).plan;
   assert.equal(baseCoverage(plan).complete, true, 'the unperformed full-body template covers the week');
   const base = weekOutlook(plan, state, date, { baseOnly: true });
   assert.ok(base.some(row => row.shortBy > 0), 'the actual lower-only import is different');
-  const core = base.find(row => row.muscle === 'core');
-  assert.equal(core.done, 4);
-  assert.equal(core.coming, 4);
-  assert.equal(core.shortBy, 0);
-  assert.ok(weekOutlook(plan, state, date).every(row => row.shortBy === 0), 'optional work closes this particular imported week');
+  const withOptional = weekOutlook(plan, state, date);
+  assert.ok(
+    base.some(row => withOptional.find(other => other.muscle === row.muscle).projected > row.projected),
+    'optional work is counted in the full outlook and not in the base one',
+  );
 });
 
 test('sequential Strong imports complete the base before optional workouts', () => {
@@ -2796,18 +2811,25 @@ test('optional workouts use the existing volume aims while staying inside the ti
 });
 
 test('Strong omissions refill the remaining workout instead of spending unperformed sets', () => {
-  const date = '2026-09-06';
+  const date = '2026-09-07';
   const state = demoHealthState(date);
+  state.goals.trainingDays = [4, 4, 4, 4];
+  state.workoutSets = state.workoutSets.filter(set => set.date < weekStart(date));
   const plan = currentTrainingWeek(state, date).plan;
   const outlook = weekOutlook(plan, state, date);
   const triceps = outlook.find(row => row.muscle === 'triceps');
   assert.ok(triceps.direct >= minimumDirect('triceps'));
   assert.ok(remainingSessions(plan, state, date).every(session => sessionMinutes(session) <= state.goals.trainingSessionMinutes));
   const next = nextSession(plan, state, date).session;
-  assert.ok(next.exercises.some(lift => lift.exercise === 'Triceps Pushdown (Cable)'));
-  state.goals.addedSets = [{ weekStart: weekStart(date), session: next.name, exercise: 'Triceps Pushdown (Cable)', sets: -1 }];
+  const pushdown = next.exercises.find(lift => lift.exercise === 'Triceps Pushdown (Cable)');
+  assert.ok(pushdown, 'the remaining workout carries the omitted triceps work');
+  // Taking every one of its sets out of that session removes it from that
+  // session, rather than leaving a zero-set row behind. The planner may still
+  // place the work elsewhere in the week — that is what refilling means.
+  state.goals.addedSets = [{ weekStart: weekStart(date), session: next.name, exercise: 'Triceps Pushdown (Cable)', sets: -pushdown.sets }];
   const changed = currentTrainingWeek(state, date).plan;
-  assert.ok(!nextSession(changed, state, date).session.exercises.some(lift => lift.exercise === 'Triceps Pushdown (Cable)'));
+  const sameSession = changed.sessions.find(session => session.name === next.name);
+  assert.ok(!sameSession.exercises.some(lift => lift.exercise === 'Triceps Pushdown (Cable)'));
 });
 
 test('assistance recommendations reach zero and hold there', () => {
@@ -2821,13 +2843,23 @@ test('assistance recommendations reach zero and hold there', () => {
 });
 
 test('manual changes start from the repaired prescription on the first click', () => {
-  const date = '2026-09-06';
+  const date = '2026-09-07';
   const state = demoHealthState(date);
+  state.goals.trainingDays = [4, 4, 4, 4];
+  state.workoutSets = state.workoutSets.filter(set => set.date < weekStart(date));
   const base = currentTrainingWeek(state, date).plan;
   const session = nextSession(base, state, date).session;
-  for (const [delta, expected] of [[1, 4], [-1, 2], [0, 3]]) {
+  const direct = (plan) => weekOutlook(plan, state, date).find(row => row.muscle === 'triceps').direct;
+  const unchanged = direct(base);
+  const change = (delta) => {
     state.goals.addedSets = delta ? [{ weekStart: weekStart(date), session: session.name, exercise: 'Triceps Pushdown (Cable)', sets: delta }] : [];
-    const plan = currentTrainingWeek(state, date).plan;
-    assert.equal(weekOutlook(plan, state, date).find(row => row.muscle === 'triceps').direct, expected);
-  }
+    return direct(currentTrainingWeek(state, date).plan);
+  };
+  // The change is applied to the repaired prescription, so one click moves the
+  // week by exactly one set rather than by the gap to some stale baseline.
+  assert.equal(change(-1), unchanged - 1);
+  // Adding never takes a muscle past its per-week cap, and never below where
+  // it already was.
+  assert.ok(change(1) >= unchanged);
+  assert.equal(change(0), unchanged);
 });

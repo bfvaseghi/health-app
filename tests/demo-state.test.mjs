@@ -22,7 +22,7 @@ test("demo data is populated, date-relative, and normalized", () => {
   assert.equal(state.dailyEntries[0].date, AS_OF, "the newest daily entry appears first");
   assert.equal(state.sleepEntries.length, 65);
   assert.equal(state.labResults.length, 10);
-  assert.equal(state.workoutSets.length, 157);
+  assert.equal(state.workoutSets.length, 170);
   assert.equal(state.thoughtJournal.length, 4);
   assert.ok(state.thoughtJournal.some((entry) => entry.source === "apple-notes"));
   assert.equal(buildWorkoutSessions(state.workoutSets).length, 19);
@@ -44,6 +44,8 @@ test("demo data is populated, date-relative, and normalized", () => {
 
 test("demo training history drives a useful four-day Coach week", () => {
   const state = demoHealthState(AS_OF);
+  // Four is a choice now, not the default — the default week is two sessions.
+  state.goals.trainingDays = [4, 4, 4, 4];
   const week = currentBlockWeek(state, AS_OF);
   const block = buildBlock(state, AS_OF, state.goals.trainingDays);
   const plan = block[week];
@@ -136,7 +138,9 @@ test("the demo includes each elapsed workout day across the whole week", () => {
     const date = addDays(monday, day);
     const state = demoHealthState(date);
     const sessions = buildWorkoutSessions(state.workoutSets);
-    assert.equal(sessions.length, 19 + (day >= 2 ? 1 : 0) + (day >= 4 ? 1 : 0));
+    // The current week is the two full-body sessions the app plans, so the
+    // sample shows the loop in its steady state rather than a shortfall.
+    assert.equal(sessions.length, 19 + (day >= 2 ? 1 : 0));
     assert.ok(sessions.every((session) => session.date <= date));
     assert.ok(sessions.filter((session) => session.date >= monday).every((session) => session.sets >= 12));
   }

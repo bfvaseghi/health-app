@@ -206,6 +206,8 @@ export type GoalSettings = {
   /** Pounds a week to aim for while cutting or bulking, as a positive number. */
   weeklyRateLb: number | null;
   proteinTargetG: number | null;
+  /** Millilitres of water a day to aim for. Without one the tracker is a number with nothing to be. */
+  waterTargetMl: number | null;
   bodyFatTargetPercent: number | null;
   /**
    * Sessions you want in each week of the training block, one entry per week.
@@ -299,6 +301,7 @@ export const defaultGoals: GoalSettings = {
   phaseStart: "",
   weeklyRateLb: null,
   proteinTargetG: null,
+  waterTargetMl: 2_500,
   bodyFatTargetPercent: null,
   trainingDays: [],
   trainingSplit: "full-body",
@@ -790,6 +793,7 @@ export function normalizeGoals(value: unknown): GoalSettings {
     phaseStart: validIsoDate(goals.phaseStart) ? goals.phaseStart : "",
     weeklyRateLb: finiteNumber(goals.weeklyRateLb, 0.1, 5),
     proteinTargetG: finiteNumber(goals.proteinTargetG, 0, 1_000),
+    waterTargetMl: finiteNumber(goals.waterTargetMl, 0, 20_000) ?? defaultGoals.waterTargetMl,
     bodyFatTargetPercent: finiteNumber(goals.bodyFatTargetPercent, 1, 70),
     trainingDays: Array.isArray(goals.trainingDays)
       ? goals.trainingDays.slice(0, 8).map((value) => {

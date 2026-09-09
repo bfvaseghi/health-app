@@ -5,7 +5,7 @@ import type { GoalSettings, HealthState } from "../health-model";
 import { dateLabel } from "../health-model";
 import type { Plan, PlannedSession } from "../training/coach";
 import {
-  DAY_CHOICES, daysLeftInWeek, matchedSessionsThisWeek, nextSession, recommendDays,
+  DAY_CHOICES, DEFAULT_DAYS, daysLeftInWeek, matchedSessionsThisWeek, nextSession,
   remainingSessions, sessionMinutes, sessionToText, trainingAnchorSets, trainingHabit, weekStart,
 } from "../training/coach";
 import { buildProgress } from "../training/progress";
@@ -56,10 +56,16 @@ export function nextUpFacts(plan: Plan, state: HealthState, today: string): Next
   }
   const scope = workoutScope(hero);
   const lifts = hero.exercises.length;
+  const position = plan.sessions.findIndex(session => session.name === hero.name) + 1;
   return {
     hero,
     headline: label(hero),
-    subline: [scope, `${sessionMinutes(hero)} min`, `${lifts} ${lifts === 1 ? "lift" : "lifts"}`].filter(Boolean).join(" · "),
+    subline: [
+      position ? `Workout ${position} of ${plan.sessions.length}` : null,
+      scope,
+      `${sessionMinutes(hero)} min`,
+      `${lifts} ${lifts === 1 ? "lift" : "lifts"}`,
+    ].filter(Boolean).join(" · "),
     daysLeft,
     done: next.done,
     pips,
@@ -85,7 +91,6 @@ export function NextUpBody({
   const remaining = useMemo(() => remainingSessions(plan, state, today), [plan, state, today]);
   const shown = remaining.find(session => session.name === selected) ?? facts.hero;
   const habit = useMemo(() => trainingHabit(state.workoutSets, today), [state.workoutSets, today]);
-  const advice = useMemo(() => recommendDays(state, today), [state, today]);
   const trends = useMemo(() => {
     const progress = buildProgress(state, today, 12);
     return new Map(progress.lifts.map(lift => [lift.exercise, lift]));
@@ -107,7 +112,7 @@ export function NextUpBody({
       <span>Workouts a week</span>
       <select
         aria-label="Workouts a week"
-        value={days || advice.days}
+        value={days || DEFAULT_DAYS}
         onChange={event => {
           const value = Number(event.target.value);
           onGoals(current => ({ ...current, trainingDays: [value, value, value, value] }));
@@ -116,11 +121,13 @@ export function NextUpBody({
         {DAY_CHOICES.map(choice => <option key={choice} value={choice}>{choice}</option>)}
       </select>
     </label>
-    {/* The number now has a control and a stated source. It used to be a
-        denominator he could neither see the reason for nor change. */}
-    {advice.days !== (days || advice.days) || !days
-      ? <p className="field-note">Your record suggests {advice.days} · you train {habit.recentLabel}× a week.</p>
-      : null}
+    {/* Two is the default because two is enough — each session is built bigger
+        to carry the week. Raising it spreads the same work over more visits. */}
+    <p className="field-note">
+      {(days || DEFAULT_DAYS) === DEFAULT_DAYS
+        ? `Two sessions cover every muscle group. You train ${habit.recentLabel}× a week.`
+        : `More sessions spread the same weekly sets over more visits. Two is enough on its own.`}
+    </p>
 
     {remaining.length > 1 ? <div className="session-chips" role="group" aria-label="This week's workouts">
       {remaining.map(session => <button

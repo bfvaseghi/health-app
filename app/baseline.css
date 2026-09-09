@@ -260,14 +260,16 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
 
 /* Eleven bars on one shared ceiling, so equal set counts draw equal heights.
    The target floor is a notch on top of the fill, not a band underneath it. */
-.mini-coverage { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 6px; }
+.mini-coverage { position: relative; display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 6px; }
 .mini-bar { display: grid; gap: 6px; justify-items: center; min-width: 0; }
 .mini-bar > span { position: relative; display: block; width: 100%; height: 36px; background: var(--soft); border-radius: 2px; overflow: hidden; }
 .mini-bar i { position: absolute; left: 0; right: 0; bottom: 0; display: block; }
 .mini-bar i.done { background: var(--accent); }
 .mini-bar i.planned { background: color-mix(in srgb, var(--accent) 48%, var(--soft)); }
 .mini-bar i.optional { background: color-mix(in srgb, var(--accent) 20%, var(--soft)); }
-.mini-bar i.notch { height: 2px; background: var(--ink); }
+/* The target line: same height on all eleven, so it reads as one rule. */
+.mini-bar i.notch { height: 2px; background: var(--ink); opacity: .6; }
+
 .mini-bar.is-under i.done { background: var(--warn); }
 .mini-bar.is-under i.planned { background: color-mix(in srgb, var(--warn) 45%, var(--soft)); }
 .mini-bar.is-under i.optional { background: color-mix(in srgb, var(--warn) 20%, var(--soft)); }
@@ -362,3 +364,70 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
   .fitness-page .muscle-chart-track { margin: 0 7px; }
   .lift-columns, .lift-row-values { grid-template-columns: 4.25rem 4.5rem 2.6rem minmax(0, 1fr); gap: 6px; }
 }
+
+/* ------------------------------------------------- numbers with pictures
+
+   Every count in this app used to be a number and a preposition — "29 out of
+   30 days", "5 of the last 7 days" — with nothing to look at. A count cannot
+   show a streak, where the gap fell, or whether last week was better. These
+   are the pictures that go beside them, and a filled cell means the same thing
+   on every page. */
+
+.day-strip { display: flex; align-items: stretch; gap: 3px; height: 18px; }
+.day-strip.is-small { height: 14px; gap: 1.5px; }
+.day-strip > i { flex: 1 1 0; min-width: 0; border-radius: 2px; background: color-mix(in srgb, var(--accent) 78%, var(--paper)); }
+.day-strip > i.is-on { background: color-mix(in srgb, var(--accent) 78%, var(--paper)); }
+.day-strip > i.is-half { background: color-mix(in srgb, var(--accent) 45%, var(--soft)); }
+.day-strip > i.is-miss { background: var(--warn); }
+.day-strip > i.is-open { background: none; box-shadow: inset 0 0 0 1px var(--line); }
+.day-strip > i.is-none { background: none; box-shadow: inset 0 0 0 1px var(--line); opacity: .4; }
+
+.meter { position: relative; height: 10px; border-radius: 2px; background: var(--soft); overflow: hidden; }
+.meter-fill { position: absolute; inset: 0 auto 0 0; background: var(--accent); border-radius: 2px; }
+.meter.is-warn .meter-fill { background: var(--warn); }
+.meter.is-quiet .meter-fill { background: var(--chart-bar); }
+.meter-notch { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--ink); }
+
+.mini-bars { position: relative; display: flex; align-items: flex-end; gap: 2px; height: 30px; }
+.mini-bars > i { position: relative; flex: 1 1 0; min-width: 0; height: 100%; display: flex; align-items: flex-end; }
+.mini-bars > i > span { display: block; width: 100%; min-height: 1px; background: var(--accent); border-radius: 1.5px; }
+.mini-bars > i.is-empty > span { background: none; box-shadow: inset 0 0 0 1px var(--line); height: 100% !important; opacity: .5; }
+.mini-bars-target { position: absolute; left: 0; right: 0; height: 1px; background: var(--ink); opacity: .5; }
+
+/* -------------------------------------------------------- the record list
+
+   The pages were stacks of same-sized white rounded boxes floating on grey, so
+   nothing had more weight than anything else and the whole screen read as one
+   block. Same language as the Fitness stack: the page ground is the surface,
+   sections are hairlines and a left rail, and the picture sits on the row. */
+
+.record-list { border-top: 1px solid var(--line); margin-top: 4px; }
+.record-block { position: relative; padding: 16px 0 16px 14px; border-bottom: 1px solid var(--line); }
+.record-block::before { content: ""; position: absolute; left: 0; top: 0; bottom: -1px; width: 2px; background: var(--accent-pale); }
+.record-block.is-warn::before { background: var(--warn); }
+.record-block.is-done::before { background: var(--accent); }
+.record-block.is-quiet::before { background: var(--line-strong); }
+
+.record-block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.record-block-head > h3, .record-block-head > b { margin: 0; font-size: 1rem; font-weight: 600; letter-spacing: -.01em; display: flex; align-items: center; gap: 8px; }
+.record-block-head svg { width: 17px; height: 17px; flex: none; color: var(--muted); }
+.record-block-head .text-button { flex: none; font-size: .8125rem; }
+
+.record-block-value { display: flex; align-items: baseline; gap: 8px; margin: 8px 0 10px; }
+.record-block-value > strong { font-size: 1.625rem; font-weight: 600; letter-spacing: -.025em; line-height: 1; font-variant-numeric: tabular-nums; }
+.record-block-value > span { font-size: .8125rem; color: var(--muted); }
+.record-block.is-warn .record-block-value > strong { color: var(--warn); }
+
+.record-block-scale { display: flex; justify-content: space-between; gap: 12px; margin-top: 6px; font-size: .6875rem; color: var(--faint); }
+.record-block-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; }
+.record-block-actions .button { min-height: 40px; }
+.record-block-value .of { font-size: 1rem; font-weight: 500; color: var(--muted); }
+.meds-page .dose-completion { min-height: 44px; }
+.meds-page .dose-schedule { font-size: .8125rem; color: var(--muted); }
+.meds-page .dose-not-due { font-size: .9375rem; font-weight: 550; color: var(--muted); }
+.meds-page .dose-options { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+/* The picture sits under the number it belongs to, inside the row's copy. */
+.tl-row-copy > .day-strip, .tl-row-copy > .meter { margin-top: 7px; max-width: 220px; }
+.tl-row-copy { min-width: 0; }
+.rumination-overview > .day-strip { flex: 0 0 100%; margin-top: 10px; max-width: 300px; }
+.tl-row-copy > .day-strip { margin-top: 8px; max-width: 220px; }
