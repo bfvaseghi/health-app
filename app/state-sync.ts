@@ -203,6 +203,15 @@ export function mergeConcurrentHealthState(
   const notes = mergeList(common.therapyNotes, local.therapyNotes, remote.therapyNotes, (value) => value.id);
   const thoughts = mergeList(common.thoughtJournal, local.thoughtJournal, remote.thoughtJournal, (value) => value.id);
   const photos = mergeList(common.progressPhotos, local.progressPhotos, remote.progressPhotos, (value) => value.id);
+  // Rumination and the urge trackers are lists like any other. Left out of the
+  // merge they fell to the `...remote` spread below, which means the server's
+  // copy won outright and anything logged on this device since the last sync
+  // was dropped without a word — a caffeine intake or an urge is a HabitEvent,
+  // and a rumination log is a LoopEvent.
+  const loops = mergeList(common.thoughtLoops, local.thoughtLoops, remote.thoughtLoops, (value) => value.id);
+  const loopEvents = mergeList(common.loopEvents, local.loopEvents, remote.loopEvents, (value) => value.id);
+  const habits = mergeList(common.habits, local.habits, remote.habits, (value) => value.id);
+  const habitEvents = mergeList(common.habitEvents, local.habitEvents, remote.habitEvents, (value) => value.id);
   const goals = mergeGoals(common.goals, local.goals, remote.goals);
 
   return {
@@ -218,6 +227,10 @@ export function mergeConcurrentHealthState(
       therapyNotes: notes.values,
       thoughtJournal: thoughts.values,
       progressPhotos: photos.values,
+      thoughtLoops: loops.values,
+      loopEvents: loopEvents.values,
+      habits: habits.values,
+      habitEvents: habitEvents.values,
       goals: goals.goals,
     }),
     conflicts:
@@ -230,6 +243,10 @@ export function mergeConcurrentHealthState(
       notes.conflicts +
       thoughts.conflicts +
       photos.conflicts +
+      loops.conflicts +
+      loopEvents.conflicts +
+      habits.conflicts +
+      habitEvents.conflicts +
       goals.conflicts,
   };
 }

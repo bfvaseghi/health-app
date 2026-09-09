@@ -237,6 +237,31 @@ test("independent thought journal entries survive a concurrent merge", () => {
   assert.deepEqual(new Set(merged.state.thoughtJournal.map((entry) => entry.id)), new Set(["local-thought", "remote-thought"]));
 });
 
+test("rumination and urge records survive a merge that touched neither", () => {
+  // Every list left out of the merge fell through to the remote copy, so a
+  // caffeine intake or a rumination log made on this device disappeared the
+  // next time the background refresh ran.
+  const base = normalizeHealthState({
+    ...emptyHealthState(fixedNow),
+    thoughtLoops: [{ id: "loop-1", name: "Rumination", reply: "", createdAt: "2030-01-01", archived: false }],
+    habits: [{ id: "habit-1", name: "Synthetic habit", category: "other", createdAt: "2030-01-01", archived: false }],
+  });
+  const local = normalizeHealthState({
+    ...base,
+    loopEvents: [{ id: "local-loop-event", loopId: "loop-1", at: "2030-01-15T09:00", date: "2030-01-15", move: "passed" }],
+    habitEvents: [{ id: "local-habit-event", habitId: "habit-1", at: "2030-01-15T09:30", date: "2030-01-15", kind: "urge" }],
+  });
+  // The other device changed something unrelated and knows nothing of either.
+  const remote = normalizeHealthState({ ...base, dailyEntries: [{ date: "2030-01-15", steps: 4_000 }] });
+
+  const merged = mergeConcurrentHealthState(base, local, remote);
+  assert.deepEqual(merged.state.loopEvents.map((event) => event.id), ["local-loop-event"]);
+  assert.deepEqual(merged.state.habitEvents.map((event) => event.id), ["local-habit-event"]);
+  assert.deepEqual(merged.state.thoughtLoops.map((loop) => loop.id), ["loop-1"]);
+  assert.deepEqual(merged.state.habits.map((habit) => habit.id), ["habit-1"]);
+  assert.equal(merged.state.dailyEntries[0].steps, 4_000, "the remote edit still lands");
+});
+
 test("a revision conflict keeps independent edits from both devices", () => {
   const base = normalizeHealthState({
     ...emptyHealthState(fixedNow),
