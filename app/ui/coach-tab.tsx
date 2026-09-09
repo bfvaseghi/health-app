@@ -79,9 +79,13 @@ export function CoachTab({
     <div className="training-section-heading"><div><h2>Muscle groups</h2><p>Week of {dateLabel(weekStart(today), { month: "short", day: "numeric" })}</p></div>{hasHistory ? <button type="button" className="text-button" onClick={onWorkout}>Open workout <Icon name="arrow" /></button> : null}</div>
     {hasHistory ? frequency : <div className="workout-finish"><Icon name="upload" /><div><b>Nothing imported yet</b><p>These are the weekly targets. Import your Strong export to see what you have logged against them.</p></div><button type="button" className="button secondary small" onClick={importWorkout}>Import Strong export</button></div>}
     <Balance outlook={outlook} plan={plan} state={state} today={today} onGoals={onGoals} />
-    {hasHistory && state.goals.trainingSplit === "full-body" ? <section className="base-plan-check" aria-label="Two-workout coverage">
-      <h3><Icon name="fitness" /> Two-workout base</h3>
-      <p>{plan.deload ? "Lighter week: fewer sets in A and B." : baseGaps.length ? `${baseOutlook.length - baseGaps.length} of ${baseOutlook.length} muscle targets covered by logged work + remaining base workouts.` : "Logged work + remaining A and B cover all muscle targets."}</p>
+    {/* Shown for every plan structure. The two-visit promise is the reason
+        this app plans a week at all, so a week that cannot keep it has to say
+        so — an upper/lower week most of all, since its opening pair carries
+        half the volume rather than the whole body twice. */}
+    {hasHistory ? <section className="base-plan-check" aria-label="Two-workout coverage">
+      <h3><Icon name="fitness" /> {state.goals.trainingSplit === "full-body" ? "Two-workout base" : "Your first two visits"}</h3>
+      <p>{plan.deload ? "Lighter week: fewer sets in the first two workouts." : baseGaps.length ? `${baseOutlook.length - baseGaps.length} of ${baseOutlook.length} muscle targets covered by logged work + the first two workouts.` : "Logged work + your first two workouts cover all muscle targets."}</p>
       {baseGaps.length && !plan.deload ? <p className="training-shortfall">Below target: {listWords(baseGaps.map(row => row.label.toLowerCase()))}.</p> : null}
       {foundationMinutes ? <button type="button" className="button secondary small" onClick={() => onGoals(current => ({ ...current, trainingSessionMinutes: foundationMinutes }))}>Use {foundationMinutes}-minute workouts to fit the base</button> : null}
     </section> : null}

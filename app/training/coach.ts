@@ -1151,9 +1151,20 @@ function fitSessionTime(session: PlannedSession, minutes: number): void {
   }
 }
 
-/** Read the two-workout promise from the actual prescription, without extra visits. */
+/**
+ * Read the two-workout promise from the actual prescription, without extra
+ * visits.
+ *
+ * An upper/lower week does not tag its sessions, and the tier filter alone
+ * therefore matched nothing: the answer came back "all eleven muscles short"
+ * for every split plan, which is not a warning, it is noise, and the one
+ * screen that would have shown it was hidden for exactly those plans. The
+ * first two sessions are the first two visits whether or not anything labelled
+ * them, so that is what the promise is read from.
+ */
 export function baseCoverage(plan: Plan): { complete: boolean; shortfall: Muscle[]; coreSets: number[]; coreTarget: number; shorterRests: boolean } {
-  const base = plan.sessions.filter(session => session.tier === "base");
+  const tiered = plan.sessions.filter(session => session.tier === "base");
+  const base = tiered.length ? tiered : plan.sessions.slice(0, 2);
   const volume = sessionVolume(base);
   const shortfall = MUSCLES.filter(muscle => shortfallSets(volume.get(muscle), muscle) > 0);
   return { complete: base.length === 2 && !shortfall.length, shortfall,
@@ -1852,8 +1863,19 @@ export function weekOutlook(plan: Plan, state: HealthState, asOf = todayLocal(),
 
   const comingDirect = new Map<Muscle, number>();
   const comingIndirect = new Map<Muscle, number>();
-  for (const session of remainingSessions(plan, state, asOf)) {
-    if (options.baseOnly && session.tier !== "base") continue;
+  const remaining = remainingSessions(plan, state, asOf);
+  // A plan that tags nothing still has a first two visits, and asking only
+  // about them is the whole point of baseOnly. Without this the filter dropped
+  // every session of an untagged week and the answer was "you have nothing
+  // planned", which is not what was asked and not true.
+  const baseNames = new Set(
+    (plan.sessions.some(session => session.tier)
+      ? plan.sessions.filter(session => session.tier === "base")
+      : plan.sessions.slice(0, 2)
+    ).map(session => session.name),
+  );
+  for (const session of remaining) {
+    if (options.baseOnly && !baseNames.has(session.name)) continue;
     for (const exercise of session.exercises) {
       const info = classifyExercise(exercise.exercise);
       for (const muscle of info.direct) comingDirect.set(muscle, (comingDirect.get(muscle) ?? 0) + exercise.sets);
