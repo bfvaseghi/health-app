@@ -1,6 +1,8 @@
 "use client";
 
 import { ChangeEvent, DragEvent, useMemo, useRef, useState } from "react";
+import { demoStrongCsv } from "../demo-state";
+import { strongToRecords } from "../import/strong";
 import { dateLabel } from "../health-model";
 import type { ImportItem, ImportPreview } from "../import";
 import { combineRecords, inspectFile, itemRecords, previewRecords } from "../import";
@@ -12,11 +14,12 @@ import { ModalFrame, Note } from "./primitives";
 const ACCEPT = ".zip,.csv,.tsv,.txt,.json,.xml,application/zip,text/csv,application/json,text/xml";
 
 const guides: Array<{ name: string; steps: string }> = [
-  { name: "Oura", steps: "Sign in at cloud.ouraring.com and download your data as CSV." },
-  { name: "Whoop", steps: "Ask for your data in the app's account settings. Whoop emails a zip — drop it here whole." },
+  { name: "Strong", steps: "Settings → Export Strong Data (iOS) / Export Data (Android)" },
+  { name: "Oura", steps: "cloud.ouraring.com → Export CSV" },
+  { name: "Whoop", steps: "Account settings → Request data → ZIP" },
   {
     name: "Apple Health",
-    steps: "Health app → your picture → Export All Health Data. Drop the export.zip here whole.",
+    steps: "Health → Profile → Export All Health Data",
   },
 ];
 
@@ -39,8 +42,12 @@ function describe(preview: ImportPreview): string {
 export function ImportDialog({
   onClose,
   onImport,
+  source, demo = false, today,
 }: {
   onClose: () => void;
+  source?: "strong";
+  demo?: boolean;
+  today: string;
   onImport: (items: ImportItem[]) => void;
 }) {
   const [items, setItems] = useState<ImportItem[]>([]);
@@ -64,7 +71,8 @@ export function ImportDialog({
           setProgress(0);
           // Yield first so the file name paints before a large export blocks the thread.
           await new Promise((resolve) => window.setTimeout(resolve, 0));
-          const found = await inspectFile(file, setProgress);
+          const parsed = await inspectFile(file, setProgress);
+          const found = source === "strong" ? parsed.map(item => item.kind === "records" && item.records.replaceWorkoutHistory ? item : ({ ...item, kind: "error" as const, include: false, message: "Choose a Strong CSV export." })) : parsed;
           setItems((current) => [...current, ...found]);
         }
       } finally {
@@ -117,12 +125,13 @@ export function ImportDialog({
   const total = useMemo(() => previewRecords(combineRecords(items)), [items]);
   const ready =
     items.some((item) => item.include && item.kind !== "error") &&
-    (total.nights > 0 || total.days > 0 || total.sets > 0 || total.labs > 0);
+    (total.nights > 0 || total.days > 0 || total.sets > 0 || total.labs > 0) &&
+    !items.some(item => item.include && item.kind === "records" && item.strongWeightUnit === null);
 
   return (
     <ModalFrame
-      title="Import health data"
-      subtitle="Read in this browser. Nothing is saved until you press Import."
+      title={source === "strong" ? "Update from Strong" : "Import health data"}
+      subtitle=""
       onClose={onClose}
     >
       <div
@@ -141,9 +150,11 @@ export function ImportDialog({
         <button type="button" className="button primary" onClick={() => input.current?.click()} disabled={pendingBatches > 0}>
           Choose files
         </button>
-        <small>Oura, Whoop, and Apple Health — zip, CSV, or JSON. Several files at once is fine.</small>
-        <input ref={input} hidden type="file" multiple accept={ACCEPT} onChange={onChoose} />
+        <small>{source === "strong" ? "Strong → Settings → Export data" : "ZIP · CSV · JSON · XML"}</small>
+        <input ref={input} hidden type="file" multiple accept={source === "strong" ? ".csv,text/csv" : ACCEPT} onChange={onChoose} />
       </div>
+
+      {demo && source === "strong" ? <button type="button" className="text-button demo-import" disabled={pendingBatches > 0} onClick={() => { setItems([]); addFiles([new File([demoStrongCsv(today)], "sample-strong.csv", { type: "text/csv" })]); }}>Load sample Strong export</button> : null}
 
       {busy ? (
         <div className="import-progress" role="status">
@@ -157,20 +168,20 @@ export function ImportDialog({
       <div className="guides">
         <button type="button" className="text-button" aria-expanded={showGuides} onClick={() => setShowGuides((value) => !value)}>
           <Icon name="info" />
-          Where do I find my export?
+          Export locations
         </button>
         {showGuides ? (
           <dl className="guide-list">
-            {guides.map((guide) => (
+            {guides.filter(guide => source !== "strong" || guide.name === "Strong").map((guide) => (
               <div key={guide.name}>
                 <dt>{guide.name}</dt>
                 <dd>{guide.steps}</dd>
               </div>
             ))}
-            <div>
+            {source !== "strong" ? <div>
               <dt>Anything else</dt>
-              <dd>Any CSV or JSON with one row per day. Set the columns yourself if they are not matched.</dd>
-            </div>
+              <dd>CSV or JSON · one row per day</dd>
+            </div> : null}
           </dl>
         ) : null}
       </div>
@@ -209,7 +220,7 @@ export function ImportDialog({
                     ) : (
                       <small>
                         {item.label} ·{" "}
-                        {(preview && describe(preview)) || "nothing recognized yet"}
+                        {(preview && describe(preview)) || "No records"}
                         {preview?.firstDate && preview.lastDate
                           ? ` · ${dateLabel(preview.firstDate, { month: "short", day: "numeric", year: "numeric" })} – ${dateLabel(preview.lastDate, { month: "short", day: "numeric", year: "numeric" })}`
                           : ""}
@@ -233,13 +244,14 @@ export function ImportDialog({
                   <p className="import-warning">
                     {[
                       ...(preview.warnings ?? []),
-                      preview.skipped ? `${summarise(preview.skipped, "row", "rows")} had no readable date and were left out.` : "",
+                      preview.skipped ? `${summarise(preview.skipped, "row", "rows")} skipped: unreadable date` : "",
                     ]
                       .filter(Boolean)
                       .join(" ")}
                   </p>
                 ) : null}
 
+                {item.kind === "records" && item.strongTable && item.strongWeightUnit !== undefined ? <label className="strong-units">Weight unit in Strong<select aria-label={`Weight unit for ${item.fileName}`} value={item.strongWeightUnit ?? ""} onChange={event => { const unit = event.target.value as "lb" | "kg"; if (!unit) return; setItems(current => current.map(entry => entry.id === item.id && entry.kind === "records" ? ({ ...entry, strongWeightUnit: unit, records: strongToRecords(item.strongTable!, unit) }) : entry)); }}><option value="">Choose unit</option><option value="lb">Pounds (lb)</option><option value="kg">Kilograms (kg)</option></select></label> : null}
                 {item.kind === "table" && isOpen ? (
                   <div className="column-map">
                     {item.mapping.map((column, index) => {
@@ -298,15 +310,14 @@ export function ImportDialog({
 
       {items.length ? (
         <Note icon="shield">
-          Health records merge field by field. A complete Strong export replaces prior lifting history so deleted or
-          renamed sets do not remain behind; the preview above shows that scope before you continue.
+          {items.some(item => item.include && item.kind === "records" && item.records.replaceWorkoutHistory) ? "Complete Strong export · replaces workout history" : "Merge health records"}
         </Note>
       ) : null}
 
       <div className="modal-actions">
         <span className="import-total">
           {ready
-            ? `Ready to import ${describe(total)}.`
+            ? describe(total)
             : ""}
         </span>
         <button type="button" className="button secondary" onClick={onClose}>
@@ -314,7 +325,7 @@ export function ImportDialog({
         </button>
         <button type="button" className="button primary" disabled={!ready || pendingBatches > 0} onClick={() => onImport(items)}>
           <Icon name="upload" />
-          Import
+          {source === "strong" ? "Import & update plan" : "Import"}
         </button>
       </div>
     </ModalFrame>

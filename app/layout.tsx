@@ -1,5 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import "./field-record.css";
+import "./baseline.css";
 import { ServiceWorker } from "./ui/service-worker";
 
 // Applies a saved theme before first paint so an explicit dark choice never
@@ -9,7 +11,7 @@ const themeBootstrap = `try{var d=new URLSearchParams(location.search).get("demo
 export const metadata: Metadata = {
   metadataBase: new URL("https://baseline.bardia-faghihvaseghi.chatgpt.site"),
   title: "Baseline",
-  description: "A private record of sleep, training, and the commitments that matter.",
+  description: "Personal health record.",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: "/favicon.svg",
@@ -25,15 +27,15 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "Baseline",
-    description: "Sleep, training, and the signals that matter.",
+    description: "Personal health record.",
     type: "website",
-    images: [{ url: "/og.png", width: 1200, height: 630, alt: "Baseline" }],
+    images: [{ url: "/icon-512.png", width: 512, height: 512, alt: "Baseline" }],
   },
   twitter: {
-    card: "summary_large_image",
+    card: "summary",
     title: "Baseline",
-    description: "Sleep, training, and the signals that matter.",
-    images: ["/og.png"],
+    description: "Personal health record.",
+    images: ["/icon-512.png"],
   },
 };
 
@@ -44,8 +46,8 @@ export const viewport: Viewport = {
   width: "device-width, initial-scale=1, viewport-fit=cover",
   initialScale: undefined,
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f5f7f3" },
-    { media: "(prefers-color-scheme: dark)", color: "#0f1211" },
+    { media: "(prefers-color-scheme: light)", color: "#eff3f5" },
+    { media: "(prefers-color-scheme: dark)", color: "#102330" },
   ],
 };
 

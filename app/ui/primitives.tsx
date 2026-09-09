@@ -1,8 +1,20 @@
 "use client";
 
-import { ReactNode, useEffect, useId, useRef, useState } from "react";
+import { type FormEvent, ReactNode, useEffect, useId, useRef, useState } from "react";
 import { Icon } from "./icons";
 import { Period } from "./types";
+
+export function RecordHeading({ title, detail, action }: { title: string; detail?: string; action?: ReactNode }) {
+  return (
+    <header className="record-heading">
+      <div>
+        <h1 tabIndex={-1}>{title}</h1>
+        {detail ? <p>{detail}</p> : null}
+      </div>
+      {action ? <div className="record-heading-action">{action}</div> : null}
+    </header>
+  );
+}
 
 export function PageHeading({
   eyebrow,
@@ -89,14 +101,14 @@ export function RecordPill({ label, value }: { label: string; value: string }) {
   );
 }
 
-export function Empty({ icon, title, body, action }: { icon: string; title: string; body: string; action?: ReactNode }) {
+export function Empty({ icon, title, body, action }: { icon: string; title: string; body?: string; action?: ReactNode }) {
   return (
     <div className="empty">
       <span>
         <Icon name={icon} />
       </span>
       <h3>{title}</h3>
-      <p>{body}</p>
+      {body ? <p>{body}</p> : null}
       {action}
     </div>
   );
@@ -216,7 +228,7 @@ export function ModalFrame({
   children,
 }: {
   title: string;
-  subtitle: string;
+  subtitle?: string;
   onClose: () => void;
   children: ReactNode;
 }) {
@@ -251,9 +263,9 @@ export function ModalFrame({
       const focusable = [...node.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
         (element) => element.offsetParent !== null || element === document.activeElement,
       );
-      if (!focusable.length) return;
+      if (!focusable.length) { event.preventDefault(); return; }
       const edge = event.shiftKey ? focusable[0] : focusable.at(-1)!;
-      if (document.activeElement === edge || !node.contains(document.activeElement)) {
+      if (document.activeElement === node || document.activeElement === edge || !node.contains(document.activeElement)) {
         event.preventDefault();
         (event.shiftKey ? focusable.at(-1)! : focusable[0]).focus();
       }
@@ -278,7 +290,7 @@ export function ModalFrame({
         <div className="modal-head">
           <div>
             <h2 id={headingId}>{title}</h2>
-            <p>{subtitle}</p>
+            {subtitle ? <p>{subtitle}</p> : null}
           </div>
           <button type="button" className="icon-button" onClick={onClose} aria-label="Close">
             <Icon name="close" />
@@ -324,7 +336,7 @@ export function Field({
           max={max}
           step={step}
           {...(controlled
-            ? { value: value ?? "", onChange: (event) => onChange(event.target.value) }
+            ? { value: value ?? "", onInput: (event) => onChange(event.currentTarget.value), onChange: (event) => onChange(event.target.value) }
             : { defaultValue: value ?? "" })}
         />
         {suffix ? <small>{suffix}</small> : null}
@@ -365,7 +377,7 @@ export function TextField({
         required={required}
         max={max}
         {...(controlled
-          ? { value: value ?? "", onChange: (event) => onChange(event.target.value) }
+          ? { value: value ?? "", onChange: (event) => onChange(event.target.value), ...(type === "time" ? { onInput: (event: FormEvent<HTMLInputElement>) => onChange(event.currentTarget.value) } : {}) }
           : { defaultValue: value ?? "" })}
       />
     </div>
@@ -437,6 +449,31 @@ export function NumberSetting({
   );
 }
 
+export function DateSetting({
+  label,
+  detail,
+  value,
+  max,
+  onChange,
+}: {
+  label: string;
+  detail: string;
+  value: string;
+  max?: string;
+  onChange: (value: string) => void;
+}) {
+  const id = useId();
+  return (
+    <div className="setting-row">
+      <label htmlFor={id}>
+        <b>{label}</b>
+        {detail ? <small>{detail}</small> : null}
+      </label>
+      <input id={id} type="date" value={value} max={max} onChange={(event) => onChange(event.target.value)} />
+    </div>
+  );
+}
+
 export function SelectSetting({
   label,
   detail,
@@ -455,7 +492,7 @@ export function SelectSetting({
     <div className="setting-row">
       <label htmlFor={id}>
         <b>{label}</b>
-        <small>{detail}</small>
+        {detail ? <small>{detail}</small> : null}
       </label>
       <select id={id} value={value} onChange={(event) => onChange(event.target.value)}>
         {options.map((option) => (

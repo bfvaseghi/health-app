@@ -36,13 +36,13 @@ export async function readZipDirectory(blob: Blob): Promise<ZipEntry[]> {
       break;
     }
   }
-  if (eocd === -1) throw new ZipError("That file is not a readable zip archive.");
+  if (eocd === -1) throw new ZipError("Invalid ZIP archive.");
 
   const count = tail.getUint16(eocd + 10, true);
   const directorySize = tail.getUint32(eocd + 12, true);
   const directoryOffset = tail.getUint32(eocd + 16, true);
   if (directoryOffset === UNKNOWN_32 || directorySize === UNKNOWN_32) {
-    throw new ZipError("This zip uses the zip64 format. Unzip it first and add the files inside.");
+    throw new ZipError("ZIP64 unsupported. Import extracted files.");
   }
 
   const directory = await view(blob, directoryOffset, directoryOffset + directorySize);
@@ -74,14 +74,14 @@ export async function readZipDirectory(blob: Blob): Promise<ZipEntry[]> {
 
 export async function openZipEntry(blob: Blob, entry: ZipEntry): Promise<ReadableStream<Uint8Array>> {
   if (entry.method !== 0 && entry.method !== 8) {
-    throw new ZipError(`“${entry.name}” uses a compression method this reader does not support.`);
+    throw new ZipError(`${entry.name}: unsupported compression`);
   }
   if (entry.compressedSize === UNKNOWN_32) {
-    throw new ZipError("This zip uses the zip64 format. Unzip it first and add the files inside.");
+    throw new ZipError("ZIP64 unsupported. Import extracted files.");
   }
 
   const header = await view(blob, entry.headerOffset, entry.headerOffset + 30);
-  if (header.getUint32(0, true) !== LOCAL_SIGNATURE) throw new ZipError("This zip archive is damaged.");
+  if (header.getUint32(0, true) !== LOCAL_SIGNATURE) throw new ZipError("Damaged ZIP archive.");
   const start =
     entry.headerOffset + 30 + header.getUint16(26, true) + header.getUint16(28, true);
 

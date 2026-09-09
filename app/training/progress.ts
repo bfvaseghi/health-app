@@ -13,7 +13,7 @@
  */
 
 import type { HealthState, WorkoutSet } from "../health-model";
-import { addDays, estimateOneRepMax, setVolume, todayLocal } from "../health-model";
+import { addDays, compareWorkoutStarts, estimateOneRepMax, setVolume, todayLocal } from "../health-model";
 
 /**
  * Sessions a lift needs before a direction is claimed for it. Two points make a
@@ -47,6 +47,8 @@ export type LiftTrend = {
   exercise: string;
   /** Reps, for a movement that never carries weight; otherwise an estimated max. */
   bodyweight: boolean;
+  assisted: boolean;
+  comparisonReps: number | null;
   /** Every session in the window, oldest first — the trajectory itself. */
   points: LiftPoint[];
   sessions: number;
@@ -172,16 +174,30 @@ function liftTrends(sets: WorkoutSet[], start: string, end: string): LiftTrend[]
 
   const trends: LiftTrend[] = [];
   for (const [exercise, entries] of byExercise) {
-    const bodyweight = entries.every((entry) => entry.weightLb === null || entry.weightLb === 0);
+    const assisted = entries.some(entry => entry.loadMode === "assisted");
+    // Unlike weights lifted, assistance improves as it falls. Compare the
+    // same rep count without inventing historical bodyweight measurements.
+    if (assisted && entries.some(entry => entry.loadMode !== "assisted")) continue;
+    const bodyweight = !assisted && entries.every((entry) => entry.weightLb === null || entry.weightLb === 0);
 
     // One point a session, not one a set: a session is the unit a lift is
     // trained in, and its best set is what it was worth that day.
-    const sessions = [...new Set(entries.map((entry) => entry.startedAt))].sort();
+    const sessions = [...new Set(entries.map((entry) => entry.startedAt))].sort(compareWorkoutStarts);
+    let comparisonReps: number | null = null;
+    if (assisted) {
+      const counts = new Map<number, number>();
+      for (const entry of entries.filter(entry => entry.startedAt === sessions.at(-1) && typeof entry.assistanceLb === "number" && (entry.reps ?? 0) > 0)) {
+        counts.set(entry.reps!, (counts.get(entry.reps!) ?? 0) + 1);
+      }
+      comparisonReps = [...counts].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0] ?? null;
+      if (comparisonReps === null) continue;
+    }
     const points: LiftPoint[] = [];
     for (const startedAt of sessions) {
       const group = entries.filter((entry) => entry.startedAt === startedAt);
-      const value = bestEffort(group, bodyweight);
-      if (value === null || value <= 0) continue;
+      const assistance = group.filter(entry => entry.reps === comparisonReps && typeof entry.assistanceLb === "number" && entry.assistanceLb >= 0).map(entry => entry.assistanceLb!);
+      const value = assisted ? assistance.length ? Math.min(...assistance) : null : bestEffort(group, bodyweight);
+      if (value === null || value < 0 || (!assisted && value === 0)) continue;
       points.push({ date: group[0].date, value: round(value) as number });
     }
     if (points.length < MIN_SESSIONS) continue;
@@ -189,17 +205,19 @@ function liftTrends(sets: WorkoutSet[], start: string, end: string): LiftTrend[]
     const values = points.map((point) => point.value);
     const meanY = values.reduce((total, value) => total + value, 0) / values.length;
     const span = Math.max(1, daysBetween(points[0].date, points.at(-1)?.date as string));
-    const perDay = slopePerDay(points);
+    const perDay = slopePerDay(points) * (assisted ? -1 : 1);
     // Relative to the average rather than to the first session, so a low first
     // day cannot turn a small absolute gain into a huge percentage.
-    const percentPerWeek = round((perDay * 7 * 100) / meanY, 2) as number;
-    const percent = round((perDay * span * 100) / meanY) as number;
-    const best = Math.max(...values);
+    const percentPerWeek = meanY ? round((perDay * 7 * 100) / meanY, 2) as number : 0;
+    const percent = meanY ? round((perDay * span * 100) / meanY) as number : 0;
+    const best = assisted ? Math.min(...values) : Math.max(...values);
     const peak = values.lastIndexOf(best);
 
     trends.push({
       exercise,
       bodyweight,
+      assisted,
+      comparisonReps,
       points,
       sessions: points.length,
       first: values[0],
@@ -241,7 +259,36 @@ export function buildProgress(state: HealthState, asOf = todayLocal(), weeks = 1
     lifts,
     rising: lifts.filter((lift) => lift.direction === "up").length,
     falling: lifts.filter((lift) => lift.direction === "down").length,
-    trendPercent: round(median(lifts.map((lift) => lift.percent))),
+    trendPercent: round(median(lifts.filter(lift => !lift.assisted).map((lift) => lift.percent))),
     volume: volumeChange(state.workoutSets, start, end, halfway(start, end)),
   };
+}
+
+/**
+ * Strength as one line: the typical lift, week by week, indexed to the first
+ * week of the window. Each lift contributes its best estimated max in each
+ * week it was trained, relative to its own first week; the point is the median
+ * of those ratios across lifts, so one movement cannot carry or sink the line.
+ * Bodyweight movements index on reps instead. Weeks with no training are null.
+ */
+export function strengthIndex(state: HealthState, asOf = todayLocal(), weeks = 12): Array<{ date: string; value: number | null }> {
+  const span = Math.max(4, Math.trunc(weeks));
+  const end = lastRecorded(state, asOf);
+  const start = addDays(end, -(span * 7 - 1));
+  const lifts = liftTrends(state.workoutSets, start, end);
+
+  return Array.from({ length: span }, (_, index) => {
+    const weekEnd = addDays(start, index * 7 + 6);
+    const weekStart = addDays(weekEnd, -6);
+    const ratios: number[] = [];
+    for (const lift of lifts) {
+      if (lift.assisted) continue;
+      const base = lift.points[0]?.value;
+      if (!base) continue;
+      const inWeek = lift.points.filter((point) => point.date >= weekStart && point.date <= weekEnd);
+      if (!inWeek.length) continue;
+      ratios.push((Math.max(...inWeek.map((point) => point.value)) / base) * 100);
+    }
+    return { date: weekEnd, value: round(median(ratios)) };
+  });
 }

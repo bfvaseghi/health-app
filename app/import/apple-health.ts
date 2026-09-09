@@ -10,11 +10,12 @@ import { emptyRecords } from "./mapping";
  */
 
 const SLEEP = "HKCategoryTypeIdentifierSleepAnalysis";
-const QUANTITIES: Record<string, "steps" | "weight" | "restingHeartRate" | "hrv"> = {
+const QUANTITIES: Record<string, "steps" | "weight" | "restingHeartRate" | "hrv" | "water"> = {
   HKQuantityTypeIdentifierStepCount: "steps",
   HKQuantityTypeIdentifierBodyMass: "weight",
   HKQuantityTypeIdentifierRestingHeartRate: "restingHeartRate",
   HKQuantityTypeIdentifierHeartRateVariabilitySDNN: "hrv",
+  HKQuantityTypeIdentifierDietaryWater: "water",
 };
 
 type Stamp = { date: string; clock: string; epoch: number };
@@ -43,6 +44,7 @@ type Interval = {
 type Accumulator = {
   sleep: Interval[];
   steps: Map<string, number>;
+  water: Map<string, number>;
   weight: Map<string, { value: number; epoch: number }>;
   restingHeartRate: Map<string, number[]>;
   hrv: Map<string, number[]>;
@@ -92,6 +94,9 @@ function handleRecord(attributes: Map<string, string>, accumulator: Accumulator)
 
   if (quantity === "steps") {
     accumulator.steps.set(start.date, (accumulator.steps.get(start.date) ?? 0) + value);
+  } else if (quantity === "water") {
+    const factor = /^ml$/i.test(unit) ? 1 : /^l$/i.test(unit) ? 1000 : /^fl_oz_us$/i.test(unit) ? 29.5735295625 : null;
+    if (factor !== null && value >= 0) accumulator.water.set(start.date, (accumulator.water.get(start.date) ?? 0) + value * factor);
   } else if (quantity === "weight") {
     const pounds = /kg/i.test(unit) ? value * 2.204_62 : value;
     const current = accumulator.weight.get(start.date);
@@ -205,6 +210,7 @@ function summarize(accumulator: Accumulator): ParsedRecords {
 
   const dates = new Set([
     ...accumulator.steps.keys(),
+    ...accumulator.water.keys(),
     ...accumulator.weight.keys(),
     ...accumulator.restingHeartRate.keys(),
     ...accumulator.hrv.keys(),
@@ -217,6 +223,7 @@ function summarize(accumulator: Accumulator): ParsedRecords {
     records.dailyEntries.push({
       date,
       steps: steps === undefined ? null : Math.round(steps),
+      waterMl: accumulator.water.has(date) ? Math.round(accumulator.water.get(date)!) : null,
       weightLb: accumulator.weight.get(date)?.value ?? null,
       restingHeartRate: mean(accumulator.restingHeartRate.get(date)),
       hrvMs: mean(accumulator.hrv.get(date)),
@@ -262,6 +269,7 @@ export async function parseAppleHealthXml(
   const accumulator: Accumulator = {
     sleep: [],
     steps: new Map(),
+    water: new Map(),
     weight: new Map(),
     restingHeartRate: new Map(),
     hrv: new Map(),

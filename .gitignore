@@ -50,3 +50,5 @@ next-env.d.ts
 /*.xml
 /*.zip
 /*backup*.json
+
+/public/baseline-source.zip

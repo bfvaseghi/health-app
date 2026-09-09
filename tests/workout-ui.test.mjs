@@ -1,0 +1,137 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { demoHealthState } from "../app/demo-state.ts";
+import { addDays, emptyHealthState } from "../app/health-model.ts";
+import { applyImport, inspectFile } from "../app/import/index.ts";
+import { currentTrainingWeek, nextSession, weekOutlook, weekStart } from "../app/training/coach.ts";
+import { MUSCLES } from "../app/training/muscles.ts";
+import { FitnessView } from "../app/ui/fitness-view.tsx";
+import { WorkoutPrescription } from "../app/ui/workout-prescription.tsx";
+
+const TODAY = "2026-09-08";
+const noop = () => {};
+const plain = html => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+const view = (state, tab = "coach", today = TODAY, startAtWorkout = true) => renderToStaticMarkup(createElement(FitnessView, {
+  state, editableState: state, today, tab, startAtWorkout, onTab: noop, open: noop,
+  onAddPhoto: async () => {}, onUpdatePhoto: noop, onDeletePhoto: noop, onDeleteDay: noop, onGoals: noop, onNotice: noop,
+}));
+
+test("the workout step gives compact targets with no separate Train or History tab", () => {
+  const state = demoHealthState(TODAY);
+  const html = view(state);
+  assert.match(html, /role="tab"[^>]*>Muscles<\/button>/);
+  assert.doesNotMatch(html, /role="tab"[^>]*>History<\/button>/);
+  assert.match(html, /aria-label="Next workout plan"/);
+  assert.match(plain(html), /Next workout Full body B/);
+  assert.match(html, /aria-label="Workout steps"/);
+  assert.doesNotMatch(html, />Train<|Step 3/);
+  assert.match(plain(html), /Copy for Strong/);
+  assert.match(plain(html), /Import completed workout/);
+  assert.match(plain(html), /Your targets/);
+  assert.doesNotMatch(html, /class="lift-evidence"/, "past evidence stays behind the exercise control");
+  assert.match(html, /Same weight/);
+  assert.doesNotMatch(html, /Original plan|View what you logged|Nothing else scheduled/);
+  assert.doesNotMatch(html, /<option[^>]*>[^<]*Full body A/,
+    "an imported match cannot be selected as fresh workout instructions");
+});
+
+test("Muscles immediately renders all eleven groups and distinguishes logged from planned sets", () => {
+  const state = demoHealthState(TODAY);
+  const html = view(state, "muscles");
+  assert.match(html, /aria-label="Weekly muscle group graph"/);
+  assert.ok(html.indexOf('class="muscle-chart-list"') < html.indexOf("<details"), "the graph is not in a disclosure");
+  const outlook = weekOutlook(currentTrainingWeek(state, TODAY).plan, state, TODAY);
+  for (const row of outlook) {
+    assert.ok(html.includes(`aria-label="${row.label}: ${row.done} logged plus ${row.coming} planned equals ${row.projected} sets. Target ${row.target.min} to ${row.target.max}.`), row.label);
+  }
+  assert.equal((html.match(/class="muscle-chart-row"/g) ?? []).length, MUSCLES.length);
+  assert.doesNotMatch(html, /core-coverage-summary/);
+  assert.match(html, /Two-workout base/);
+  assert.match(html, /Below target:/, "optional work must not mask a gap in the two-workout base");
+  assert.doesNotMatch(html, /role="tab"[^>]*>History<\/button>/);
+});
+
+function csv(sets) {
+  const cell = value => `"${String(value ?? "").replaceAll('"', '""')}"`;
+  const rows = [["Date", "Workout Name", "Duration", "Exercise Name", "Set Order", "Weight (lb)", "Reps", "Distance", "Seconds", "RPE"]];
+  for (const set of sets) {
+    rows.push([set.startedAt.replace("T", " "), set.workoutName, "75m", set.exercise, set.setNumber, set.weightLb, set.reps, "", "", ""]);
+    if (set.restSeconds !== null) rows.push([set.startedAt.replace("T", " "), set.workoutName, "75m", set.exercise, "Rest Timer", "", "", "", set.restSeconds, ""]);
+  }
+  return rows.map(row => row.map(cell).join(",")).join("\n");
+}
+
+test("a real Strong CSV import advances the workout and carries omitted core into the visible next plan", async () => {
+  const monday = weekStart(TODAY);
+  for (const visits of [2, 3, 4]) {
+    let state = demoHealthState(monday);
+    state.workoutSets = state.workoutSets.filter(set => set.date < monday);
+    state.goals.trainingDays = [visits, visits, visits, visits];
+    const before = JSON.stringify(state);
+    const first = nextSession(currentTrainingWeek(state, monday).plan, state, monday).session;
+    assert.equal(first.tier, "base");
+    const finished = first.exercises.flatMap(lift => Array.from({ length: lift.sets - Number(lift.muscle === "core") }, (_, index) => ({
+      date: monday, startedAt: `${monday}T18:00:00`, workoutName: first.name,
+      exercise: lift.exercise, setNumber: index + 1, weightLb: lift.weightLb,
+      reps: Number(lift.repRange.split("–")[0]), restSeconds: lift.restSeconds,
+    })));
+    const items = await inspectFile(new File([csv([...state.workoutSets, ...finished])], "fictional-strong.csv", { type: "text/csv" }));
+    const imported = applyImport(state, items);
+    assert.equal(JSON.stringify(state), before, "import does not mutate its source state");
+    assert.deepEqual(imported.thoughtLoops, state.thoughtLoops, "workout imports preserve unrelated records");
+    const date = addDays(monday, 3);
+    const second = nextSession(currentTrainingWeek(imported, date).plan, imported, date).session;
+    assert.equal(second.tier, "base");
+    assert.notEqual(second.name, first.name);
+    const coreSets = second.exercises.filter(lift => lift.muscle === "core").reduce((sum, lift) => sum + lift.sets, 0);
+    assert.equal(coreSets, 5, "the second base replaces the omitted core set");
+    const html = view(imported, "coach", date);
+    assert.match(plain(html), /Next workout Full body B/);
+    assert.doesNotMatch(html, /core-divider|workout-part/);
+    for (const lift of second.exercises.filter(lift => lift.muscle === "core")) {
+      assert.ok(plain(html).includes(lift.exercise.replace(/\s*\([^)]+\)$/, "")), "core exercises remain in the main workout");
+    }
+    assert.doesNotMatch(html, /<option[^>]*>[^<]*Full body A/);
+    const graph = view(imported, "muscles", date);
+    assert.match(graph, /aria-label="Core: 3 logged plus/);
+  }
+});
+
+test("exercise directions distinguish ordinary weight, assistance, bodyweight and missing data", () => {
+  const state = demoHealthState(TODAY);
+  const exercise = nextSession(currentTrainingWeek(state, TODAY).plan, state, TODAY).session.exercises[0];
+  const render = lift => plain(renderToStaticMarkup(createElement(WorkoutPrescription, { exercise: lift, showDetails: true })));
+  const lift = { ...exercise, exercise: "Bench Press (Barbell)", bodyweight: false, weightLb: 105, assistanceLb: null,
+    adjustment: { ...exercise.adjustment, action: "increase", previousLoad: 100, previousReps: [10, 10], previousRestSeconds: 120, reason: "Rep target met" } };
+  assert.match(render(lift), /Last logged.*100 lb.*10 \/ 10 reps.*Next workout.*105 lb.*Increase/);
+  assert.match(render(lift), /Strong timer 2:00 → next/);
+  assert.doesNotMatch(render(lift), /Rest was|you rested/);
+  assert.match(render({ ...lift, exercise: "Assisted Pull Up", weightLb: null, assistanceLb: 0 }), /Next workout.*0 lb assistance.*Less assistance/);
+  assert.match(render({ ...lift, bodyweight: true, weightLb: null, adjustment: { ...lift.adjustment, action: "keep", previousLoad: 0 } }), /Last logged.*Bodyweight.*Next workout.*Bodyweight/);
+  const missing = render({ ...lift, weightLb: null, adjustment: { ...lift.adjustment, action: "unavailable", previousLoad: null, previousReps: [] } });
+  assert.match(missing, /Load unavailable/);
+  assert.doesNotMatch(missing, /null lb|Keep 0/);
+});
+
+test("missing imports show an actionable first step and no invented workout", () => {
+  const state = emptyHealthState(new Date(`${TODAY}T12:00:00Z`));
+  const html = view(state);
+  assert.match(html, /Start with your workout history/);
+  assert.match(html, /Import Strong export/);
+  assert.doesNotMatch(html, /class="lift-summary"/);
+});
+
+
+test("the default plan screen guides week setup before showing exercise instructions", () => {
+  const state = demoHealthState(TODAY);
+  const html = view(state, "coach", TODAY, false);
+  assert.match(plain(html), /Set your week/);
+  assert.match(html, /aria-current="step"[^>]*><span>1/);
+  assert.match(plain(html), /Show my workout/);
+  assert.match(plain(html), /Last workout imported/);
+  assert.match(plain(html), /Muscle coverage/);
+  assert.doesNotMatch(html, /class="lift-summary"|Copy for Strong/);
+  assert.equal((html.match(/class="button primary"/g) ?? []).length, 1);
+});

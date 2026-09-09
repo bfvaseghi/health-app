@@ -1,127 +1,147 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { HealthState, buildLabTrends, dateLabel, filterLabTrends, labRangeStatus } from "../health-model";
+import { HealthState, buildLabTrends, dateLabel, filterLabTrends, labAskReason, labRangeStatus } from "../health-model";
 import { Sparkline } from "./charts";
 import { Icon } from "./icons";
-import { ConfirmButton, Empty, PageHeading } from "./primitives";
+import { ConfirmButton, RecordHeading } from "./primitives";
 import { Modal } from "./types";
 
 export function LabsView({
   state,
   open,
   onDeleteLab,
+  onAskLab,
 }: {
   state: HealthState;
   open: (modal: Modal) => void;
   onDeleteLab: (id: string) => void;
+  onAskLab: (id: string, ask: boolean) => void;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "flagged">("all");
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const trends = useMemo(() => buildLabTrends(state.labResults), [state.labResults]);
-  const flagged = trends.filter((trend) => trend.status === "low" || trend.status === "high");
+  const flagged = trends.filter((trend) => labAskReason(trend) !== null);
   const shown = useMemo(
-    () => filterLabTrends(trends, query).filter((trend) => filter === "all" || trend.status === "low" || trend.status === "high"),
+    () => filterLabTrends(trends, query).filter((trend) => filter === "all" || labAskReason(trend) !== null),
     [trends, query, filter],
   );
 
   return (
-    <div className="page">
-      <PageHeading
-        title="Labs"
-        body={trends.length ? `${flagged.length} flagged · ${trends.length - flagged.length} within range or unrated` : "Results stay grouped by test and unit."}
-        action={
-          <button type="button" className="button primary" onClick={() => open({ kind: "lab" })}>
-            <Icon name="plus" />
-            Add result
-          </button>
-        }
-      />
+    <div className="page tl-page">
+      <RecordHeading title="Labs" detail={trends.length ? `${trends.length} ${trends.length === 1 ? "marker" : "markers"} in your record` : "Your test results"} action={<button type="button" className="text-button" onClick={() => open({ kind: "lab" })}>
+          <Icon name="plus" /> Add a result
+        </button>} />
+      <h2 className="tl-hero lab-status-heading">
+        {!trends.length
+          ? "No results yet"
+          : flagged.length === 0
+            ? "No flagged results"
+            : flagged.length === 1
+              ? "1 flagged result"
+              : `${flagged.length} flagged results`}
+      </h2>
+      <p className="tl-lede">
+        {!trends.length
+          ? ""
+          : flagged.length
+            ? `${flagged.map((trend) => `${trend.name} ${labAskReason(trend) === "outside range" ? trend.status : "flagged"}`).join(" · ")} · latest ${dateLabel(
+                [...trends].sort((a, b) => b.latest.date.localeCompare(a.latest.date))[0].latest.date,
+                { month: "long", day: "numeric", year: "numeric" },
+              )}`
+            : `${trends.length - flagged.length} within range or unrated · latest ${dateLabel(
+                [...trends].sort((a, b) => b.latest.date.localeCompare(a.latest.date))[0].latest.date,
+                { month: "long", day: "numeric", year: "numeric" },
+              )}`}
+      </p>
 
-      <section className="panel wide-panel">
-        <div className="panel-head wrap">
-          <div>
-            <h2>Results</h2>
-          </div>
+      <section className="tl-section record-sheet" aria-labelledby="labs-results-title">
+        <div className="tl-section-head">
+          <h2 className="tl-caps" id="labs-results-title" style={{ margin: 0 }}>Results</h2>
           {trends.length ? (
-            <div className="search-field">
-              <Icon name="search" />
-              <input
-                type="search"
-                value={query}
-                placeholder="Filter by test name"
-                aria-label="Filter lab results by test name"
-                onChange={(event) => setQuery(event.target.value)}
-              />
+            <div className="tl-tabs" role="group" aria-label="Filter lab status">
+              <button type="button" className={filter === "all" ? "active" : ""} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>
+                {`All ${trends.length}`}
+              </button>
+              <button type="button" className={filter === "flagged" ? "active" : ""} aria-pressed={filter === "flagged"} onClick={() => setFilter("flagged")}>
+                {`Flagged ${flagged.length}`}
+              </button>
             </div>
           ) : null}
         </div>
 
         {trends.length ? (
-          <div className="lab-filter-row" role="group" aria-label="Filter lab status">
-            <button type="button" className={filter === "all" ? "chip primary" : "chip"} aria-pressed={filter === "all"} onClick={() => setFilter("all")}>All {trends.length}</button>
-            <button type="button" className={filter === "flagged" ? "chip primary" : "chip"} aria-pressed={filter === "flagged"} onClick={() => setFilter("flagged")}>Flagged {flagged.length}</button>
+          <div className="search-field tl-search">
+            <Icon name="search" />
+            <input
+              type="search"
+              value={query}
+              placeholder="Filter by test name"
+              aria-label="Filter lab results by test name"
+              onChange={(event) => setQuery(event.target.value)}
+            />
           </div>
         ) : null}
 
         {trends.length ? (
           shown.length ? (
-            <ul className="record-list">
+            <ul className="tl-list">
               {shown.map((trend) => {
                 const isOpen = expanded === trend.key;
                 const history = [...trend.results].reverse();
+                const flaggedTrend = trend.status === "low" || trend.status === "high";
+                const reference =
+                  trend.latest.referenceLow === null && trend.latest.referenceHigh === null
+                    ? "no range entered"
+                    : `ref ${trend.latest.referenceLow ?? "—"}\u2011${trend.latest.referenceHigh ?? "—"}`;
                 return (
-                  <li key={trend.key} className="lab-group">
-                    <div className="record-row lab-row">
-                      <div className="lab-name">
+                  <li key={trend.key} className="tl-lab">
+                    <div className="tl-row is-static">
+                      <span className="tl-row-copy">
                         <b>{trend.name}</b>
                         <small>
                           {trend.results.length === 1
-                            ? `Measured ${dateLabel(trend.latest.date, { month: "short", day: "numeric", year: "numeric" })}`
-                            : `${trend.results.length} results · latest ${dateLabel(trend.latest.date, {
-                                month: "short",
-                                day: "numeric",
-                                year: "numeric",
-                              })}`}
+                            ? `measured ${dateLabel(trend.latest.date, { month: "short", day: "numeric", year: "numeric" })}`
+                            : `${trend.results.length} results · latest ${dateLabel(trend.latest.date, { month: "short", day: "numeric", year: "numeric" })}`}
+                          {` · ${reference}`}
+                          {trend.change === null ? "" : ` · ${trend.change > 0 ? "+" : ""}${Number(trend.change.toFixed(2))} since last`}
                         </small>
-                      </div>
-                      <div>
-                        <small>Result</small>
-                        <b>{trend.latest.value === null ? "—" : `${trend.latest.value} ${trend.latest.unit}`}</b>
-                      </div>
-                      <div>
-                        <small>Reference</small>
-                        <b>
-                          {trend.latest.referenceLow === null && trend.latest.referenceHigh === null
-                            ? "Not entered"
-                            : `${trend.latest.referenceLow ?? "—"} – ${trend.latest.referenceHigh ?? "—"}`}
-                        </b>
-                      </div>
-                      <div>
-                        <small>Change</small>
-                        <b>
-                          {trend.change === null
-                            ? "—"
-                            : `${trend.change > 0 ? "+" : ""}${Number(trend.change.toFixed(2))} ${trend.unit}`}
-                        </b>
-                      </div>
-                      <div className="spark-slot">
+                      </span>
+                      <span className="spark-slot">
                         <Sparkline
                           values={history
                             .map((result) => result.value)
                             .filter((value): value is number => value !== null)}
                           label={`${trend.name} history`}
                         />
-                      </div>
-                      <span className={`range-badge ${trend.status}`}>{trend.status}</span>
+                      </span>
+                      <span className={flaggedTrend ? "tl-row-end down" : "tl-row-end"}>
+                        {trend.latest.value === null ? "—" : trend.latest.value}
+                        {trend.latest.value === null ? null : <small>{trend.latest.unit}</small>}
+                      </span>
+                    </div>
+                    <div className="tl-lab-foot">
+                      <span className="tl-lab-status">
+                        <span className={`range-badge ${trend.status}`}>{trend.status}</span>
+                        <button
+                          type="button"
+                          className={trend.latest.ask ? "chip primary small" : "chip small"}
+                          aria-pressed={trend.latest.ask}
+                          onClick={() => onAskLab(trend.latest.id, !trend.latest.ask)}
+                        >
+                          <Icon name="summary" />
+                          {trend.latest.ask ? "Flagged" : "Flag"}
+                        </button>
+                      </span>
                       <div className="row-actions">
                         {trend.results.length > 1 ? (
                           <button
                             type="button"
                             className="row-action"
                             aria-expanded={isOpen}
+                            aria-label={isOpen ? `Hide ${trend.name} history` : `Show ${trend.name} history`}
                             onClick={() => setExpanded((current) => (current === trend.key ? null : trend.key))}
                           >
                             <Icon name="history" />
@@ -145,80 +165,54 @@ export function LabsView({
                     </div>
 
                     {isOpen ? (
-                      <div className="table-wrap lab-history">
-                        <table>
-                          <caption>{`${trend.name} history`}</caption>
-                          <thead>
-                            <tr>
-                              <th scope="col">Date</th>
-                              <th scope="col">Result</th>
-                              <th scope="col">Reference</th>
-                              <th scope="col">Status</th>
-                              <th scope="col">
-                                <span className="visually-hidden">Actions</span>
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {trend.results.map((result) => (
-                              <tr key={result.id}>
-                                <th scope="row">
-                                  {dateLabel(result.date, { month: "short", day: "numeric", year: "numeric" })}
-                                </th>
-                                <td>{result.value === null ? "—" : `${result.value} ${result.unit}`}</td>
-                                <td>
+                      <ul className="tl-rows tl-list tl-lab-history" aria-label={`${trend.name} history`}>
+                        {trend.results.map((result) => {
+                          const status = labRangeStatus(result);
+                          return (
+                            <li key={result.id} className="tl-row is-static">
+                              <span className="tl-row-copy">
+                                <b className="tl-plain">{dateLabel(result.date, { month: "short", day: "numeric", year: "numeric" })}</b>
+                                <small>
                                   {result.referenceLow === null && result.referenceHigh === null
-                                    ? "Not entered"
-                                    : `${result.referenceLow ?? "—"} – ${result.referenceHigh ?? "—"}`}
-                                </td>
-                                <td>
-                                  <span className={`range-badge ${labRangeStatus(result)}`}>
-                                    {labRangeStatus(result)}
-                                  </span>
-                                </td>
-                                <td>
-                                  <div className="row-actions">
-                                    <button
-                                      type="button"
-                                      className="row-action"
-                                      onClick={() => open({ kind: "lab", id: result.id })}
-                                      aria-label={`Edit ${trend.name} from ${result.date}`}
-                                    >
-                                      <Icon name="pencil" />
-                                      <span>Edit</span>
-                                    </button>
-                                    <ConfirmButton
-                                      label={`Delete ${trend.name} from ${result.date}`}
-                                      onConfirm={() => onDeleteLab(result.id)}
-                                    />
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                                    ? "no range entered"
+                                    : `ref ${result.referenceLow ?? "—"}\u2011${result.referenceHigh ?? "—"}`}
+                                  {` · ${status}`}
+                                </small>
+                              </span>
+                              <span className={status === "low" || status === "high" ? "tl-row-end down" : "tl-row-end"}>
+                                {result.value === null ? "—" : result.value}
+                                {result.value === null ? null : <small>{result.unit}</small>}
+                              </span>
+                              <div className="row-actions">
+                                <button
+                                  type="button"
+                                  className="icon-button"
+                                  onClick={() => open({ kind: "lab", id: result.id })}
+                                  aria-label={`Edit ${trend.name} from ${result.date}`}
+                                >
+                                  <Icon name="pencil" />
+                                </button>
+                                <ConfirmButton
+                                  label={`Delete ${trend.name} from ${result.date}`}
+                                  onConfirm={() => onDeleteLab(result.id)}
+                                />
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
                     ) : null}
                   </li>
                 );
               })}
             </ul>
           ) : (
-            <div className="empty-inline">
-              <p className="panel-body">{query ? `No test matches “${query}”.` : "No flagged results in this view."}</p>
+            <p className="tl-line">
+              {query ? `No test matches “${query}”. ` : "No flagged results in this view."}
               {query ? <button type="button" className="text-button" onClick={() => setQuery("")}>Clear search</button> : null}
-            </div>
+            </p>
           )
-        ) : (
-          // The heading already carries "Add result", a few hundred pixels
-          // up and in a stronger style. Two buttons doing the same thing on
-          // one empty screen is not twice as helpful.
-          <Empty
-            icon="records"
-            title="No lab results yet"
-            body="Add a result with the reference range printed on the report. Ranges vary by lab, so use the one that came with your result."
-          />
-        )}
+        ) : null}
       </section>
     </div>
   );

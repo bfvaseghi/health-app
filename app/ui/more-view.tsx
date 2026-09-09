@@ -1,21 +1,22 @@
 "use client";
 
 import { Icon } from "./icons";
-import { PageHeading } from "./primitives";
+import { RecordHeading } from "./primitives";
 import { View, viewLabels } from "./types";
 
 const destinations: Array<{ view: View; detail: string }> = [
-  { view: "meds", detail: "What is due, what was answered, and medication history" },
-  { view: "labs", detail: "Results, reference ranges, and trends over time" },
-  { view: "summary", detail: "A controlled report for an appointment" },
-  { view: "data", detail: "Imports, automatic sync, goals, backups, and source code" },
+  { view: "urges", detail: "Masturbation & caffeine" },
+  { view: "compare", detail: "See what changed between two periods" },
+  { view: "labs", detail: "Results, ranges & questions to bring up" },
+  { view: "summary", detail: "Prepare a record for your appointment" },
+  { view: "data", detail: "Imports, backups, connections & settings" },
 ];
 
-export function MoreView({ go }: { go: (view: View) => void; demo?: boolean }) {
+export function MoreView({ go }: { go: (view: View) => void }) {
   return (
     <div className="page more-page">
-      <PageHeading title="More" />
-      <p className="page-intro">The health record and the controls that do not need to occupy the everyday navigation.</p>
+      <RecordHeading title="More" detail="Explore & manage your record" />
+
       <div className="more-list">
         {destinations.map((item) => (
           <button type="button" key={item.view} className="more-row" onClick={() => go(item.view)}>

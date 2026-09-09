@@ -11,7 +11,7 @@
  * Bump SHELL when the caching rules below change. The built assets carry
  * content hashes in their names, so a deploy invalidates them on its own.
  */
-const SHELL = "baseline-shell-v4";
+const SHELL = "baseline-shell-v5";
 
 function isHealthyDocument(response) {
   if (!response.ok || response.redirected) return false;
@@ -42,7 +42,7 @@ async function installShell() {
     .map((url) => `${url.pathname}${url.search}`);
 
   await Promise.all(
-    [...new Set(assetPaths)].map(async (path) => {
+    [...new Set([...assetPaths, "/baseline-source.zip"])].map(async (path) => {
       const response = await fetch(
         new Request(path, { cache: "reload", credentials: "same-origin" }),
       );
@@ -91,6 +91,18 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   // The record syncs or it does not. It is never served from a cache.
   if (url.pathname.startsWith("/api/")) return;
+
+  if (url.pathname === "/baseline-source.zip") {
+    event.respondWith(
+      fetch(request).then(async (response) => {
+        if (!response.ok || response.redirected) throw new Error("Source archive unavailable");
+        const cache = await caches.open(SHELL);
+        await cache.put("/baseline-source.zip", response.clone());
+        return response;
+      }).catch(() => caches.match("/baseline-source.zip").then((cached) => cached ?? Response.error())),
+    );
+    return;
+  }
 
   if (isNavigation(request)) {
     // Demo mode must fail closed. Never store its navigation as the normal `/`

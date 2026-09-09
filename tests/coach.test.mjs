@@ -39,6 +39,11 @@ import {
   weekStart,
   workoutWeekStreak,
   withAddedSets,
+  daysLeftInWeek,
+  refitWeek,
+  reviewWorkout,
+  sessionMinutes,
+  baseCoverage,
 } from "../app/training/coach.ts";
 import { toTable } from "../app/import/csv.ts";
 import { strongToRecords } from "../app/import/strong.ts";
@@ -53,6 +58,7 @@ function stateFrom(text, overrides = {}) {
     ...emptyHealthState(new Date("2026-04-18T12:00:00Z")),
     workoutSets: records.workoutSets,
     ...overrides,
+    goals: { trainingSplit: "upper-lower", trainingSessionMinutes: 120, ...overrides.goals },
   });
 }
 
@@ -83,7 +89,7 @@ function ownedMuscles(state) {
 test("an exercise is read for what it trains, not for how it is spelled", () => {
   // A leading asterisk is Strong's superset marker and brackets hold the gym.
   assert.deepEqual(classifyExercise("*Cable Row (Mid-Back)").direct, ["back"]);
-  assert.deepEqual(classifyExercise("Crunch (437 New York Ave)").direct, ["core"]);
+  assert.deepEqual(classifyExercise("Crunch (Example gym)").direct, ["core"]);
 
   // Order of the rules is the specification: these would fall to the wrong rule.
   assert.deepEqual(classifyExercise("Seated Leg Curl (Machine)").direct, ["hamstrings"], "not a biceps curl");
@@ -273,7 +279,7 @@ test("the plan is built only from movements already logged in Strong", () => {
   }
 
   const text = planToText(plan);
-  assert.match(text, /^This week — .*4 days/);
+  assert.match(text, /^This week · .*4 days/);
   // Not "week 3 of the block": the block runs underneath, but nobody was told
   // what a block is, and being told you are in week three of one is worse than
   // being told nothing.
@@ -370,7 +376,8 @@ test("four sessions is the ceiling, whatever the arithmetic asks for", () => {
   assert.ok(recommendDays(state, AS_OF).days <= MAX_DAYS);
   assert.deepEqual(DAY_CHOICES, [2, 3, 4]);
   // Asking for more than four is clamped rather than accepted.
-  assert.equal(buildPlan(state, AS_OF, 6).sessions.length, MAX_DAYS);
+  assert.equal(buildPlan(state, AS_OF, 6).days, MAX_DAYS);
+  assert.ok(buildPlan(state, AS_OF, 6).sessions.length <= MAX_DAYS);
 });
 
 test("changing the day count changes the direct and indirect a muscle gets", () => {
@@ -455,7 +462,8 @@ test("four sessions is the ceiling, whatever the arithmetic asks for", () => {
   assert.ok(recommendDays(state, AS_OF).days <= MAX_DAYS);
   assert.deepEqual(DAY_CHOICES, [2, 3, 4]);
   // Asking for more than four is clamped rather than accepted.
-  assert.equal(buildPlan(state, AS_OF, 6).sessions.length, MAX_DAYS);
+  assert.equal(buildPlan(state, AS_OF, 6).days, MAX_DAYS);
+  assert.ok(buildPlan(state, AS_OF, 6).sessions.length <= MAX_DAYS);
 });
 
 test("changing the day count changes the direct and indirect a muscle gets", () => {
@@ -711,8 +719,8 @@ test("every week of the block prescribes a load you have actually used", () => {
 test("the block carries the day choice into the copied text", () => {
   const state = stateFrom(FIXTURE);
   const block = buildBlock(state, AS_OF, [0, 2, 0, 0]);
-  assert.match(planToText(block[1]), /^This week — .*2 days/);
-  assert.match(planToText(block[3]), /^Easier week —/);
+  assert.match(planToText(block[1]), /^This week · .*2 days/);
+  assert.match(planToText(block[3]), /^Easier week ·/);
   // Loads come through, so the text is something to lift from.
   assert.match(planToText(block[0]), /@ [\d.]+ lb/);
 });
@@ -832,7 +840,7 @@ test("a load that does not suit the range is re-anchored to your own best effort
   assert.equal(squat.stalled, false);
 });
 
-test("clearing the top of the rep range is what earns the next load", () => {
+test("clearing the rep target met is what earns the next load", () => {
   // Reps climbing inside the range: the load holds and the reps do the work.
   const climbing = withHistory(
     history("Bench Press (Barbell)", 1, 135, 6, 3, addDays(AS_OF, -8)),
@@ -943,8 +951,9 @@ test("an easier week holds the weight and cuts the sets", () => {
   assert.equal(easier.stalled, false, "nor does it back anything off");
   assert.equal(easier.weightLb, 135, "it holds the working weight");
   assert.ok(easier.sets <= week.sets, "what comes off an easier week is the sets");
-  assert.match(planToText(block[3]), /easier week on purpose/i);
-  assert.match(planToText(block[0]), /top of the rep range/i);
+  assert.match(planToText(block[3]), /Easier week/);
+  assert.doesNotMatch(planToText(block[3]), /Deload:|Load increase:/);
+  assert.doesNotMatch(planToText(block[0]), /Deload:|Load increase:/);
 });
 
 test("a plan ignores history after its as-of date", () => {
@@ -1236,13 +1245,13 @@ test("a session copies on its own, not as part of the week", () => {
   const [first, second] = plan.sessions;
   const text = sessionToText(plan, first);
 
-  assert.ok(text.startsWith(`${first.name} — ${weekLabel(plan)}`), text.split("\n")[0]);
+  assert.ok(text.startsWith(`${first.name} · ${weekLabel(plan)}`), text.split("\n")[0]);
   for (const exercise of first.exercises) {
     assert.ok(text.includes(exercise.exercise), `${exercise.exercise} is missing`);
   }
   assert.ok(!text.includes(second.name), "the other sessions stay out of it");
   assert.match(text, /rest \d+s/);
-  assert.match(text, /top of the rep range/i);
+  assert.doesNotMatch(text, /Deload:|Load increase:/);
 
   // The whole week still copies as the whole week.
   const week = planToText(plan);
@@ -1250,7 +1259,8 @@ test("a session copies on its own, not as part of the week", () => {
 
   // A deload says what a deload is, on either route.
   const deload = buildBlock(state, AS_OF, [4, 4, 4, 4])[3];
-  assert.match(sessionToText(deload, deload.sessions[0]), /easier week on purpose/i);
+  assert.match(sessionToText(deload, deload.sessions[0]), /Easier week/);
+  assert.doesNotMatch(sessionToText(deload, deload.sessions[0]), /Deload:|Load increase:/);
 });
 
 test("no rest in any plan runs past three minutes", () => {
@@ -2215,4 +2225,609 @@ test("what you add goes at the end of the session, not over what was planned", (
 
   assert.equal(now.at(-1), added, "the addition should sit at the end of the card");
   assert.deepEqual(now.slice(0, -1), before, "and nothing the coach planned should move");
+});
+
+test("the week is refit to the days left, never asked for in advance", () => {
+  const state = stateFrom(FIXTURE);
+  // 2026-04-18 is a Saturday: today and Sunday are left.
+  assert.equal(daysLeftInWeek("2026-04-13"), 7, "Monday has the whole week");
+  assert.equal(daysLeftInWeek("2026-04-18"), 2, "Saturday has two days");
+  assert.equal(daysLeftInWeek("2026-04-19"), 1, "Sunday has one");
+
+  // Saturday of a week with sessions already logged: the week stands only if
+  // what is done plus what is left still reaches the planned number.
+  const planned = buildPlan(state, AS_OF, 4, 0);
+  const saturday = refitWeek(state, AS_OF, planned, 0);
+  const possible = Math.min(4, Math.max(2, saturday.done + saturday.daysLeft - Number(state.workoutSets.some((entry) => entry.date === AS_OF))));
+  assert.equal(saturday.plan.days, possible);
+  assert.equal(saturday.refit, possible < 4);
+  assert.equal(saturday.plannedDays, 4);
+
+  // Saturday of an empty week: nothing done, two days left, so a two-day week.
+  const quietSaturday = "2026-04-25";
+  const late = refitWeek(state, quietSaturday, buildPlan(state, quietSaturday, 4, 0), 0);
+  assert.equal(late.done, 0);
+  assert.equal(late.daysLeft, 2);
+  assert.equal(late.refit, true);
+  assert.equal(late.plan.days, 2);
+  assert.equal(remainingSessions(late.plan, state, quietSaturday).length, 2);
+
+  // On Monday nothing is lost, so nothing is refit.
+  const monday = refitWeek(state, "2026-04-13", buildPlan(state, "2026-04-13", 4, 0), 0);
+  assert.equal(monday.refit, false);
+  assert.equal(monday.plan.days, 4);
+
+  // A number set by hand for the week is left alone.
+  const forced = refitWeek(state, AS_OF, planned, 0, true);
+  assert.equal(forced.refit, false);
+  assert.equal(forced.plan.days, 4);
+
+});
+
+test("cutting, a load steps up only after two clean sessions, not one", () => {
+  const state = stateFrom(FIXTURE);
+  const maintain = buildPlan(normalizeHealthState({ ...state, goals: { ...state.goals, weightDirection: "maintain" } }), AS_OF, 4, 0);
+  const cutting = buildPlan(normalizeHealthState({ ...state, goals: { ...state.goals, weightDirection: "lose" } }), AS_OF, 4, 0);
+  const ups = (plan) => plan.sessions.flatMap((session) => session.exercises).filter((exercise) => exercise.stepUp).map((exercise) => exercise.exercise);
+  const before = ups(maintain);
+  const after = ups(cutting);
+  assert.ok(after.every((name) => before.includes(name)), "a cut never adds a step-up");
+  assert.ok(after.length <= before.length);
+  // Everything else about the two plans is the same lifts and sets.
+  assert.deepEqual(
+    cutting.sessions.map((session) => session.exercises.map((exercise) => `${exercise.exercise}:${exercise.sets}`)),
+    maintain.sessions.map((session) => session.exercises.map((exercise) => `${exercise.exercise}:${exercise.sets}`)),
+  );
+});
+
+
+test("the current week refits weekend sessions and honors explicit day choices", async () => {
+  const { currentTrainingWeek, refitWeek, currentBlockWeek, withAddedSets, buildBlock, nextSession, sessionToText } = await import("../app/training/coach.ts");
+  const { demoHealthState } = await import("../app/demo-state.ts");
+  for (const date of ["2026-09-04", "2026-09-05", "2026-09-06", "2026-09-07"]) {
+    const state = demoHealthState(date);
+    for (const choice of [0, 2, 3, 4]) {
+      const week = currentBlockWeek(state, date);
+      state.goals.trainingDays[week] = choice;
+      const planned = withAddedSets(buildBlock(state, date, state.goals.trainingDays)[week], state, date);
+      const expected = refitWeek(state, date, planned, week).plan;
+      const actual = currentTrainingWeek(state, date).plan;
+      assert.deepEqual(actual, expected);
+      const next = nextSession(actual, state, date).session;
+      const expectedNext = nextSession(expected, state, date).session;
+      if (next && expectedNext) assert.equal(sessionToText(actual, next), sessionToText(expected, expectedNext));
+      if (choice) assert.ok(actual.days <= choice);
+    }
+  }
+  const sunday = demoHealthState("2026-09-06");
+  sunday.workoutSets = sunday.workoutSets.filter((set) => set.date < "2026-09-01");
+  const plan = currentTrainingWeek(sunday, "2026-09-06").plan;
+  assert.equal(plan.days, 4, "base identities survive a Sunday refit");
+  assert.equal(remainingSessions(plan, sunday, "2026-09-06").length, 1);
+});
+
+
+import { demoHealthState } from "../app/demo-state.ts";
+import { currentTrainingWeek } from "../app/training/coach.ts";
+import { startWorkout, finishWorkout, restoreWorkout, validDraftSet } from "../app/training/workout.ts";
+
+test("workout logging saves only checked sets with actual reps", () => {
+  const state = demoHealthState("2026-09-01");
+  const plan = currentTrainingWeek(state, "2026-09-01").plan;
+  const session = nextSession(plan, state, "2026-09-01").session;
+  const draft = startWorkout(session, new Date("2026-09-01T18:00:00"));
+  assert.equal(draft.sets.length, session.sets);
+  assert.deepEqual(finishWorkout(draft), [], "planned sets are not completed work");
+  assert.equal(validDraftSet(draft.sets[0]), false, "actual reps must be entered");
+  draft.sets[0].reps = "9";
+  draft.sets[0].load = "72.5";
+  draft.sets[0].done = true;
+  draft.sets[1].reps = "8";
+  const saved = finishWorkout(draft, new Date("2026-09-01T18:30:00"));
+  assert.equal(saved.length, 1, "unchecked sets stay out of the record");
+  assert.equal(saved[0].exercise, session.exercises[0].exercise);
+  assert.equal(saved[0].reps, 9);
+  assert.equal(saved[0].weightLb, 72.5);
+  assert.equal(saved[0].durationSeconds, 1800);
+  assert.equal(saved[0].rpe, null, "effort is not invented");
+});
+
+test("workout logging distinguishes assistance, bodyweight and external weight", () => {
+  const state = demoHealthState("2026-09-01");
+  const draft = startWorkout(currentTrainingWeek(state, "2026-09-01").plan.sessions[0]);
+  const base = draft.sets[0];
+  draft.sets = [
+    { ...base, setNumber: 1, mode: "assisted", load: "40", reps: "8", done: true },
+    { ...base, setNumber: 2, mode: "bodyweight", load: "", reps: "12", done: true },
+    { ...base, setNumber: 3, mode: "loaded", load: "0", reps: "10", done: true },
+  ];
+  const saved = finishWorkout(draft);
+  assert.deepEqual(saved.map(set => [set.loadMode, set.weightLb, set.assistanceLb]), [["assisted", null, 40], ["bodyweight", null, null], ["loaded", 0, null]]);
+  for (const reps of ["", "0", "-1", "1.5", "1001", "NaN"]) assert.equal(validDraftSet({ ...base, reps }), false);
+  for (const load of ["", "-1", "2001", "Infinity"]) assert.equal(validDraftSet({ ...base, mode: "loaded", load, reps: "8" }), false);
+});
+
+test("workout drafts resume only with valid sets from the recorded exercise library", () => {
+  const state = demoHealthState("2026-09-01");
+  const draft = startWorkout(currentTrainingWeek(state, "2026-09-01").plan.sessions[0]);
+  const names = new Set(state.workoutSets.map(set => set.exercise));
+  assert.deepEqual(restoreWorkout(JSON.parse(JSON.stringify(draft)), names), draft);
+  assert.equal(restoreWorkout(draft, new Set()), null);
+  assert.equal(restoreWorkout({ ...draft, startedAt: "invalid" }, names), null);
+  assert.equal(restoreWorkout({ ...draft, sets: [...draft.sets, draft.sets[0]] }, names), null);
+  assert.equal(restoreWorkout({ ...draft, sets: [{ ...draft.sets[0], done: true, reps: "" }] }, names), null);
+});
+
+
+test("four-workout goals adjust without invalidating completed sessions", () => {
+  const monday = "2026-09-07";
+  const state = demoHealthState(monday);
+  state.goals.trainingSplit = "upper-lower";
+  state.goals.trainingSessionMinutes = 120;
+  state.workoutSets = state.workoutSets.filter((entry) => entry.date < monday);
+  const original = currentTrainingWeek(state, monday).plan;
+  assert.equal(original.days, 4);
+  assert.ok(buildBlock(state, monday).every((entry) => entry.days === 4));
+  const first = original.sessions.find((session) => session.name === "Upper A");
+  const draft = startWorkout(first, new Date(`${monday}T18:00:00`));
+  draft.sets.slice(0, 8).forEach((entry) => { entry.reps = "8"; entry.done = true; });
+  state.workoutSets.push(...finishWorkout(draft, new Date(`${monday}T18:30:00`)));
+  state.goals.trainingDays = [4, 4, 4, 4];
+  for (const [date, slots] of [["2026-09-08", 3], ["2026-09-12", 2], ["2026-09-13", 1]]) {
+    const {plan, fit} = currentTrainingWeek(state, date);
+    assert.equal(fit.done, 1, `${date}: the accepted workout still counts`);
+    assert.equal(nextSession(plan, state, date).done, 1);
+    assert.equal(remainingSessions(plan, state, date).length, slots);
+    assert.ok(remainingSessions(plan, state, date).every((session) => session.sets <= longestSession(4)));
+    for (const session of plan.sessions) {
+      const direct = new Map();
+      for (const exercise of session.exercises) for (const muscle of classifyExercise(exercise.exercise).direct) direct.set(muscle, (direct.get(muscle) ?? 0) + exercise.sets);
+      assert.ok([...direct.values()].every((count) => count <= 8));
+    }
+  }
+  assert.match(nextSession(currentTrainingWeek(state, "2026-09-08").plan, state, "2026-09-08").session.name, /Lower/);
+});
+
+test("Sunday has one available visit and a completed visit uses it", () => {
+  const date = "2026-09-13";
+  const state = demoHealthState(date);
+  state.workoutSets = state.workoutSets.filter((entry) => entry.date < weekStart(date));
+  let {plan} = currentTrainingWeek(state, date);
+  assert.equal(remainingSessions(plan, state, date).length, 1);
+  const draft = startWorkout(nextSession(plan, state, date).session, new Date(`${date}T18:00:00`));
+  draft.sets.forEach((entry) => { entry.reps = "8"; entry.done = true; });
+  state.workoutSets.push(...finishWorkout(draft, new Date(`${date}T19:00:00`)));
+  plan = currentTrainingWeek(state, date).plan;
+  assert.equal(remainingSessions(plan, state, date).length, 0);
+  assert.equal(nextSession(plan, state, date).session, null);
+  assert.equal(currentTrainingWeek(state, "2026-09-14").planned.days, 4);
+});
+
+test("a new week prioritizes recently omitted muscles without adding catch-up volume", () => {
+  const date = "2026-09-14";
+  const state = demoHealthState(date);
+  state.goals.trainingSplit = "upper-lower";
+  state.goals.trainingSessionMinutes = 120;
+  state.workoutSets = state.workoutSets.filter((entry) => entry.date < "2026-09-07");
+  const base = buildPlan(state, "2026-09-07", 4, 0);
+  for (const [index, session] of base.sessions.filter((entry) => entry.shape === "upper").entries()) {
+    const day = addDays("2026-09-07", index * 3);
+    const draft = startWorkout(session, new Date(`${day}T18:00:00`));
+    draft.sets.forEach((entry) => { entry.reps = "8"; entry.done = true; });
+    state.workoutSets.push(...finishWorkout(draft, new Date(`${day}T19:00:00`)));
+  }
+  const {plan} = currentTrainingWeek(state, date);
+  assert.equal(plan.days, 4);
+  const next = nextSession(plan, state, date);
+  assert.equal(next.done, 0);
+  assert.match(next.session.name, /Lower/);
+  assert.ok(next.session.sets <= longestSession(4));
+});
+
+function reviewHistory(visits, weightLb = 135) {
+  return normalizeHealthState({ ...emptyHealthState(), workoutSets: visits.flatMap((reps, visit) => {
+    const date = addDays(AS_OF, (visit - visits.length + 1) * 3);
+    return reps.map((count, index) => set('Bench Press (Barbell)', {
+      date, startedAt: `${date} 18:00:00`, reps: count, weightLb, setNumber: index + 1,
+    }));
+  }) });
+}
+
+test('the next workout carries increases, reductions, prior sets and rest into the prescription', () => {
+  for (const [visits, weight, action] of [[[[10, 10, 10]], 135, 'increase'], [[[4, 4, 4]], 225, 'reduce'], [[[8, 8, 8]], 135, 'keep']]) {
+    const state = reviewHistory(visits, weight);
+    state.workoutSets.forEach(entry => { entry.restSeconds = 180; });
+    const plan = buildPlan(state, AS_OF, 2);
+    const lift = planned(plan, 'Bench Press (Barbell)');
+    assert.equal(lift.adjustment.action, action);
+    assert.equal(lift.adjustment.previousLoad, weight);
+    assert.deepEqual(lift.adjustment.previousReps, visits.at(-1));
+    assert.equal(lift.adjustment.lastStartedAt, state.workoutSets[0].startedAt);
+    assert.equal(lift.restSeconds, 180, 'keep a usable imported timer');
+    assert.equal(lift.adjustment.restAction, 'keep');
+    assert.ok(sessionToText(plan, plan.sessions.find(session => session.exercises.includes(lift))).includes(`rest 180s`));
+    if (action === 'reduce') assert.match(planToText(plan), /reduced/);
+    state.workoutSets.forEach(entry => { entry.restSeconds = 60; });
+    const revised = planned(buildPlan(state, AS_OF, 2), 'Bench Press (Barbell)');
+    assert.equal(revised.restSeconds, 150);
+    assert.equal(revised.adjustment.restAction, 'increase');
+    assert.equal(revised.adjustment.previousRestSeconds, 60);
+  }
+});
+
+test('a new imported performance updates the next prescription without compounding an unperformed increase', () => {
+  const state = reviewHistory([[10, 10, 10]], 135);
+  const first = planned(buildPlan(state, AS_OF, 2), 'Bench Press (Barbell)');
+  assert.equal(first.weightLb, 140);
+  assert.deepEqual(planned(buildPlan(state, AS_OF, 2), 'Bench Press (Barbell)'), first);
+  const last = state.workoutSets[0];
+  state.workoutSets.push(...[1, 2, 3].map(setNumber => ({ ...last, setNumber, startedAt: `${AS_OF}T23:00:00`, weightLb: 140, reps: 10 })));
+  const changed = planned(buildPlan(state, AS_OF, 2), 'Bench Press (Barbell)');
+  assert.equal(changed.adjustment.previousLoad, 140);
+  assert.equal(changed.weightLb, 145);
+});
+
+test('a failed working set does not earn a heavier next workout', () => {
+  const lift = planned(buildPlan(reviewHistory([[10, 10, 2]]), AS_OF, 2), 'Bench Press (Barbell)');
+  assert.equal(lift.weightLb, 135);
+  assert.equal(lift.adjustment.action, 'keep');
+});
+
+test('assistance progression compares the repeated working load and follows the latest load mode', () => {
+  const exercise = 'Pull Up';
+  const old = [1, 2, 3].map(setNumber => set(exercise, { setNumber, date: AS_OF, loadMode: 'assisted', weightLb: null, assistanceLb: setNumber === 3 ? 20 : 80, reps: setNumber === 3 ? 4 : 10 }));
+  let state = normalizeHealthState({ ...emptyHealthState(), workoutSets: old });
+  let lift = planned(buildPlan(state, AS_OF, 2), exercise);
+  assert.equal(lift.adjustment.previousLoad, 80);
+  assert.equal(lift.assistanceLb, 75);
+  state = normalizeHealthState({ ...state, workoutSets: [...old, ...[1, 2, 3].map(setNumber => ({ ...old[0], setNumber, startedAt: `${AS_OF}T23:00:00`, loadMode: 'loaded', weightLb: 25, assistanceLb: null, reps: 8 }))] });
+  lift = planned(buildPlan(state, AS_OF, 2), exercise);
+  assert.equal(lift.assistanceLb, null);
+  assert.equal(lift.weightLb, 25);
+  assert.equal(lift.adjustment.previousLoad, 25);
+});
+
+test('improving total reps at the same load does not trigger a reset', () => {
+  const state = reviewHistory([[7, 6, 5], [7, 7, 6], [7, 7, 7]]);
+  const review = reviewWorkout(state, undefined, AS_OF).exercises[0];
+  assert.equal(review.nextLoad, 135);
+  assert.equal(review.action, 'keep');
+});
+
+test('a below-range session cannot inherit an increase from an older best', () => {
+  const state = reviewHistory([[10, 10, 10], [10, 10, 10], [4, 4, 4]], 225);
+  const review = reviewWorkout(state, undefined, AS_OF).exercises[0];
+  assert.ok(review.nextLoad < 225);
+  assert.equal(review.action, 'reduce');
+  assert.equal(review.nextLoad, planned(buildPlan(state, AS_OF, 2), 'Bench Press (Barbell)').weightLb);
+});
+
+test('changing the number of working sets does not establish a stall', () => {
+  for (const visits of [[[7, 7], [7, 7], [7, 7, 7]], [[7, 7, 7], [7, 7, 7], [7, 7]]]) {
+    assert.equal(reviewWorkout(reviewHistory(visits), undefined, AS_OF).exercises[0].action, 'keep');
+  }
+});
+
+test('workout review includes all imported lifts and separates timer settings from missing records', () => {
+  const state = reviewHistory([[10, 10, 9]]);
+  state.workoutSets.forEach((entry, index) => entry.restSeconds = [60, 150, 240][index]);
+  state.workoutSets.push(set('Unclassified movement', { date: AS_OF, startedAt: `${AS_OF} 18:00:00`, weightLb: null, reps: null }));
+  const review = reviewWorkout(state, undefined, AS_OF);
+  assert.equal(review.exercises.length, 2);
+  const bench = review.exercises.find(entry => entry.exercise === 'Bench Press (Barbell)');
+  assert.equal(bench.action, 'increase');
+  assert.deepEqual(bench.rest, { min: 120, max: 180, timers: [60, 150, 240], below: 1, within: 1, above: 1 });
+  const unknown = review.exercises.find(entry => entry.exercise === 'Unclassified movement');
+  assert.equal(unknown.action, 'unavailable');
+  assert.equal(unknown.nextLoad, null);
+  assert.equal(unknown.rest, null);
+  state.workoutSets.forEach(entry => entry.restSeconds = null);
+  assert.deepEqual(reviewWorkout(state, undefined, AS_OF).exercises[0].rest.timers, []);
+});
+
+test('review of an imported session excludes later performance', () => {
+  const state = reviewHistory([[7, 7, 7]]);
+  const start = state.workoutSets[0].startedAt;
+  const before = reviewWorkout(state, start, AS_OF);
+  state.workoutSets.push(...history('Bench Press (Barbell)', 1, 300, 10, 3, addDays(AS_OF, 1)));
+  assert.deepEqual(reviewWorkout(state, start, AS_OF), before);
+  assert.equal(reviewWorkout(state, 'missing', AS_OF), null);
+});
+
+test('assistance reductions mean increased difficulty and bodyweight never invents a load', () => {
+  const state = normalizeHealthState({ ...emptyHealthState(), workoutSets: [1, 2, 3].flatMap(setNumber => [
+    set('Pull Up (Assisted)', { setNumber, date: AS_OF, loadMode: 'assisted', weightLb: null, assistanceLb: 40, reps: 10 }),
+    set('Push Up', { setNumber, date: AS_OF, loadMode: 'bodyweight', weightLb: null, reps: 15 }),
+  ]) });
+  const review = reviewWorkout(state, undefined, AS_OF);
+  const assisted = review.exercises.find(entry => entry.exercise === 'Pull Up (Assisted)');
+  assert.equal(assisted.action, 'increase');
+  assert.ok(assisted.nextLoad < assisted.currentLoad);
+  const bodyweight = review.exercises.find(entry => entry.exercise === 'Push Up');
+  assert.equal(bodyweight.nextLoad, null);
+  assert.equal(bodyweight.action, 'keep');
+});
+
+test('review holds an unrounded imported weight and agrees with a lighter week', () => {
+  const state = reviewHistory([[8, 8, 8]], 144);
+  assert.equal(reviewWorkout(state, undefined, AS_OF).exercises[0].nextLoad, 144);
+  state.goals.trainingBlockStart = addDays(weekStart(AS_OF), -21);
+  state.workoutSets.forEach(entry => entry.reps = 10);
+  const review = reviewWorkout(state, undefined, AS_OF).exercises[0];
+  assert.equal(review.nextLoad, 144);
+  assert.equal(review.action, 'keep');
+  assert.equal(review.reason, 'Lighter week');
+});
+
+test('review orders mixed Strong timestamps chronologically without merging sessions', () => {
+  const state = reviewHistory([[7, 7, 7]]);
+  const morning = `${AS_OF}T09:00:00`;
+  state.workoutSets.push(...[1, 2, 3].map(setNumber => set('Bench Press (Barbell)', { date: AS_OF, startedAt: morning, setNumber, weightLb: 200, reps: 10 })));
+  const latest = reviewWorkout(state, undefined, AS_OF);
+  assert.equal(latest.startedAt, `${AS_OF} 18:00:00`);
+  assert.equal(latest.exercises[0].currentLoad, 135);
+  assert.equal(reviewWorkout(state, morning, AS_OF).exercises[0].currentLoad, 200);
+});
+
+test('full-body base stays identical when optional workouts are enabled', () => {
+  for (const minutes of [60, 75, 90]) for (let week = 0; week < 4; week += 1) {
+    const state = demoHealthState('2026-09-07');
+    state.workoutSets = state.workoutSets.filter(entry => entry.date < '2026-09-07');
+    state.goals.trainingSessionMinutes = minutes;
+    const base = buildPlan(state, '2026-09-07', 2, week);
+    for (const days of [2, 3, 4]) {
+      const plan = buildPlan(state, '2026-09-07', days, week);
+      assert.deepEqual(plan.sessions.slice(0, 2), base.sessions);
+      for (const session of plan.sessions) {
+        assert.ok(sessionMinutes(session) <= minutes, `${minutes}min: ${session.name} takes ${sessionMinutes(session)}`);
+        assert.equal(new Set(session.exercises.map(lift => lift.exercise)).size, session.exercises.length);
+        assert.ok(session.exercises.every(lift => state.workoutSets.some(entry => entry.exercise === lift.exercise)));
+      }
+      for (const session of plan.sessions.slice(0, 2)) {
+        const covered = new Set(session.exercises.flatMap(lift => classifyExercise(lift.exercise).direct));
+        assert.deepEqual([...covered].sort(), [...MUSCLES].sort());
+        if (!plan.deload) {
+          const core = session.exercises.filter(lift => classifyExercise(lift.exercise).direct.includes('core'));
+          assert.ok(core.reduce((sum, lift) => sum + lift.sets, 0) >= 4, 'reserve direct core in each base workout');
+          const coreIndex = session.exercises.findIndex(lift => lift.muscle === 'core');
+          const accessoryIndex = session.exercises.findIndex(lift => !lift.compound && lift.muscle !== 'core');
+          assert.ok(coreIndex < accessoryIndex, 'core comes before the smaller accessories');
+        }
+      }
+      if (!plan.deload && minutes >= 75) {
+        assert.equal(baseCoverage(plan).complete, true, `${minutes} minutes, week ${week + 1}, ${days} visits`);
+        const volume = planVolume({ ...plan, sessions: plan.sessions.slice(0, 2) });
+        for (const muscle of MUSCLES) {
+          assert.ok(volume.get(muscle).effective >= weeklyTargets[muscle].min, `${muscle} weekly floor`);
+          assert.ok(volume.get(muscle).direct >= minimumDirect(muscle), `${muscle} direct-work floor`);
+        }
+      }
+      for (const [muscle, volume] of planVolume(plan)) assert.ok(volume.effective <= weeklyTargets[muscle].max);
+    }
+  }
+});
+
+test('shorter rests preserve essential work without inventing earned load increases', () => {
+  const date = '2026-09-07';
+  const state = demoHealthState(date);
+  state.workoutSets = state.workoutSets.filter(entry => entry.date < date);
+  state.goals.weightDirection = 'gain';
+  state.workoutSets.forEach(entry => { entry.reps = 20; });
+  const before = JSON.stringify(state);
+  const plan = buildPlan(state, date, 2);
+  const tightened = plan.sessions.flatMap(session => session.exercises).filter(lift => lift.restAdjustedForTime);
+  assert.ok(tightened.length > 0);
+  assert.equal(baseCoverage(plan).complete, true);
+  for (const lift of tightened) {
+    assert.ok(lift.restSeconds >= suggestedRest(Number(lift.repRange.split('–')[0]), lift.compound).min);
+    if (lift.compound) assert.ok(lift.restSeconds >= 120);
+    if (lift.adjustment.previousRestSeconds > lift.restSeconds && lift.adjustment.previousLoad !== null) {
+      assert.notEqual(lift.adjustment.action, 'increase');
+      if (lift.adjustment.action === 'keep') assert.equal(lift.assistanceLb ?? lift.weightLb, lift.adjustment.previousLoad);
+    }
+    assert.ok(planToText(plan).includes(`rest ${lift.restSeconds}s`));
+  }
+  assert.equal(JSON.stringify(state), before, 'fitting never mutates imported records');
+  state.goals.trainingSessionMinutes = 90;
+  assert.equal(baseCoverage(buildPlan(state, date, 2)).shorterRests, false);
+});
+
+test('extra workouts cannot hide an infeasible two-workout time limit or missing core history', () => {
+  const date = '2026-09-07';
+  const state = demoHealthState(date);
+  state.workoutSets = state.workoutSets.filter(entry => entry.date < date);
+  state.goals.trainingSessionMinutes = 60;
+  const plan = buildPlan(state, date, 4);
+  assert.equal(baseCoverage(plan).complete, false);
+  assert.ok(baseCoverage(plan).shortfall.length > 0);
+  assert.deepEqual(baseCoverage(plan).coreSets, [4, 4]);
+  assert.deepEqual(plan.shortfall, [], 'optional volume may close the full week, but not the two-visit promise');
+  state.goals.trainingSessionMinutes = 75;
+  state.workoutSets = state.workoutSets.filter(entry => !classifyExercise(entry.exercise).direct.includes('core'));
+  const missing = buildPlan(state, date, 4);
+  assert.ok(baseCoverage(missing).shortfall.includes('core'));
+  assert.ok(missing.missing.includes('core'));
+  assert.deepEqual(baseCoverage(missing).coreSets, [0, 0]);
+});
+
+test('the base outlook cannot use optional work to hide gaps after a different imported workout', () => {
+  const date = '2026-09-08';
+  const state = demoHealthState(date);
+  const plan = currentTrainingWeek(state, date).plan;
+  assert.equal(baseCoverage(plan).complete, true, 'the unperformed full-body template covers the week');
+  const base = weekOutlook(plan, state, date, { baseOnly: true });
+  assert.ok(base.some(row => row.shortBy > 0), 'the actual lower-only import is different');
+  const core = base.find(row => row.muscle === 'core');
+  assert.equal(core.done, 4);
+  assert.equal(core.coming, 4);
+  assert.equal(core.shortBy, 0);
+  assert.ok(weekOutlook(plan, state, date).every(row => row.shortBy === 0), 'optional work closes this particular imported week');
+});
+
+test('sequential Strong imports complete the base before optional workouts', () => {
+  const monday = '2026-09-07';
+  for (const maximum of [2, 3, 4]) {
+    const state = demoHealthState(monday);
+    state.workoutSets = state.workoutSets.filter(entry => entry.date < monday);
+    state.goals.trainingDays = [maximum, maximum, maximum, maximum];
+    const completed = new Set();
+    for (let visit = 0; visit < 2; visit += 1) {
+      const date = addDays(monday, visit * 3);
+      const plan = currentTrainingWeek(state, date).plan;
+      const next = nextSession(plan, state, date).session;
+      assert.equal(next.tier, 'base');
+      assert.ok(!completed.has(next.name));
+      completed.add(next.name);
+      next.exercises.forEach(lift => {
+        for (let index = 0; index < lift.sets; index += 1) state.workoutSets.push(set(lift.exercise, {
+          date, startedAt: `${date} 18:00:00`, workoutName: next.name, setNumber: index + 1,
+          weightLb: lift.weightLb, reps: 8, restSeconds: lift.restSeconds,
+        }));
+      });
+    }
+    const next = nextSession(currentTrainingWeek(state, addDays(monday, 4)).plan, state, addDays(monday, 4)).session;
+    assert.ok(next === null || next.tier === 'extra');
+    const bankedOnly = weekOutlook({ ...currentTrainingWeek(state, addDays(monday, 4)).plan, remainingSlots: 0 }, state, addDays(monday, 4));
+    assert.ok(bankedOnly.every(row => row.direct >= minimumDirect(row.muscle) && row.projected >= row.target.min), 'two imported base workouts bank every weekly minimum');
+  }
+});
+
+test('an omitted core set is restored to the second base before optional visits', () => {
+  const date = '2026-09-07';
+  for (const days of [2, 3, 4]) {
+    const state = demoHealthState(date);
+    state.workoutSets = state.workoutSets.filter(entry => entry.date < date);
+    state.goals.trainingDays = [days, days, days, days];
+    const first = nextSession(currentTrainingWeek(state, date).plan, state, date).session;
+    first.exercises.forEach(lift => {
+      const count = lift.sets - Number(lift.muscle === 'core');
+      for (let index = 0; index < count; index += 1) state.workoutSets.push(set(lift.exercise, {
+        date, startedAt: `${date} 18:00:00`, workoutName: first.name, setNumber: index + 1,
+        weightLb: lift.weightLb, reps: 8, restSeconds: lift.restSeconds,
+      }));
+    });
+    const nextDate = addDays(date, 3);
+    const next = nextSession(currentTrainingWeek(state, nextDate).plan, state, nextDate).session;
+    assert.equal(next.tier, 'base');
+    assert.equal(next.exercises.filter(lift => lift.muscle === 'core').reduce((sum, lift) => sum + lift.sets, 0), 5);
+    assert.ok(sessionMinutes(next) <= 75);
+  }
+});
+
+test('training settings survive normalization and restore while unknown choices fall back', () => {
+  const goals = normalizeGoals({ trainingSplit: 'upper-lower', trainingSessionMinutes: 60 });
+  assert.equal(goals.trainingSplit, 'upper-lower');
+  assert.equal(goals.trainingSessionMinutes, 60);
+  const state = normalizeHealthState(JSON.parse(JSON.stringify({ ...emptyHealthState(), goals })));
+  assert.deepEqual(state.goals, goals);
+  const invalid = normalizeGoals({ trainingSplit: 'unknown', trainingSessionMinutes: -20 });
+  assert.equal(invalid.trainingSplit, 'full-body');
+  assert.equal(invalid.trainingSessionMinutes, 45);
+});
+
+test('missing Strong exercises stay visible and do not produce invented coverage', () => {
+  const state = reviewHistory([[8, 8, 8]]);
+  const plan = buildPlan(state, AS_OF, 4);
+  assert.ok(plan.missing.includes('calves'));
+  assert.ok(plan.shortfall.includes('calves'));
+  assert.ok(plan.sessions.flatMap(session => session.exercises).every(lift => lift.exercise === 'Bench Press (Barbell)'));
+});
+
+test('a lighter base week reduces the dose at every time budget', () => {
+  for (const minutes of [60, 75, 90]) {
+    const state = demoHealthState('2026-09-07');
+    state.goals.trainingSessionMinutes = minutes;
+    const block = buildBlock(state, '2026-09-07', [2, 2, 2, 2]);
+    const dose = plan => plan.sessions.reduce((sum, session) => sum + session.sets, 0);
+    assert.ok(dose(block[3]) < dose(block[0]), `${minutes}min deload`);
+    assert.ok(dose(block[1]) >= dose(block[0]));
+    assert.ok(dose(block[2]) >= dose(block[1]));
+  }
+});
+
+test('set additions respect the configured time and volume limits', () => {
+  const date = '2026-09-07';
+  for (const minutes of [60, 75, 90]) {
+    const state = demoHealthState(date);
+    state.workoutSets = state.workoutSets.filter(set => set.date < date);
+    state.goals.trainingSessionMinutes = minutes;
+    const plan = buildPlan(state, date, 4);
+    state.goals.addedSets = plan.sessions.flatMap(session => session.exercises.map(lift => ({
+      weekStart: date, session: session.name, exercise: lift.exercise, sets: 5,
+    })));
+    const changed = withAddedSets(plan, state, date);
+    assert.ok(changed.sessions.every(session => sessionMinutes(session) <= minutes));
+    for (const [muscle, volume] of planVolume(changed)) assert.ok(volume.effective <= weeklyTargets[muscle].max);
+    for (const muscle of MUSCLES) {
+      const choice = adjustChoice(changed, state, muscle, 1, date);
+      if (!choice) continue;
+      const session = changed.sessions.find(session => session.name === choice.session);
+      const lift = session.exercises.find(lift => lift.exercise === choice.exercise);
+      if (lift) assert.ok(sessionMinutes(session) + (lift.restSeconds + 45) / 60 <= minutes);
+    }
+  }
+});
+
+test('high volume anchors cannot overflow base, extra or weekly set budgets', () => {
+  const state = demoHealthState('2026-09-07');
+  state.goals.trainingAnchorSets = Object.fromEntries(MUSCLES.map(muscle => [muscle, 30]));
+  for (const days of [2, 3, 4]) for (let week = 0; week < 4; week += 1) {
+    const plan = buildPlan(state, '2026-09-07', days, week);
+    assert.ok(plan.sessions.reduce((sum, session) => sum + session.sets, 0) <= days * maxSetsPerSession(days));
+    for (const session of plan.sessions) {
+      assert.ok(session.sets <= longestSession(session.tier === 'base' ? 2 : days));
+      const direct = new Map();
+      for (const lift of session.exercises) for (const muscle of classifyExercise(lift.exercise).direct) direct.set(muscle, (direct.get(muscle) ?? 0) + lift.sets);
+      assert.ok([...direct.values()].every(count => count <= 10));
+    }
+  }
+});
+
+test('optional workouts use the existing volume aims while staying inside the time limit', () => {
+  const date = '2026-09-07';
+  const state = demoHealthState(date);
+  state.workoutSets = state.workoutSets.filter(set => set.date < date);
+  state.goals.trainingSessionMinutes = 75;
+  const plan = buildPlan(state, date, 4);
+  const extras = plan.sessions.filter(session => session.tier === 'extra');
+  assert.equal(extras.length, 2);
+  assert.ok(extras.every(session => sessionMinutes(session) >= 60 && sessionMinutes(session) <= 75));
+  assert.deepEqual(plan.sessions.slice(0, 2), buildPlan(state, date, 2).sessions);
+});
+
+test('Strong omissions refill the remaining workout instead of spending unperformed sets', () => {
+  const date = '2026-09-06';
+  const state = demoHealthState(date);
+  const plan = currentTrainingWeek(state, date).plan;
+  const outlook = weekOutlook(plan, state, date);
+  const triceps = outlook.find(row => row.muscle === 'triceps');
+  assert.ok(triceps.direct >= minimumDirect('triceps'));
+  assert.ok(remainingSessions(plan, state, date).every(session => sessionMinutes(session) <= state.goals.trainingSessionMinutes));
+  const next = nextSession(plan, state, date).session;
+  assert.ok(next.exercises.some(lift => lift.exercise === 'Triceps Pushdown (Cable)'));
+  state.goals.addedSets = [{ weekStart: weekStart(date), session: next.name, exercise: 'Triceps Pushdown (Cable)', sets: -1 }];
+  const changed = currentTrainingWeek(state, date).plan;
+  assert.ok(!nextSession(changed, state, date).session.exercises.some(lift => lift.exercise === 'Triceps Pushdown (Cable)'));
+});
+
+test('assistance recommendations reach zero and hold there', () => {
+  for (const assistanceLb of [2.5, 0]) {
+    const state = normalizeHealthState({ ...emptyHealthState(), workoutSets: [1, 2, 3].map(setNumber =>
+      set('Pull Up (Assisted)', { setNumber, date: AS_OF, loadMode: 'assisted', weightLb: null, assistanceLb, reps: 10 })) });
+    const review = reviewWorkout(state, undefined, AS_OF).exercises[0];
+    assert.equal(review.nextLoad, 0);
+    assert.equal(review.action, assistanceLb ? 'increase' : 'keep');
+  }
+});
+
+test('manual changes start from the repaired prescription on the first click', () => {
+  const date = '2026-09-06';
+  const state = demoHealthState(date);
+  const base = currentTrainingWeek(state, date).plan;
+  const session = nextSession(base, state, date).session;
+  for (const [delta, expected] of [[1, 4], [-1, 2], [0, 3]]) {
+    state.goals.addedSets = delta ? [{ weekStart: weekStart(date), session: session.name, exercise: 'Triceps Pushdown (Cable)', sets: delta }] : [];
+    const plan = currentTrainingWeek(state, date).plan;
+    assert.equal(weekOutlook(plan, state, date).find(row => row.muscle === 'triceps').direct, expected);
+  }
 });

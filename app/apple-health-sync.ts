@@ -161,6 +161,11 @@ export function mergeAppleHealthSyncPayload(
   };
 }
 
+/** Fills gaps from an archive while preserving values already held by the sync record. */
+export function mergeRestoredAppleHealthSyncPayload(archived: unknown, current: unknown): AppleHealthSyncPayload {
+  return mergeAppleHealthSyncPayload(archived, current).payload;
+}
+
 export function emptyAppleHealthSyncPayload(): AppleHealthSyncPayload {
   return { dailyEntries: [], sleepEntries: [] };
 }
@@ -173,6 +178,7 @@ function meaningfulDaily(entry: DailyEntry): boolean {
     entry.restingHeartRate,
     entry.hrvMs,
     entry.proteinG,
+    entry.waterMl,
     entry.caloriesKcal,
     entry.medicationTaken,
     entry.meditationMinutes,

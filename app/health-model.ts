@@ -12,6 +12,7 @@ export type DailyEntry = {
   restingHeartRate: number | null;
   hrvMs: number | null;
   proteinG: number | null;
+  waterMl: number | null;
   caloriesKcal: number | null;
   medicationTaken: boolean | null;
   journaled: boolean;
@@ -55,6 +56,62 @@ export type TherapyNote = {
   sharedDate: string;
 };
 
+/** A recurring worry, with an optional reusable reminder for responding. */
+export type ThoughtLoop = {
+  id: string;
+  name: string;
+  /** What helps the person respond, separate from any particular occurrence. */
+  reply: string;
+  createdAt: string;
+  archived: boolean;
+};
+
+/** Optional outcome of an occurrence. "noticed" has no recorded outcome. */
+export type LoopMove = "noticed" | "passed" | "later" | "hooked";
+export type LoopRecurrence = "once" | "few" | "often";
+
+/** One time a loop came up: when, and what happened. */
+export type LoopEvent = {
+  id: string;
+  loopId: string;
+  /** Local wall-clock time, "YYYY-MM-DDTHH:MM", so the hour survives export. */
+  at: string;
+  date: string;
+  move: LoopMove;
+  /** How often it returned during this occasion; absent on older records. */
+  recurrence?: LoopRecurrence;
+  /** What the person did in response on this occasion. */
+  response?: string;
+};
+
+/**
+ * A habit you are cutting back. Private by design: it is named in your own
+ * words, counted honestly, and never appears in the doctor summary.
+ */
+export type Habit = {
+  id: string;
+  name: string;
+  createdAt: string;
+  archived: boolean;
+  category?: "masturbation";
+  caffeine?: { dailyLimitMg: number | null; cutoffTime: string; usualDoseMg: number | null };
+};
+
+export type HabitDraft = Pick<Habit, "name" | "caffeine" | "category"> & { id?: string };
+
+/** An urge that passed, or a time it happened. */
+export type HabitKind = "urge" | "slip" | "intake";
+
+export type HabitEvent = {
+  id: string;
+  habitId: string;
+  /** Local wall-clock time, "YYYY-MM-DDTHH:MM". */
+  at: string;
+  date: string;
+  kind: HabitKind;
+  amountMg?: number | null;
+};
+
 /** A private free-form reflection, kept separate from the therapy agenda. */
 export type ThoughtJournalEntry = {
   id: string;
@@ -66,8 +123,8 @@ export type ThoughtJournalEntry = {
 };
 
 /**
- * A progress photo's record. The image itself is not here: photos live in this
- * device's own storage, and only what describes them is synced.
+ * A progress photo's dated metadata. Image bytes are saved separately in
+ * private photo storage and included in portable archives.
  */
 export type ProgressPhoto = {
   id: string;
@@ -101,6 +158,8 @@ export type LabResult = {
   referenceLow: number | null;
   referenceHigh: number | null;
   note: string;
+  /** Marked to bring up at the next appointment, whatever the range says. */
+  ask: boolean;
 };
 
 /** The only targets this app holds. */
@@ -108,7 +167,7 @@ export type LabResult = {
  * A medication you are on, and how often it is due.
  *
  * Named and separate rather than one "did you take it" for everything: a
- * finasteride, a fluoxetine and a semaglutide are three different questions
+ * daily tablet, a daily medication and a weekly medication are three different questions
  * with three different answers, and a single tick could only ever be a lie
  * about two of them.
  */
@@ -140,15 +199,21 @@ export type GoalSettings = {
   sleepConsistencyMinutes: number;
   trackMedication: boolean;
   weightGoalLb: number | null;
+  /** maintain, lose (a cut) or gain (a bulk). */
   weightDirection: WeightDirection;
+  /** The day the cut or bulk began; empty when none is set. */
+  phaseStart: string;
+  /** Pounds a week to aim for while cutting or bulking, as a positive number. */
+  weeklyRateLb: number | null;
   proteinTargetG: number | null;
   bodyFatTargetPercent: number | null;
   /**
    * Sessions you want in each week of the training block, one entry per week.
-   * A zero means "whatever the data suggests"; you set a number when you know
-   * a particular week is short on time.
+   * A zero uses the four-workout goal. Every target permits calendar refitting.
    */
   trainingDays: number[];
+  trainingSplit: "full-body" | "upper-lower";
+  trainingSessionMinutes: number;
   /**
    * Lifts you added to a week yourself, because the coach said a muscle was
    * short and you picked what to do about it. Kept against the Monday of the
@@ -185,6 +250,10 @@ export type HealthState = {
   workoutSets: WorkoutSet[];
   therapyNotes: TherapyNote[];
   thoughtJournal: ThoughtJournalEntry[];
+  thoughtLoops: ThoughtLoop[];
+  loopEvents: LoopEvent[];
+  habits: Habit[];
+  habitEvents: HabitEvent[];
   progressPhotos: ProgressPhoto[];
   goals: GoalSettings;
 };
@@ -209,9 +278,13 @@ export const defaultGoals: GoalSettings = {
   trackMedication: true,
   weightGoalLb: null,
   weightDirection: "maintain",
+  phaseStart: "",
+  weeklyRateLb: null,
   proteinTargetG: null,
   bodyFatTargetPercent: null,
   trainingDays: [],
+  trainingSplit: "full-body",
+  trainingSessionMinutes: 90,
   addedSets: [],
   trainingBlockStart: "",
   trainingAnchorSets: {},
@@ -228,6 +301,10 @@ export function emptyHealthState(now = new Date()): HealthState {
     labResults: [],
     workoutSets: [],
     therapyNotes: [],
+    thoughtLoops: [],
+    loopEvents: [],
+    habits: [],
+    habitEvents: [],
     thoughtJournal: [],
     progressPhotos: [],
     goals: { ...defaultGoals },
@@ -243,6 +320,7 @@ export function emptyDailyEntry(date: string): DailyEntry {
     restingHeartRate: null,
     hrvMs: null,
     proteinG: null,
+    waterMl: null,
     caloriesKcal: null,
     medicationTaken: null,
     journaled: false,
@@ -290,41 +368,42 @@ export function validIsoDate(value: unknown): value is string {
 /** Manual health entry is rejected, never silently clamped into a different fact. */
 export function validateDailyEntry(entry: DailyEntry, asOf = todayLocal()): string | null {
   if (!validIsoDate(entry.date) || entry.date > asOf) return "Choose today or an earlier date.";
-  if (entry.weightLb !== null && (entry.weightLb < 40 || entry.weightLb > 1_000)) return "Weight must be between 40 and 1,000 lb.";
-  if (entry.bodyFatPercent !== null && (entry.bodyFatPercent < 3 || entry.bodyFatPercent > 60)) return "Body fat must be between 3% and 60%.";
-  if (entry.proteinG !== null && (entry.proteinG < 0 || entry.proteinG > 500)) return "Protein must be between 0 and 500 g.";
-  const meaningful = entry.weightLb !== null || entry.bodyFatPercent !== null || entry.proteinG !== null || entry.note.trim() !== "";
-  return meaningful ? null : "Add at least one value or note before saving this check-in.";
+  if (entry.weightLb !== null && (entry.weightLb < 40 || entry.weightLb > 1_000)) return "Weight: 40–1,000 lb.";
+  if (entry.bodyFatPercent !== null && (entry.bodyFatPercent < 3 || entry.bodyFatPercent > 60)) return "Body fat: 3–60%.";
+  if (entry.proteinG !== null && (entry.proteinG < 0 || entry.proteinG > 500)) return "Protein: 0–500 g.";
+  if (entry.waterMl != null && (!Number.isFinite(entry.waterMl) || entry.waterMl < 0 || entry.waterMl > 20_000)) return "Water: 0–20,000 mL.";
+  const meaningful = entry.weightLb !== null || entry.bodyFatPercent !== null || entry.proteinG !== null || entry.waterMl != null || entry.note.trim() !== "";
+  return meaningful ? null : "Add at least one value or note.";
 }
 
 export function validateSleepEntry(entry: SleepEntry, asOf = todayLocal()): string | null {
   if (!validIsoDate(entry.date) || entry.date > asOf) return "Choose today or an earlier wake date.";
   if (entry.durationHours === null && (!entry.bedtime || !entry.wakeTime)) return "Add a duration or both bedtime and wake time.";
   if (entry.bedtime && entry.wakeTime && entry.bedtime === entry.wakeTime) return "Bedtime and wake time cannot be the same.";
-  if (entry.durationHours !== null && (entry.durationHours < 1 || entry.durationHours > 18)) return "Sleep duration must be between 1 and 18 hours.";
-  if (entry.deepHours !== null && (entry.deepHours < 0 || entry.deepHours > 12)) return "Deep sleep must be between 0 and 12 hours.";
-  if (entry.remHours !== null && (entry.remHours < 0 || entry.remHours > 12)) return "REM sleep must be between 0 and 12 hours.";
+  if (entry.durationHours !== null && (entry.durationHours < 1 || entry.durationHours > 18)) return "Sleep: 1–18 h.";
+  if (entry.deepHours !== null && (entry.deepHours < 0 || entry.deepHours > 12)) return "Deep sleep: 0–12 h.";
+  if (entry.remHours !== null && (entry.remHours < 0 || entry.remHours > 12)) return "REM sleep: 0–12 h.";
   if (entry.durationHours !== null && (entry.deepHours ?? 0) + (entry.remHours ?? 0) > entry.durationHours) {
-    return "Deep and REM sleep cannot add up to more than total sleep.";
+    return "Deep + REM exceeds total sleep.";
   }
   return null;
 }
 
 export function validateMedication(medication: Medication): string | null {
-  if (!medication.name.trim()) return "Enter a medication name.";
-  if (medication.name.trim().length > 80) return "Medication name must be 80 characters or fewer.";
+  if (!medication.name.trim()) return "Medication name required.";
+  if (medication.name.trim().length > 80) return "Medication name: 80 characters maximum.";
   if (medication.schedule === "weekly" && (medication.dueDay === null || medication.dueDay < 0 || medication.dueDay > 6)) {
-    return "Choose the day this medication is due.";
+    return "Weekday required.";
   }
   return null;
 }
 
 export function validateLabResult(result: LabResult, asOf = todayLocal()): string | null {
-  if (!result.name.trim()) return "Enter the test name.";
+  if (!result.name.trim()) return "Test name required.";
   if (!validIsoDate(result.date) || result.date > asOf) return "Choose today or an earlier result date.";
-  if (result.value === null) return "Enter the result value.";
+  if (result.value === null) return "Result required.";
   if (result.referenceLow !== null && result.referenceHigh !== null && result.referenceLow > result.referenceHigh) {
-    return "The reference low cannot be greater than the reference high.";
+    return "Reference low exceeds high.";
   }
   return null;
 }
@@ -418,6 +497,7 @@ export function normalizeDailyEntry(value: unknown): DailyEntry | null {
     restingHeartRate: finiteNumber(entry.restingHeartRate, 20, 250),
     hrvMs: finiteNumber(entry.hrvMs, 0, 500),
     proteinG: finiteNumber(entry.proteinG, 0, 1_000),
+    waterMl: finiteNumber(entry.waterMl, 0, 20_000),
     caloriesKcal: finiteNumber(entry.caloriesKcal, 0, 20_000),
     medicationTaken: booleanOrNull(entry.medicationTaken),
     journaled: booleanOrNull(entry.journaled) ?? false,
@@ -458,7 +538,22 @@ export function normalizeLabResult(value: unknown): LabResult | null {
     referenceLow: finiteNumber(result.referenceLow, -1_000_000, 1_000_000),
     referenceHigh: finiteNumber(result.referenceHigh, -1_000_000, 1_000_000),
     note: safeText(result.note, 1_000),
+    ask: result.ask === true,
   };
+}
+
+/** Mark or unmark a result to ask about; the record is otherwise untouched. */
+export function setLabAsk(state: HealthState, id: string, ask: boolean): HealthState {
+  const result = state.labResults.find((entry) => entry.id === id);
+  if (!result || result.ask === ask) return state;
+  return upsertLabResult(state, { ...result, ask });
+}
+
+/** Whether a marker belongs on the doctor list: out of range, or asked about by hand. */
+export function labAskReason(trend: Pick<LabTrend, "status" | "results">): "outside range" | "flagged by you" | null {
+  if (trend.status === "low" || trend.status === "high") return "outside range";
+  if (trend.results.some((result) => result.ask)) return "flagged by you";
+  return null;
 }
 
 export function normalizeWorkoutSet(value: unknown): WorkoutSet | null {
@@ -504,7 +599,7 @@ export function normalizeWorkoutSet(value: unknown): WorkoutSet | null {
 
 export function normalizeTherapyNote(value: unknown): TherapyNote | null {
   const note = recordValue(value);
-  const text = safeText(note.text, 2_000);
+  const text = safeText(note.text, 10_240);
   if (!text) return null;
   const date = validIsoDate(note.date) ? note.date : todayLocal();
   return {
@@ -514,6 +609,109 @@ export function normalizeTherapyNote(value: unknown): TherapyNote | null {
     shared: booleanOrNull(note.shared) ?? false,
     sharedDate: validIsoDate(note.sharedDate) ? note.sharedDate : "",
   };
+}
+
+const LOOP_MOVES: LoopMove[] = ["noticed", "passed", "later", "hooked"];
+/** Earlier names for the same outcomes, so a record written last week still reads. */
+const LEGACY_LOOP_MOVES: Record<string, LoopMove> = { named: "passed", shifted: "passed", parked: "later" };
+
+/** "YYYY-MM-DDTHH:MM" in local time; the date is the first ten characters. */
+export function localDateTime(date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
+export function normalizeThoughtLoop(value: unknown): ThoughtLoop | null {
+  const loop = recordValue(value);
+  const name = safeText(loop.name, 120);
+  if (!name) return null;
+  return {
+    id: safeText(loop.id, 120) || `loop-${Math.abs(hashText(name)).toString(36)}`,
+    name,
+    reply: safeText(loop.reply, 400),
+    createdAt: validIsoDate(String(loop.createdAt ?? "").slice(0, 10)) ? String(loop.createdAt) : todayLocal(),
+    archived: booleanOrNull(loop.archived) ?? false,
+  };
+}
+
+export function normalizeLoopEvent(value: unknown, knownLoops: Set<string>): LoopEvent | null {
+  const event = recordValue(value);
+  const loopId = safeText(event.loopId, 120);
+  if (!loopId || !knownLoops.has(loopId)) return null;
+  const at = typeof event.at === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(event.at) ? event.at.slice(0, 16) : null;
+  const date = validIsoDate(event.date) ? event.date : at ? at.slice(0, 10) : null;
+  if (!date) return null;
+  let move: LoopMove = LOOP_MOVES.includes(event.move as LoopMove)
+    ? (event.move as LoopMove)
+    : LEGACY_LOOP_MOVES[String(event.move)] ?? "noticed";
+  // The old shape carried a separate yes/no for "did it pass"; fold it in.
+  const legacyPassed = booleanOrNull(event.passed);
+  if (legacyPassed === false) move = "hooked";
+  else if (legacyPassed === true && move === "noticed") move = "passed";
+  return {
+    id: safeText(event.id, 120) || `${loopId}-${at ?? date}`,
+    loopId,
+    at: at ?? `${date}T12:00`,
+    date,
+    move,
+    ...(["once", "few", "often"].includes(String(event.recurrence)) ? { recurrence: event.recurrence as LoopRecurrence } : {}),
+    ...(safeText(event.response, 800) ? { response: safeText(event.response, 800) } : {}),
+  };
+}
+
+export function normalizeHabit(value: unknown): Habit | null {
+  const habit = recordValue(value);
+  const name = safeText(habit.name, 120);
+  if (!name) return null;
+  return {
+    id: safeText(habit.id, 120) || `habit-${Math.abs(hashText(name)).toString(36)}`,
+    name,
+    createdAt: validIsoDate(String(habit.createdAt ?? "").slice(0, 10)) ? String(habit.createdAt) : todayLocal(),
+    archived: booleanOrNull(habit.archived) ?? false,
+    ...(!habit.caffeine && (habit.category === "masturbation" || /masturbat/i.test(name)) ? { category: "masturbation" as const } : {}),
+    ...(habit.caffeine && typeof habit.caffeine === "object" ? { caffeine: {
+      dailyLimitMg: caffeineAmount(recordValue(habit.caffeine).dailyLimitMg, true),
+      cutoffTime: validClock(recordValue(habit.caffeine).cutoffTime),
+      usualDoseMg: caffeineAmount(recordValue(habit.caffeine).usualDoseMg),
+    } } : {}),
+  };
+}
+
+function caffeineAmount(value: unknown, allowZero = false): number | null {
+  return typeof value === "number" && Number.isFinite(value) && (allowZero ? value >= 0 : value >= 0.1)
+    ? Math.round(value * 10) / 10 : null;
+}
+
+function validClock(value: unknown): string {
+  return typeof value === "string" && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) ? value : "";
+}
+
+export function normalizeHabitEvent(value: unknown, knownHabits: Set<string>): HabitEvent | null {
+  const event = recordValue(value);
+  const habitId = safeText(event.habitId, 120);
+  if (!habitId || !knownHabits.has(habitId)) return null;
+  const at = typeof event.at === "string" && validIsoDate(event.at.slice(0, 10)) && event.at[10] === "T" && validClock(event.at.slice(11, 16)) ? event.at.slice(0, 16) : null;
+  const date = at ? at.slice(0, 10) : validIsoDate(event.date) ? event.date : null;
+  if (!date) return null;
+  if (event.kind === "intake" && (!at || caffeineAmount(event.amountMg) === null)) return null;
+  return {
+    id: safeText(event.id, 120) || `${habitId}-${at ?? date}`,
+    habitId,
+    at: at ?? `${date}T12:00`,
+    date,
+    kind: event.kind === "intake" ? "intake" : event.kind === "slip" ? "slip" : "urge",
+    ...(event.kind === "intake" ? { amountMg: caffeineAmount(event.amountMg) } : {}),
+  };
+}
+
+export function caffeineSummary(state: HealthState, habitId: string, date = todayLocal()) {
+  const habit = state.habits.find(entry => entry.id === habitId);
+  const events = state.habitEvents.filter(event => event.habitId === habitId && event.kind === "intake" && event.date === date);
+  const totalMg = Math.round(events.reduce((sum, event) => sum + (event.amountMg ?? 0), 0) * 10) / 10;
+  const cutoff = habit?.caffeine?.cutoffTime ?? "";
+  const late = cutoff ? events.filter(event => event.at.slice(11, 16) > cutoff).length : 0;
+  const limit = habit?.caffeine?.dailyLimitMg;
+  return { events, totalMg, late, overMg: limit == null ? null : Math.max(0, Math.round((totalMg - limit) * 10) / 10) };
 }
 
 export function normalizeThoughtJournalEntry(value: unknown): ThoughtJournalEntry | null {
@@ -569,6 +767,8 @@ export function normalizeGoals(value: unknown): GoalSettings {
     trackMedication: booleanOrNull(goals.trackMedication) ?? defaultGoals.trackMedication,
     weightGoalLb: finiteNumber(goals.weightGoalLb, 40, 1_000),
     weightDirection: direction === "lose" || direction === "gain" ? direction : "maintain",
+    phaseStart: validIsoDate(goals.phaseStart) ? goals.phaseStart : "",
+    weeklyRateLb: finiteNumber(goals.weeklyRateLb, 0.1, 5),
     proteinTargetG: finiteNumber(goals.proteinTargetG, 0, 1_000),
     bodyFatTargetPercent: finiteNumber(goals.bodyFatTargetPercent, 1, 70),
     trainingDays: Array.isArray(goals.trainingDays)
@@ -577,6 +777,8 @@ export function normalizeGoals(value: unknown): GoalSettings {
           return days === null || days < 2 ? 0 : Math.min(4, Math.round(days));
         })
       : [],
+    trainingSplit: goals.trainingSplit === "upper-lower" ? "upper-lower" : "full-body",
+    trainingSessionMinutes: finiteNumber(goals.trainingSessionMinutes, 45, 120) ?? 90,
     addedSets: normalizeAddedSets(goals.addedSets),
     trainingBlockStart: validIsoDate(goals.trainingBlockStart) ? goals.trainingBlockStart : "",
     trainingAnchorSets: Object.fromEntries(
@@ -820,6 +1022,24 @@ export function normalizeHealthState(value: unknown): HealthState {
   const photos = Array.isArray(state.progressPhotos)
     ? state.progressPhotos.map(normalizeProgressPhoto).filter((photo): photo is ProgressPhoto => Boolean(photo))
     : [];
+  const loops = dedupeByKey(
+    Array.isArray(state.thoughtLoops)
+      ? state.thoughtLoops.map(normalizeThoughtLoop).filter((loop): loop is ThoughtLoop => Boolean(loop))
+      : [],
+    (loop) => loop.id,
+  );
+  const loopIds = new Set(loops.map((loop) => loop.id));
+  const loopEvents = Array.isArray(state.loopEvents)
+    ? state.loopEvents.map((event) => normalizeLoopEvent(event, loopIds)).filter((event): event is LoopEvent => Boolean(event))
+    : [];
+  const habits = dedupeByKey(
+    Array.isArray(state.habits) ? state.habits.map(normalizeHabit).filter((habit): habit is Habit => Boolean(habit)) : [],
+    (habit) => habit.id,
+  );
+  const habitIds = new Set(habits.map((habit) => habit.id));
+  const habitEvents = Array.isArray(state.habitEvents)
+    ? state.habitEvents.map((event) => normalizeHabitEvent(event, habitIds)).filter((event): event is HabitEvent => Boolean(event))
+    : [];
 
   // Medications first: a dose is only meaningful against one that exists.
   const medications = normalizeMedications(state.medications);
@@ -852,10 +1072,14 @@ export function normalizeHealthState(value: unknown): HealthState {
     sleepEntries: dedupeByKey(sleep, (entry) => `${entry.date}:${entry.source}`).sort((a, b) => b.date.localeCompare(a.date)),
     labResults: dedupeByKey(labs, (result) => result.id).sort((a, b) => b.date.localeCompare(a.date)),
     workoutSets: dedupeByKey(workouts, (entry) => `${entry.startedAt}:${entry.exercise}:${entry.setNumber}`)
-      .sort((a, b) => b.startedAt.localeCompare(a.startedAt) || a.exercise.localeCompare(b.exercise) || a.setNumber - b.setNumber),
+      .sort((a, b) => compareWorkoutStarts(b.startedAt, a.startedAt) || a.exercise.localeCompare(b.exercise) || a.setNumber - b.setNumber),
     therapyNotes: dedupeByKey(therapy, (note) => note.id).sort((a, b) => b.date.localeCompare(a.date)),
     thoughtJournal: dedupeByKey(thoughts, (entry) => entry.id)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt) || b.date.localeCompare(a.date)),
+    thoughtLoops: loops.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    loopEvents: dedupeByKey(loopEvents, (event) => event.id).sort((a, b) => b.at.localeCompare(a.at)),
+    habits: habits.sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
+    habitEvents: dedupeByKey(habitEvents, (event) => event.id).sort((a, b) => b.at.localeCompare(a.at)),
     progressPhotos: dedupeByKey(photos, (photo) => photo.id).sort((a, b) => b.date.localeCompare(a.date)),
     goals: normalizeGoals(state.goals),
   };
@@ -1275,6 +1499,206 @@ export function removeTherapyNote(state: HealthState, id: string): HealthState {
   });
 }
 
+export function upsertThoughtLoop(state: HealthState, value: unknown): HealthState {
+  const loop = normalizeThoughtLoop(value);
+  if (!loop) return state;
+  return normalizeHealthState({
+    ...state,
+    updatedAt: new Date().toISOString(),
+    thoughtLoops: [...state.thoughtLoops.filter((item) => item.id !== loop.id), loop],
+  });
+}
+
+/** Removing a loop removes every time it came up; the history is the loop's. */
+export function removeThoughtLoop(state: HealthState, id: string): HealthState {
+  return normalizeHealthState({
+    ...state,
+    updatedAt: new Date().toISOString(),
+    thoughtLoops: state.thoughtLoops.filter((loop) => loop.id !== id),
+    loopEvents: state.loopEvents.filter((event) => event.loopId !== id),
+  });
+}
+
+export function upsertLoopEvent(state: HealthState, value: unknown): HealthState {
+  const event = normalizeLoopEvent(value, new Set(state.thoughtLoops.map((loop) => loop.id)));
+  if (!event) return state;
+  return normalizeHealthState({
+    ...state,
+    updatedAt: new Date().toISOString(),
+    loopEvents: [event, ...state.loopEvents.filter((item) => item.id !== event.id)],
+  });
+}
+
+export function removeLoopEvent(state: HealthState, id: string): HealthState {
+  if (!state.loopEvents.some((event) => event.id === id)) return state;
+  return normalizeHealthState({
+    ...state,
+    updatedAt: new Date().toISOString(),
+    loopEvents: state.loopEvents.filter((event) => event.id !== id),
+  });
+}
+
+export type LoopSummary = {
+  today: number;
+  week: number;
+  lastWeek: number;
+  month: number;
+  priorMonth: number;
+  /** Days since it last came up; 0 if today, null if never. */
+  quietDays: number | null;
+  /** Of the answered taps in 30 days, how many you let pass or set aside rather than got pulled into; null under three answers. */
+  letGoShare: number | null;
+  /** Times it pulled you in over 30 days. */
+  hooked: number;
+  /** When it tends to come up over 30 days; null with fewer than three events. */
+  peak: "mornings" | "afternoons" | "evenings" | "nights" | null;
+  trend: "fading" | "steady" | "louder" | "new";
+  sentence: string;
+};
+
+function partOfDay(at: string): "mornings" | "afternoons" | "evenings" | "nights" {
+  const hour = Number(at.slice(11, 13));
+  if (hour >= 5 && hour < 12) return "mornings";
+  if (hour >= 12 && hour < 17) return "afternoons";
+  if (hour >= 17 && hour < 22) return "evenings";
+  return "nights";
+}
+
+/** How one loop is going: counted, compared with the week before, and said plainly. */
+export function loopSummary(state: HealthState, loopId: string, asOf = todayLocal()): LoopSummary {
+  const events = state.loopEvents.filter((event) => event.loopId === loopId && event.date <= asOf);
+  const inWindow = (from: number, to: number) => events.filter((event) => event.date > addDays(asOf, -to) && event.date <= addDays(asOf, -from));
+  const today = events.filter((event) => event.date === asOf).length;
+  const week = inWindow(0, 7).length;
+  const lastWeek = inWindow(7, 14).length;
+  const month = inWindow(0, 30);
+  const priorMonth = inWindow(30, 60).length;
+  const latest = events[0]?.date ?? null;
+  const quietDays = latest ? daysBetween(latest, asOf) : null;
+  const answered = month.filter((event) => event.move !== "noticed");
+  const hooked = answered.filter((event) => event.move === "hooked").length;
+  const letGoShare = answered.length >= 3 ? Math.round(((answered.length - hooked) / answered.length) * 100) : null;
+  let peak: LoopSummary["peak"] = null;
+  if (month.length >= 3) {
+    const counts = new Map<string, number>();
+    for (const event of month) counts.set(partOfDay(event.at), (counts.get(partOfDay(event.at)) ?? 0) + 1);
+    const top = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+    if (top && top[1] / month.length >= 0.4) peak = top[0] as LoopSummary["peak"];
+  }
+  // A change counts when it is at least two taps and at least a quarter of last
+  // week; one tap either way is a day, not a direction.
+  const step = Math.max(2, Math.ceil(lastWeek * 0.25));
+  const trend: LoopSummary["trend"] =
+    week + lastWeek < 3 && !lastWeek ? "new" : week <= lastWeek - step ? "fading" : week >= lastWeek + step ? "louder" : "steady";
+  // Two numbers and, when it has stayed away, how long. Nothing else.
+  const parts: string[] = [];
+  if (trend === "new") parts.push(week ? `${week} this week` : "not yet this week");
+  else parts.push(`${week} this week · ${lastWeek} last week`);
+  if (quietDays !== null && quietDays >= 2) parts.push(`last logged ${quietDays} days ago`);
+  return { today, week, lastWeek, month: month.length, priorMonth, quietDays, letGoShare, hooked, peak, trend, sentence: parts.join(" · ") };
+}
+
+/** Times a loop came up in each trailing week, oldest first; a zero is a real zero. */
+export function loopWeekly(state: HealthState, loopId: string, asOf = todayLocal(), weeks = 8): Array<{ date: string; value: number }> {
+  const events = state.loopEvents.filter((event) => event.loopId === loopId);
+  return Array.from({ length: weeks }, (_, index) => {
+    const end = addDays(asOf, -(weeks - 1 - index) * 7);
+    const start = addDays(end, -6);
+    return { date: end, value: events.filter((event) => event.date >= start && event.date <= end).length };
+  });
+}
+
+export function upsertHabit(state: HealthState, value: unknown): HealthState {
+  const habit = normalizeHabit(value);
+  if (!habit) return state;
+  return normalizeHealthState({
+    ...state,
+    updatedAt: new Date().toISOString(),
+    habits: [...state.habits.filter((item) => item.id !== habit.id), habit],
+  });
+}
+
+export function removeHabit(state: HealthState, id: string): HealthState {
+  return normalizeHealthState({
+    ...state,
+    updatedAt: new Date().toISOString(),
+    habits: state.habits.filter((habit) => habit.id !== id),
+    habitEvents: state.habitEvents.filter((event) => event.habitId !== id),
+  });
+}
+
+export function upsertHabitEvent(state: HealthState, value: unknown): HealthState {
+  const event = normalizeHabitEvent(value, new Set(state.habits.map((habit) => habit.id)));
+  if (!event) return state;
+  return normalizeHealthState({
+    ...state,
+    updatedAt: new Date().toISOString(),
+    habitEvents: [event, ...state.habitEvents.filter((item) => item.id !== event.id)],
+  });
+}
+
+export function removeHabitEvent(state: HealthState, id: string): HealthState {
+  if (!state.habitEvents.some((event) => event.id === id)) return state;
+  return normalizeHealthState({
+    ...state,
+    updatedAt: new Date().toISOString(),
+    habitEvents: state.habitEvents.filter((event) => event.id !== id),
+  });
+}
+
+export type HabitSummary = {
+  /** Slips this week and last. */
+  week: number;
+  lastWeek: number;
+  /** Urges that passed this week. */
+  urgesWeek: number;
+  /** Days since the last slip; 0 if today, null if there has never been one. */
+  cleanDays: number | null;
+  /** The longest run of clean days in the last 90, counting the current one. */
+  bestCleanDays: number;
+  sentence: string;
+};
+
+/** Slips this week against last, urges that passed, and the clean streak. */
+export function habitSummary(state: HealthState, habitId: string, asOf = todayLocal()): HabitSummary {
+  const events = state.habitEvents.filter((event) => event.habitId === habitId && event.date <= asOf);
+  const slips = events.filter((event) => event.kind === "slip");
+  const inWindow = (list: HabitEvent[], from: number, to: number) =>
+    list.filter((event) => event.date > addDays(asOf, -to) && event.date <= addDays(asOf, -from)).length;
+  const week = inWindow(slips, 0, 7);
+  const lastWeek = inWindow(slips, 7, 14);
+  const urgesWeek = inWindow(events.filter((event) => event.kind === "urge"), 0, 7);
+  const lastSlip = slips[0]?.date ?? null;
+  const cleanDays = lastSlip ? daysBetween(lastSlip, asOf) : null;
+  // Longest gap between slips over ninety days, including the run up to today.
+  const habit = state.habits.find((entry) => entry.id === habitId);
+  const floor = addDays(asOf, -90);
+  const marks = [...new Set(slips.filter((event) => event.date >= floor).map((event) => event.date))].sort();
+  let bestCleanDays = 0;
+  const from = habit && habit.createdAt > floor ? habit.createdAt : floor;
+  const points = [from, ...marks, asOf];
+  for (let index = 1; index < points.length; index += 1) {
+    const gap = daysBetween(points[index - 1], points[index]) - (index === points.length - 1 ? 0 : 1);
+    bestCleanDays = Math.max(bestCleanDays, gap);
+  }
+  const parts: string[] = [];
+  if (cleanDays === null) parts.push("No occurrences logged");
+  else parts.push(cleanDays === 0 ? "today" : cleanDays === 1 ? "1 day since last occurrence" : `${cleanDays} days since last occurrence`);
+  parts.push(`${week} this week · ${lastWeek} last week`);
+  if (urgesWeek) parts.push(`${urgesWeek} ${urgesWeek === 1 ? "urge" : "urges"} passed`);
+  return { week, lastWeek, urgesWeek, cleanDays, bestCleanDays, sentence: parts.join(" · ") };
+}
+
+/** Slips in each trailing week, oldest first; a zero is a real zero. */
+export function habitWeekly(state: HealthState, habitId: string, asOf = todayLocal(), weeks = 8): Array<{ date: string; value: number }> {
+  const slips = state.habitEvents.filter((event) => event.habitId === habitId && event.kind === "slip");
+  return Array.from({ length: weeks }, (_, index) => {
+    const end = addDays(asOf, -(weeks - 1 - index) * 7);
+    const start = addDays(end, -6);
+    return { date: end, value: slips.filter((event) => event.date >= start && event.date <= end).length };
+  });
+}
+
 export function upsertThoughtJournalEntry(state: HealthState, value: unknown): HealthState {
   const entry = normalizeThoughtJournalEntry(value);
   if (!entry) return state;
@@ -1472,7 +1896,7 @@ export function loggingCoverage(state: HealthState, asOf = todayLocal(), days = 
 }
 
 function describeCount(count: number, total: number, unit = "days"): string {
-  return count ? `from ${count} recorded ${count === 1 ? unit.replace(/s$/, "") : unit} of ${total}` : "not recorded";
+  return count ? `${count}/${total} ${count === 1 ? unit.replace(/s$/, "") : unit}` : "not recorded";
 }
 
 /**
@@ -1506,7 +1930,7 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
     group: "Sleep",
     label: "Nights at goal",
     value: durations.length ? `${atGoal} of ${durations.length}` : "No data",
-    detail: `nights of at least ${state.goals.sleepHours} hours`,
+    detail: `≥${state.goals.sleepHours} h`,
   });
   rows.push({
     id: "sleep-consistency",
@@ -1522,7 +1946,7 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
     group: "Sleep",
     label: "Measured by",
     value: sources.length ? sources.map((source) => source[0].toUpperCase() + source.slice(1)).join(", ") : "No data",
-    detail: "devices that contributed nights in this period",
+    detail: "",
   });
 
   // One row per medication, counted over the days each was actually due. A
@@ -1539,7 +1963,7 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
         ? `${status.taken} taken, ${status.missed} missed of ${status.recorded} ${every} ${
             status.recorded === 1 ? "dose" : "doses"
           } due · ${status.streak} in a row`
-        : `${every} · nothing recorded`,
+        : `${every} · no doses logged`,
     });
   }
   if (statuses.length > 1) {
@@ -1553,7 +1977,7 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
         ? `${medication.taken} taken, ${medication.missed} missed of ${medication.recorded} ${
             medication.recorded === 1 ? "dose" : "doses"
           } due`
-        : "nothing recorded",
+        : "not recorded",
     });
   }
 
@@ -1567,9 +1991,9 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
     value: weights.length ? `${(weights.at(-1)!.weightLb as number).toFixed(1)} lb` : "No data",
     detail:
       weightChange !== null
-        ? `${weightChange >= 0 ? "+" : ""}${weightChange.toFixed(1)} lb across the period`
+        ? `${weightChange >= 0 ? "+" : ""}${weightChange.toFixed(1)} lb change`
         : weights.length
-          ? "one reading in this period"
+          ? "1 reading"
           : "not recorded",
   });
 
@@ -1615,9 +2039,9 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
     value: fats.length ? `${(fats.at(-1)!.bodyFatPercent as number).toFixed(1)}%` : "No data",
     detail:
       fatChange !== null
-        ? `${fatChange >= 0 ? "+" : ""}${fatChange.toFixed(1)} points across the period`
+        ? `${fatChange >= 0 ? "+" : ""}${fatChange.toFixed(1)} points change`
         : fats.length
-          ? "one reading in this period"
+          ? "1 reading"
           : "not recorded",
   });
 
@@ -1626,11 +2050,11 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
     id: "protein",
     group: "Body",
     label: "Protein",
-    value: protein.average === null ? "No data" : `${Math.round(protein.average)} g a day`,
+    value: protein.average === null ? "No data" : `${Math.round(protein.average)} g/day`,
     detail:
       protein.target === null
         ? describeCount(protein.recorded, safeDays)
-        : `${protein.daysAtTarget} of ${protein.recorded} recorded days at or above ${protein.target} g`,
+        : `${protein.daysAtTarget}/${protein.recorded} days ≥ ${protein.target} g`,
   });
 
   const periodSets = state.workoutSets.filter((entry) => entry.date >= start && entry.date <= asOf);
@@ -1642,15 +2066,15 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
     label: "Workouts",
     value: `${sessions.length}`,
     detail: sessions.length
-      ? `${(sessions.length / (safeDays / 7)).toFixed(1)} a week across ${periodSets.length} working sets`
-      : "no sessions recorded in this period",
+      ? `${(sessions.length / (safeDays / 7)).toFixed(1)}/week · ${periodSets.length} sets`
+      : "No sessions",
   });
   rows.push({
     id: "volume",
     group: "Training",
     label: "Volume lifted",
     value: volume ? `${Math.round(volume).toLocaleString("en-US")} lb` : "No data",
-    detail: volume ? `${new Set(periodSets.map((entry) => entry.exercise)).size} distinct exercises` : "import a Strong export",
+    detail: volume ? `${new Set(periodSets.map((entry) => entry.exercise)).size} exercises` : "No Strong records",
   });
   const prs = recentPersonalRecords(buildExerciseSummaries(state.workoutSets), asOf, safeDays);
   rows.push({
@@ -1660,7 +2084,7 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
     value: `${prs.length}`,
     detail: prs.length
       ? `${prs.slice(0, 2).map((record) => record.exercise).join(", ")}${prs.length > 2 ? ` and ${prs.length - 2} more` : ""}`
-      : "none set in this period",
+      : "No new records",
   });
 
   const mind = mindSummary(state, asOf, safeDays);
@@ -1669,14 +2093,33 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
     group: "Mind",
     label: "Meditation",
     value: mind.meditationDays ? `${mind.meditationDays} of ${safeDays} days` : "No data",
-    detail: mind.meditationMinutes ? `${mind.meditationMinutes} minutes in total` : "nothing recorded in this period",
+    detail: mind.meditationMinutes ? `${mind.meditationMinutes} min` : "Not recorded",
   });
+  for (const loop of state.thoughtLoops.filter((entry) => !entry.archived)) {
+    const events = state.loopEvents.filter((event) => event.loopId === loop.id && event.date >= start && event.date <= asOf);
+    const before = state.loopEvents.filter(
+      (event) => event.loopId === loop.id && event.date >= addDays(start, -safeDays) && event.date < start,
+    );
+    const answered = events.filter((event) => event.move !== "noticed");
+    const letGo = answered.filter((event) => event.move !== "hooked").length;
+    rows.push({
+      id: `loop-${loop.id}`,
+      group: "Mind",
+      label: `Thought loop: ${loop.name}`,
+      value: events.length ? `${events.length} ${events.length === 1 ? "time" : "times"} in ${safeDays} days` : "No data",
+      detail: events.length
+        ? `${before.length} the ${safeDays} days before${
+            answered.length >= 3 ? ` · passed ${Math.round((letGo / answered.length) * 100)}%` : ""
+          }`
+        : "Not recorded",
+    });
+  }
   rows.push({
     id: "journal",
     group: "Mind",
     label: "Journaling",
     value: mind.journalDays ? `${mind.journalDays} of ${safeDays} days` : "No data",
-    detail: mind.journalDays ? `${Math.round((mind.journalDays / safeDays) * 100)}% of days` : "nothing recorded in this period",
+    detail: mind.journalDays ? `${Math.round((mind.journalDays / safeDays) * 100)}% of days` : "Not recorded",
   });
 
   return {
@@ -1687,12 +2130,10 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
     rows,
     // The most recent result for each test only: a marker corrected two years ago
     // is history, not something to raise at this appointment.
+    // Out of range, or marked to ask about by hand; either way the latest result speaks.
     flaggedLabs: buildLabTrends(state.labResults.filter((result) => result.date <= asOf))
-      .map((trend) => trend.latest)
-      .filter((result) => {
-        const status = labRangeStatus(result);
-        return status === "low" || status === "high";
-      }),
+      .filter((trend) => labAskReason(trend) !== null)
+      .map((trend) => (labAskReason(trend) === "flagged by you" ? { ...trend.latest, ask: true } : trend.latest)),
     toRaise: state.therapyNotes.filter((note) => !note.shared && note.date <= asOf),
     notes: daily
       .filter((entry) => entry.note !== "")
@@ -1702,29 +2143,58 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
 }
 
 /** Plain text version of the report, for pasting into a message or a visit note. */
+export type ReportOptions = {
+  groups?: ReportRow["group"][];
+  includeLabs?: boolean;
+  includeTherapy?: boolean;
+  includeNotes?: boolean;
+};
+
+export type ReportAudience = "doctor" | "therapy" | "all";
+
+export function reportOptionsFor(audience: ReportAudience): ReportOptions {
+  return {
+    groups: audience === "therapy" ? ["Sleep", "Medication", "Mind"]
+      : audience === "doctor" ? ["Sleep", "Medication", "Body", "Training"]
+      : ["Sleep", "Medication", "Body", "Training", "Mind"],
+    includeLabs: audience !== "therapy",
+    includeTherapy: audience !== "doctor",
+    includeNotes: false,
+  };
+}
+
+export function reportRows(report: HealthReport, includeTherapy = true, groups?: ReportRow["group"][]): ReportRow[] {
+  return report.rows.filter((row) => (!groups || groups.includes(row.group)) && (includeTherapy || !row.id.startsWith("loop-")));
+}
+
 export function reportToText(
   report: HealthReport,
-  options: { includeTherapy?: boolean; includeNotes?: boolean } = { includeTherapy: true, includeNotes: true },
+  options: ReportOptions = { includeTherapy: true, includeNotes: true },
 ): string {
+  const coverage: string[] = [];
+  if (!options.groups || options.groups.includes("Sleep")) coverage.push(`sleep ${report.coverage.sleepNights}/${report.days} nights`);
+  if (!options.groups || options.groups.includes("Medication")) coverage.push(`medication ${report.coverage.medicationDosesAnswered}/${report.coverage.medicationDosesDue} due doses`);
   const lines: string[] = [
     `Health summary: ${report.start} to ${report.end} (${report.days} days)`,
-    `Recorded: ${report.coverage.sleepNights} nights of sleep, ${report.coverage.medicationDosesAnswered} of ${report.coverage.medicationDosesDue} due medication doses answered.`,
+    ...(coverage.length ? [`Recorded: ${coverage.join(" · ")}`] : []),
     "",
   ];
 
   for (const group of ["Sleep", "Medication", "Body", "Training", "Mind"] as const) {
-    const rows = report.rows.filter((row) => row.group === group);
+    const rows = reportRows(report, options.includeTherapy !== false, options.groups).filter((row) => row.group === group);
     if (!rows.length) continue;
     lines.push(`${group}`);
-    for (const row of rows) lines.push(`  ${row.label}: ${row.value} (${row.detail})`);
+    for (const row of rows) lines.push(`  ${row.label}: ${row.value}${row.detail ? ` (${row.detail})` : ""}`);
     lines.push("");
   }
 
-  if (report.flaggedLabs.length) {
-    lines.push("Most recent result per test, outside the entered reference range");
+  if (options.includeLabs !== false && report.flaggedLabs.length) {
+    lines.push("Flagged labs: latest result per test");
     for (const lab of report.flaggedLabs) {
+      const status = labRangeStatus(lab);
+      const reason = status === "low" || status === "high" ? status : "flagged";
       lines.push(
-        `  ${lab.name} ${lab.value ?? "—"} ${lab.unit} on ${lab.date} (range ${lab.referenceLow ?? "—"} to ${lab.referenceHigh ?? "—"})`,
+        `  ${lab.name} ${lab.value ?? "—"} ${lab.unit} on ${lab.date} (range ${lab.referenceLow ?? "—"} to ${lab.referenceHigh ?? "—"} · ${reason})`,
       );
     }
     lines.push("");
@@ -1743,7 +2213,7 @@ export function reportToText(
   }
 
   lines.push(
-    "These are self-recorded observations and user-entered reference ranges. They are not a diagnosis or a clinical measurement.",
+    "Self-recorded data",
   );
   return lines.join("\n");
 }
@@ -1788,6 +2258,7 @@ export function dailyEntriesCsv(entries: DailyEntry[]): string {
       "resting_heart_rate",
       "hrv_ms",
       "protein_g",
+      "water_ml",
       "calories_kcal",
       "journaled",
       "meditation_minutes",
@@ -1805,6 +2276,7 @@ export function dailyEntriesCsv(entries: DailyEntry[]): string {
         entry.restingHeartRate,
         entry.hrvMs,
         entry.proteinG,
+        entry.waterMl,
         entry.caloriesKcal,
         entry.journaled,
         entry.meditationMinutes,
@@ -1821,7 +2293,7 @@ export function workoutSetsCsv(entries: WorkoutSet[]): string {
       "load_mode", "assistance_lb", "distance", "seconds", "rpe", "rest_timer_seconds", "workout_duration_seconds",
     ],
     [...entries]
-      .sort((a, b) => a.startedAt.localeCompare(b.startedAt) || a.exercise.localeCompare(b.exercise) || a.setNumber - b.setNumber)
+      .sort((a, b) => compareWorkoutStarts(a.startedAt, b.startedAt) || a.exercise.localeCompare(b.exercise) || a.setNumber - b.setNumber)
       .map((entry) => [
         entry.date, entry.startedAt, entry.workoutName, entry.exercise, entry.setNumber, entry.weightLb,
         entry.reps, entry.loadMode ?? "", entry.assistanceLb ?? null, entry.distance, entry.seconds, entry.rpe, entry.restSeconds, entry.durationSeconds,
@@ -1845,6 +2317,26 @@ export function therapyNotesCsv(entries: TherapyNote[]): string {
   );
 }
 
+export function thoughtLoopsCsv(loops: ThoughtLoop[], events: LoopEvent[]): string {
+  const names = new Map(loops.map((loop) => [loop.id, loop.name]));
+  return toCsv(
+    ["id", "loop_id", "loop", "at", "date", "outcome", "response", "recurrence"],
+    [...events].sort((a, b) => a.at.localeCompare(b.at)).map((event) => [
+      event.id, event.loopId, names.get(event.loopId) ?? "", event.at, event.date, event.move, event.response ?? "", event.recurrence ?? "",
+    ]),
+  );
+}
+
+export function habitsCsv(habits: Habit[], events: HabitEvent[]): string {
+  const names = new Map(habits.map((habit) => [habit.id, habit.name]));
+  return toCsv(
+    ["id", "habit_id", "habit", "at", "date", "kind", "amount_mg"],
+    [...events].sort((a, b) => a.at.localeCompare(b.at)).map((event) => [
+      event.id, event.habitId, names.get(event.habitId) ?? "", event.at, event.date, event.kind, event.amountMg ?? "",
+    ]),
+  );
+}
+
 export function thoughtJournalCsv(entries: ThoughtJournalEntry[]): string {
   return toCsv(
     ["id", "date", "created_at", "source", "title", "text"],
@@ -1863,6 +2355,60 @@ export function progressPhotosCsv(entries: ProgressPhoto[]): string {
   );
 }
 
+export type PhaseProgress = {
+  phase: "cut" | "bulk";
+  start: string;
+  weeks: number;
+  startWeightLb: number | null;
+  latestWeightLb: number | null;
+  changeLb: number | null;
+  /** Signed pounds a week, from the first week's average to the latest week's. */
+  ratePerWeek: number | null;
+  targetRateLb: number | null;
+  pace: "on pace" | "slow" | "fast" | null;
+  /** Protein for the phase: a gram per pound cutting, 0.8 bulking, to the nearest 5. */
+  proteinSuggestedG: number | null;
+  sentence: string;
+};
+
+/**
+ * How a cut or bulk is going: the average of the first week's weights against
+ * the average of the latest week's, as pounds a week, set against the rate you
+ * asked for. Weekly averages, because a scale reading is water first and fat
+ * second. Nothing while maintaining.
+ */
+export function phaseProgress(state: HealthState, asOf = todayLocal()): PhaseProgress | null {
+  const { weightDirection, phaseStart, weeklyRateLb } = state.goals;
+  if (weightDirection === "maintain") return null;
+  const phase = weightDirection === "lose" ? "cut" : "bulk";
+  const start = phaseStart && phaseStart <= asOf ? phaseStart : addDays(asOf, -28);
+  const weights = state.dailyEntries.filter((entry) => typeof entry.weightLb === "number" && entry.date >= start && entry.date <= asOf);
+  const avg = (from: string, to: string) => {
+    const values = weights.filter((entry) => entry.date >= from && entry.date <= to).map((entry) => entry.weightLb as number);
+    return values.length ? values.reduce((total, value) => total + value, 0) / values.length : null;
+  };
+  const startWeightLb = avg(start, addDays(start, 6));
+  const latestWeightLb = avg(addDays(asOf, -6), asOf);
+  const days = Math.max(1, daysBetween(start, asOf) + 1);
+  const weeks = Math.max(1, Math.ceil(days / 7));
+  const spanWeeks = Math.max(1, (days - 1) / 7);
+  const changeLb = startWeightLb !== null && latestWeightLb !== null && days > 7 ? latestWeightLb - startWeightLb : null;
+  const ratePerWeek = changeLb === null ? null : changeLb / spanWeeks;
+  const targetRateLb = weeklyRateLb;
+  let pace: PhaseProgress["pace"] = null;
+  if (ratePerWeek !== null && targetRateLb !== null) {
+    const towards = phase === "cut" ? -ratePerWeek : ratePerWeek;
+    pace = towards >= targetRateLb * 0.75 && towards <= targetRateLb * 1.25 ? "on pace" : towards < targetRateLb * 0.75 ? "slow" : "fast";
+  }
+  const proteinSuggestedG = latestWeightLb === null ? null : Math.round((latestWeightLb * (phase === "cut" ? 1.0 : 0.8)) / 5) * 5;
+  const round1 = (value: number) => Math.round(value * 10) / 10;
+  const parts: string[] = [`week ${weeks}`];
+  if (latestWeightLb !== null) parts.push(`${round1(latestWeightLb)} lb`);
+  if (changeLb !== null) parts.push(`${changeLb < 0 ? "down" : "up"} ${round1(Math.abs(changeLb))} lb since ${dateLabel(start, { month: "short", day: "numeric" })}`);
+  if (ratePerWeek !== null) parts.push(`${round1(Math.abs(ratePerWeek))} lb/week${targetRateLb !== null ? ` (target ${targetRateLb})` : ""}${pace ? ` · ${pace}` : ""}`);
+  return { phase, start, weeks, startWeightLb, latestWeightLb, changeLb, ratePerWeek, targetRateLb, pace, proteinSuggestedG, sentence: parts.join(" · ") };
+}
+
 export function goalsCsv(goals: GoalSettings): string {
   return toCsv(
     ["setting", "value"],
@@ -1872,9 +2418,13 @@ export function goalsCsv(goals: GoalSettings): string {
       ["track_medication", goals.trackMedication],
       ["weight_goal_lb", goals.weightGoalLb],
       ["weight_direction", goals.weightDirection],
+      ["phase_start", goals.phaseStart],
+      ["weekly_rate_lb", goals.weeklyRateLb],
       ["protein_target_g", goals.proteinTargetG],
       ["body_fat_target_percent", goals.bodyFatTargetPercent],
       ["training_days_by_block_week", goals.trainingDays.join("|")],
+      ["training_split", goals.trainingSplit],
+      ["training_session_minutes", goals.trainingSessionMinutes],
       ["training_block_start", goals.trainingBlockStart],
       ["training_anchor_sets", JSON.stringify(goals.trainingAnchorSets)],
     ],
@@ -2002,6 +2552,11 @@ function betterSet(candidate: WorkoutSet, current: WorkoutSet | null): boolean {
   return (candidate.reps ?? 0) > (current.reps ?? 0);
 }
 
+/** Compare imported timestamp formats without changing session identifiers. */
+export function compareWorkoutStarts(a: string, b: string): number {
+  return a.replace("T", " ").localeCompare(b.replace("T", " "));
+}
+
 export function buildWorkoutSessions(sets: WorkoutSet[]): WorkoutSession[] {
   const sessions = new Map<string, WorkoutSession>();
   for (const entry of sets) {
@@ -2020,7 +2575,7 @@ export function buildWorkoutSessions(sets: WorkoutSet[]): WorkoutSession[] {
   }
   return [...sessions.values()]
     .map((session) => ({ ...session, volumeLb: Math.round(session.volumeLb) }))
-    .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
+    .sort((a, b) => compareWorkoutStarts(b.startedAt, a.startedAt));
 }
 
 export function buildExerciseSummaries(sets: WorkoutSet[]): ExerciseSummary[] {
@@ -2058,7 +2613,7 @@ export function buildExerciseSummaries(sets: WorkoutSet[]): ExerciseSummary[] {
           topReps: top?.reps ?? null,
         };
       })
-      .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+      .sort((a, b) => compareWorkoutStarts(a.startedAt, b.startedAt));
 
     let best: WorkoutSet | null = null;
     for (const entry of entries) if (betterSet(entry, best)) best = entry;

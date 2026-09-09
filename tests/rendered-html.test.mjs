@@ -28,7 +28,7 @@ test("renders the Baseline app shell", async () => {
   );
   const html = await response.text();
   assert.match(html, /<title>Baseline<\/title>/i);
-  assert.match(html, /private record of sleep, training/i);
+  assert.match(html, /Personal health record\./i);
   assert.doesNotMatch(html, /codex-preview/i);
 
   // What makes it installable rather than a page someone bookmarks. These are

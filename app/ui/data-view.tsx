@@ -1,23 +1,25 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { RecordHeading } from "./primitives";
 import {
   GoalSettings,
   HealthState,
   ImportRecords,
   WeightDirection,
   normalizeHealthState,
+  todayLocal,
 } from "../health-model";
 import {
   ParsedBackup,
   SOURCE_ARCHIVE,
-  SOURCE_REPOSITORY,
   createBaselineArchive,
   parseBackupFile,
   restoreArchivePhotos,
 } from "../portability";
+import { mergeRestoredAppleHealthSyncPayload } from "../apple-health-sync";
 import { Icon } from "./icons";
-import { ConfirmButton, Note, NumberSetting, PageHeading, SelectSetting, Segmented } from "./primitives";
+import { ConfirmButton, DateSetting, Note, NumberSetting, SelectSetting } from "./primitives";
 import { downloadBlob, formatBytes, formatTimestamp } from "./format";
 import { Modal, Theme } from "./types";
 
@@ -37,6 +39,7 @@ export function DataView({
   onAppleChanged,
   onNotice,
   demo = false,
+  loadImage, restoreImages,
 }: {
   state: HealthState;
   appleOverlay: Partial<ImportRecords> | null;
@@ -50,6 +53,8 @@ export function DataView({
   onAppleChanged: (overlay: Partial<ImportRecords> | null) => void;
   onNotice: (message: string) => void;
   demo?: boolean;
+  loadImage?: (id: string) => Promise<Blob | null>;
+  restoreImages?: (photos: Array<{ id: string; blob: Blob }>) => Promise<void>;
 }) {
   const [snapshots, setSnapshots] = useState<SnapshotState>({ status: "idle", items: [], message: "" });
   const [exporting, setExporting] = useState(false);
@@ -60,11 +65,11 @@ export function DataView({
   async function exportEverything() {
     setExporting(true);
     try {
-      const archive = await createBaselineArchive(state, appleOverlay);
+      const archive = await createBaselineArchive(state, appleOverlay, undefined, demo ? loadImage ?? (async () => null) : loadImage);
       downloadBlob(`baseline-everything-${today}.zip`, archive);
-      onNotice("Your complete Baseline archive is downloading.");
-    } catch {
-      onNotice("The complete archive could not be created on this device.");
+      onNotice("Archive downloaded.");
+    } catch (error) {
+      onNotice(error instanceof Error ? error.message : "Archive failed.");
     } finally {
       setExporting(false);
     }
@@ -77,22 +82,40 @@ export function DataView({
       setPendingRestore(parsed);
       window.setTimeout(() => restorePreviewRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
     } catch (error) {
-      onNotice(error instanceof Error ? error.message : "That backup could not be read.");
+      onNotice(error instanceof Error ? error.message : "Unreadable backup.");
     }
   }
 
   async function confirmRestore() {
     if (!pendingRestore) return;
     setRestoreBusy(true);
+    let appleRestored = false;
     try {
-      const images = await restoreArchivePhotos(pendingRestore);
+      const archivedApple = pendingRestore.appleOverlay;
+      if (archivedApple && (archivedApple.dailyEntries.length || archivedApple.sleepEntries.length)) {
+        if (demo) {
+          onAppleChanged(mergeRestoredAppleHealthSyncPayload(archivedApple, appleOverlay));
+        } else {
+          const response = await fetch("/api/apple-health-sync/setup", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(archivedApple),
+            signal: AbortSignal.timeout(12_000),
+          });
+          const data = await response.json() as { appleOverlay?: Partial<ImportRecords>; error?: string };
+          if (!response.ok || !data.appleOverlay) throw new Error(data.error ?? "Apple Health restore failed.");
+          onAppleChanged(data.appleOverlay);
+          appleRestored = true;
+        }
+      }
+      const images = await restoreArchivePhotos(pendingRestore, demo ? restoreImages ?? (async () => {}) : restoreImages);
       onRestoreState(
         pendingRestore.state,
-        images ? `Backup restored, including ${images} progress ${images === 1 ? "photo" : "photos"}.` : "Backup restored.",
+        images ? `Backup restored · ${images} ${images === 1 ? "photo" : "photos"}` : "Backup restored.",
       );
       setPendingRestore(null);
-    } catch {
-      onNotice("The backup could not be restored completely. Your current record was not replaced.");
+    } catch (error) {
+      onNotice(`${appleRestored ? "Apple Health restored. " : ""}${error instanceof Error ? error.message : "Restore failed."}`);
     } finally {
       setRestoreBusy(false);
     }
@@ -103,13 +126,13 @@ export function DataView({
     try {
       const response = await fetch("/api/health-state/history", { cache: "no-store" });
       const data = (await response.json()) as { snapshots?: Snapshot[]; error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Snapshots are unavailable.");
+      if (!response.ok) throw new Error(data.error ?? "Snapshots unavailable.");
       setSnapshots({ status: "ready", items: data.snapshots ?? [], message: "" });
     } catch (error) {
       setSnapshots({
         status: "error",
         items: [],
-        message: error instanceof Error ? error.message : "Snapshots are unavailable.",
+        message: error instanceof Error ? error.message : "Snapshots unavailable.",
       });
     }
   }
@@ -118,60 +141,39 @@ export function DataView({
     try {
       const response = await fetch(`/api/health-state/history?id=${snapshot.id}`, { cache: "no-store" });
       const data = (await response.json()) as { state?: unknown; error?: string };
-      if (!response.ok || !data.state) throw new Error(data.error ?? "That snapshot could not be read.");
-      onRestoreState(normalizeHealthState(data.state), `Restored the snapshot from ${formatTimestamp(snapshot.createdAt)}.`);
+      if (!response.ok || !data.state) throw new Error(data.error ?? "Unreadable snapshot.");
+      onRestoreState(normalizeHealthState(data.state), `Restored: ${formatTimestamp(snapshot.createdAt)}`);
     } catch (error) {
-      onNotice(error instanceof Error ? error.message : "That snapshot could not be read.");
+      onNotice(error instanceof Error ? error.message : "Unreadable snapshot.");
     }
   }
 
-  return (
-    <div className="page">
-      <PageHeading
-        title="Data & goals"
-      />
 
-      <section className="panel wide-panel portability-panel" aria-labelledby="portability-title">
-        <div className="portability-hero">
-          <div className="connection-icon">
-            <Icon name="download" />
-          </div>
-          <div>
-            <p className="kicker">No lock-in</p>
-            <h2 id="portability-title">Take everything with you</h2>
-            <p className="panel-body">
-              One data archive contains a restorable record, spreadsheet tables, the separate automatic Apple lane,
-              and every available progress photo. The full app source is beside it.
-            </p>
-          </div>
+  return (
+    <div className="page tl-page">
+      <RecordHeading title="Data & goals" detail="Your imports, settings & backups" />
+
+      <section className="tl-section record-sheet" aria-labelledby="portability-title">
+        <div className="tl-section-head">
+          <h2 className="tl-caps" id="portability-title" style={{ margin: 0 }}>Export & restore</h2>
+
+        </div>
+        <p className="tl-line" style={{ marginTop: 8 }}>
+          JSON · CSV · photos · Apple Health · source code
+        </p>
+        <div className="tl-actions">
           <button type="button" className="button primary export-everything" disabled={exporting} onClick={exportEverything}>
             <Icon name="download" />
-            {exporting ? "Building archive…" : "Download all data"}
+            {exporting ? "Building archive…" : "Download archive"}
           </button>
-        </div>
-
-        <div className="portability-grid">
-          <div className="portability-item">
-            <small>Your data</small>
-            <b>JSON · CSV · photos</b>
-            <span>Readable without Baseline and restorable in one step.</span>
-          </div>
-          <div className="portability-item">
-            <small>Your app</small>
-            <b>Complete source code</b>
-            <span>Clone, fork, download, or hand it to another developer.</span>
-            <div className="inline-links">
-              <a href={SOURCE_REPOSITORY} target="_blank" rel="noreferrer">Open source</a>
-              <a href={SOURCE_ARCHIVE}>Download code</a>
-            </div>
-          </div>
-          <label className="portability-item restore-picker">
-            <small>Bring it back</small>
-            <b>Restore from archive</b>
-            <span>Choose a Baseline ZIP or legacy JSON. Nothing changes until you review it.</span>
+          <label className="button secondary restore-button">
+            <Icon name="upload" />
+            Restore from archive
             <input
               type="file"
+              className="visually-hidden"
               accept="application/zip,.zip,application/json,.json"
+              aria-label="Restore from a Baseline ZIP or legacy JSON archive"
               onChange={(event) => {
                 const file = event.target.files?.[0];
                 event.target.value = "";
@@ -180,11 +182,14 @@ export function DataView({
             />
           </label>
         </div>
+        <div className="tl-actions">
+          <a className="text-button" href={SOURCE_ARCHIVE}>Download code</a>
+        </div>
 
         {pendingRestore ? (
           <section className="restore-preview" ref={restorePreviewRef} aria-live="polite">
             <div>
-              <p className="kicker">Review before replacing</p>
+              <p className="kicker">Replaces current data</p>
               <h3>Backup contents</h3>
               <p>
                 {pendingRestore.summary.firstDate && pendingRestore.summary.lastDate
@@ -198,6 +203,7 @@ export function DataView({
               <div><dt>Workouts</dt><dd>{pendingRestore.summary.workouts}</dd></div>
               <div><dt>Labs</dt><dd>{pendingRestore.summary.labs}</dd></div>
               <div><dt>Thoughts</dt><dd>{pendingRestore.summary.thoughts}</dd></div>
+              {pendingRestore.appleOverlay ? <div><dt>Apple Health</dt><dd>{pendingRestore.appleOverlay.dailyEntries.length} {pendingRestore.appleOverlay.dailyEntries.length === 1 ? "day" : "days"} · {pendingRestore.appleOverlay.sleepEntries.length} {pendingRestore.appleOverlay.sleepEntries.length === 1 ? "night" : "nights"}</dd></div> : null}
               <div><dt>Photos</dt><dd>{pendingRestore.photoEntries.length} available</dd></div>
             </dl>
             <div className="heading-actions">
@@ -211,89 +217,75 @@ export function DataView({
           </section>
         ) : null}
 
-        <Note icon="lock">
-          The archive contains sensitive health information. It is created on this device and is not uploaded elsewhere.
-        </Note>
       </section>
 
-      <section className="panel wide-panel import-panel">
-        <div className="connection-icon">
-          <Icon name="upload" />
+      <section className="tl-section record-sheet" aria-labelledby="import-title">
+        <div className="tl-section-head">
+          <h2 className="tl-caps" id="import-title" style={{ margin: 0 }}>Import</h2>
         </div>
-        <div>
-          <p className="kicker">Oura · Whoop · Apple Health</p>
-          <h2>Import</h2>
-          <p>
-            Drop the export your app already makes — a Whoop or Apple zip, an Oura CSV, or any table with a date
-            column. Columns are matched for you, and you see what will land before anything is saved.
-          </p>
-          <div className="connection-actions">
-            <button type="button" className="button primary" onClick={() => open({ kind: "import" })}>
-              <Icon name="upload" />
-              Import health data
-            </button>
-          </div>
+        <p className="tl-line" style={{ marginTop: 10 }}>
+          ZIP · CSV · JSON · XML
+        </p>
+        <div className="tl-actions">
+          <button type="button" className="button primary" onClick={() => open({ kind: "import" })}>
+            <Icon name="upload" />
+            Import health data
+          </button>
         </div>
       </section>
 
       <AppleHealthSyncPanel onNotice={onNotice} onChanged={onAppleChanged} demo={demo} />
-      {demo ? <Note icon="lock">Private recovery snapshots are available in your real record.</Note> : null}
+      {demo ? <Note icon="lock">Snapshots unavailable in demo.</Note> : null}
 
       {/* Keyed so a restored backup or a sync from another device replaces the draft outright. */}
       <GoalsPanel key={JSON.stringify(state.goals)} goals={state.goals} onGoals={onGoals} />
 
-      <section className="panel wide-panel">
-        <div className="panel-head wrap">
-          <div>
-            <p className="kicker">Appearance</p>
-            <h2>Theme</h2>
+      <section className="tl-section record-sheet" aria-labelledby="theme-title">
+        <div className="tl-section-head">
+          <h2 className="tl-caps" id="theme-title" style={{ margin: 0 }}>Appearance</h2>
+          <div className="tl-tabs" role="group" aria-label="Theme">
+            {(["system", "light", "dark"] as Theme[]).map((option) => (
+              <button
+                key={option}
+                type="button"
+                aria-pressed={theme === option}
+                className={theme === option ? "active" : ""}
+                onClick={() => onTheme(option)}
+              >
+                {option === "system" ? "System" : option === "light" ? "Light" : "Dark"}
+              </button>
+            ))}
           </div>
-          <Segmented
-            label="Theme"
-            value={theme}
-            options={[
-              { value: "system", label: "System" },
-              { value: "light", label: "Light" },
-              { value: "dark", label: "Dark" },
-            ]}
-            onChange={(value) => onTheme(value as Theme)}
-          />
         </div>
-        <button type="button" className="text-button" onClick={() => open({ kind: "shortcuts" })}>
-          <Icon name="keyboard" />
-          Keyboard shortcuts
-        </button>
+        <p className="tl-line">
+          <button type="button" className="text-button" onClick={() => open({ kind: "shortcuts" })}>
+            <Icon name="keyboard" />
+            Keyboard shortcuts
+          </button>
+        </p>
       </section>
 
-      {!demo ? <section className="panel wide-panel">
-        <div className="panel-head wrap">
-          <div>
-            <p className="kicker">Server history</p>
-            <h2>Recover an earlier save</h2>
-          </div>
-          <button type="button" className="button secondary small" onClick={loadSnapshots}>
+      {!demo ? <section className="tl-section record-sheet" aria-labelledby="snapshots-title">
+        <div className="tl-section-head">
+          <h2 className="tl-caps" id="snapshots-title" style={{ margin: 0 }}>Earlier versions</h2>
+          <button type="button" className="text-button" onClick={loadSnapshots}>
             <Icon name="history" />
             {snapshots.status === "loading" ? "Looking…" : "Find snapshots"}
           </button>
         </div>
-        <p className="panel-body">
-          Each save keeps the version it replaced, up to the last 30. Restoring is itself a save, so the current
-          version is kept too.
+        <p className="tl-line" style={{ marginTop: 10 }}>
+          Last 30 saves
         </p>
-        {snapshots.status === "error" ? <p className="panel-body error">{snapshots.message}</p> : null}
+        {snapshots.status === "error" ? <p className="tl-line" role="alert">{snapshots.message}</p> : null}
         {snapshots.status === "ready" ? (
           snapshots.items.length ? (
-            <ul className="record-list">
+            <ul className="tl-rows tl-list">
               {snapshots.items.map((snapshot) => (
-                <li className="record-row snapshot-row" key={snapshot.id}>
-                  <div>
-                    <small>Saved</small>
-                    <b>{formatTimestamp(snapshot.createdAt)}</b>
-                  </div>
-                  <div>
-                    <small>Size</small>
-                    <b>{formatBytes(snapshot.bytes)}</b>
-                  </div>
+                <li className="tl-row is-static" key={snapshot.id}>
+                  <span className="tl-row-copy">
+                    <b className="tl-plain">{formatTimestamp(snapshot.createdAt)}</b>
+                    <small>{formatBytes(snapshot.bytes)}</small>
+                  </span>
                   <div className="row-actions">
                     <ConfirmButton
                       label="Restore this version"
@@ -307,22 +299,18 @@ export function DataView({
               ))}
             </ul>
           ) : (
-            <p className="panel-body">No earlier versions are stored yet.</p>
+            <p className="tl-line">No earlier versions.</p>
           )
         ) : null}
       </section> : null}
 
-      {!demo ? <section className="panel wide-panel danger-panel">
-        <div className="panel-head wrap">
-          <div>
-            <p className="kicker">Start over</p>
-            <h2>Erase every record</h2>
-          </div>
+      {!demo ? <section className="tl-section record-sheet" aria-labelledby="erase-title">
+        <div className="tl-section-head">
+          <h2 className="tl-caps" id="erase-title" style={{ margin: 0 }}>Erase data</h2>
           <ConfirmButton label="Erase all data" confirmLabel="Erase everything" className="button danger" onConfirm={onErase} />
         </div>
-        <p className="panel-body">
-          Permanently clears every record, progress photo, recovery snapshot, and Apple sync connection from this
-          dashboard and its private storage. Goals are kept. This cannot be undone, so export a backup first.
+        <p className="tl-line" style={{ marginTop: 10 }}>
+          Permanently deletes records, photos, snapshots, and connections.
         </p>
       </section> : null}
     </div>
@@ -335,12 +323,6 @@ type AppleSyncStatus = {
   lastSyncedAt: string | null;
 };
 
-/**
- * The phone sends Apple Health straight to Baseline. ChatGPT Health is not a
- * second writer for the same metrics, and Strong remains the only workout
- * source, so an automatic refresh cannot duplicate a set or choose a winner by
- * accident.
- */
 function AppleHealthSyncPanel({
   onNotice,
   onChanged,
@@ -373,7 +355,7 @@ function AppleHealthSyncPanel({
           appleOverlay?: Partial<ImportRecords> | null;
           error?: string;
         };
-        if (!response.ok) throw new Error(data.error ?? "Apple Health sync is unavailable.");
+        if (!response.ok) throw new Error(data.error ?? "Apple Health sync unavailable.");
         if (active) {
           setStatus({
             loading: false,
@@ -386,7 +368,7 @@ function AppleHealthSyncPanel({
       .catch((error) => {
         if (!active) return;
         setStatus((current) => ({ ...current, loading: false }));
-        onNotice(error instanceof Error ? error.message : "Apple Health sync is unavailable.");
+        onNotice(error instanceof Error ? error.message : "Apple Health sync unavailable.");
       });
     return () => {
       active = false;
@@ -398,13 +380,13 @@ function AppleHealthSyncPanel({
     try {
       const response = await fetch("/api/apple-health-sync/setup", { method: "POST", signal: AbortSignal.timeout(10_000) });
       const data = (await response.json()) as { token?: string; endpoint?: string; error?: string };
-      if (!response.ok || !data.token) throw new Error(data.error ?? "A sync key could not be created.");
+      if (!response.ok || !data.token) throw new Error(data.error ?? "Connection key failed.");
       setToken(data.token);
       if (data.endpoint) setEndpoint(new URL(data.endpoint, window.location.origin).toString());
       setStatus((current) => ({ ...current, loading: false, configured: true }));
-      onNotice("Your private iPhone connection is ready.");
+      onNotice("Connection created.");
     } catch (error) {
-      onNotice(error instanceof Error ? error.message : "A sync key could not be created.");
+      onNotice(error instanceof Error ? error.message : "Connection key failed.");
     } finally {
       setBusy(false);
     }
@@ -415,13 +397,13 @@ function AppleHealthSyncPanel({
     try {
       const response = await fetch("/api/apple-health-sync/setup", { method: "DELETE", signal: AbortSignal.timeout(10_000) });
       const data = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Apple Health sync could not be turned off.");
+      if (!response.ok) throw new Error(data.error ?? "Disconnect failed.");
       setToken("");
       setStatus({ loading: false, configured: false, lastSyncedAt: null });
       onChanged(null);
-      onNotice("The private iPhone connection is off. Saved thoughts remain in Mind.");
+      onNotice("Connection off.");
     } catch (error) {
-      onNotice(error instanceof Error ? error.message : "Apple Health sync could not be turned off.");
+      onNotice(error instanceof Error ? error.message : "Disconnect failed.");
     } finally {
       setBusy(false);
     }
@@ -432,41 +414,43 @@ function AppleHealthSyncPanel({
       await navigator.clipboard.writeText(value);
       onNotice(`${label} copied.`);
     } catch {
-      onNotice(`Press and hold to copy the ${label.toLowerCase()}.`);
+      onNotice(`Copy failed. Select ${label.toLowerCase()} manually.`);
     }
   }
 
   const bearer = token ? `Bearer ${token}` : "";
   const summary = demo
-    ? "Preview only · no connection or key is created"
+    ? "Demo"
     : status.loading
     ? "Checking connection…"
     : status.configured
       ? status.lastSyncedAt
         ? `Last received ${formatTimestamp(status.lastSyncedAt)}`
-        : "Ready for its first sync"
+        : "No sync received"
       : "Off";
 
   return (
-    <section className="panel wide-panel apple-sync-panel">
-      <div className="panel-head wrap">
-        <div>
-          <p className="kicker">Health automation · Notes share sheet</p>
-          <h2>Private iPhone connection</h2>
-          <p className="panel-body">{summary}</p>
-        </div>
+    <section className="tl-section record-sheet" aria-labelledby="apple-title">
+      <div className="tl-section-head">
+        <h2 className="tl-caps" id="apple-title" style={{ margin: 0 }}>iPhone connection</h2>
+        <span className="tl-meta">{summary}</span>
+      </div>
+      <p className="tl-line" style={{ marginTop: 8 }}>
+        Apple Health · Apple Notes
+      </p>
+      <div className="tl-actions">
         {demo ? (
-          <button type="button" className="button secondary small" disabled>Real record only</button>
+          <button type="button" className="button secondary" disabled>Real record only</button>
         ) : !status.configured ? (
-          <button type="button" className="button primary small" disabled={status.loading || busy} onClick={createToken}>
+          <button type="button" className="button primary" disabled={status.loading || busy} onClick={createToken}>
             {busy ? "Creating…" : "Create connection"}
           </button>
         ) : (
-          <div className="heading-actions">
+          <>
             <ConfirmButton
               label="Replace shared key"
               confirmLabel="Replace key for both"
-              className="button secondary small"
+              className="button secondary"
               icon="key"
               disabled={busy}
               onConfirm={createToken}
@@ -474,16 +458,16 @@ function AppleHealthSyncPanel({
             <ConfirmButton
               label="Turn off"
               confirmLabel="Turn off both feeds"
-              className="button secondary small"
+              className="button secondary"
               disabled={busy}
               onConfirm={revokeToken}
             />
-          </div>
+          </>
         )}
       </div>
 
       {token ? (
-        <div className="sync-credentials" aria-label="Private iPhone connection details">
+        <div className="sync-credentials" aria-label="iPhone connection details">
           <div>
             <small>Health URL</small>
             <code>{endpoint}</code>
@@ -505,34 +489,30 @@ function AppleHealthSyncPanel({
           </div>
         </div>
       ) : status.configured ? (
-        <p className="panel-body">The shared key is hidden. To add Send to Mind now, replace it and update Health Auto Export with the new key too.</p>
+        <p className="tl-line">New key required to reconnect.</p>
       ) : null}
-
-      {!status.configured && !demo ? (
-        <p className="panel-body">Create one private connection to reveal the two URLs and shared key.</p>
-      ) : null}
+      <details className="setup-details">
+        <summary>Connection setup</summary>
       <div className="iphone-connection-guides">
           <div>
             <h3>Health Auto Export</h3>
             <ol className="sync-steps">
-              <li>New Automation → REST API → paste the Health URL</li>
-              <li>Use JSON · daily totals · last 4 days · every 2 days</li>
-              <li>Select steps, sleep, weight, body fat, resting HR and HRV</li>
+              <li>New Automation → REST API → Health URL</li>
+              <li>JSON · daily totals · last 4 days · every 2 days</li>
+              <li>Steps · sleep · weight · body fat · resting HR · HRV</li>
             </ol>
           </div>
           <div>
             <h3>Apple Notes → Thought Journal</h3>
             <ol className="sync-steps">
-              <li>Create a Share Sheet Shortcut named “Send to Mind”</li>
-              <li>Get Text from Shortcut Input, then POST JSON to the Notes URL</li>
-              <li>Send a JSON field named “text” and use the same Authorization header above</li>
+              <li>Share Sheet Shortcut: Send to Mind</li>
+              <li>Get Text from Shortcut Input → POST JSON → Notes URL</li>
+              <li>JSON field: text · Header: Authorization</li>
             </ol>
-            <p className="panel-body">In Notes, choose Share → Send Copy → Send to Mind. A “Thought Journal” folder or #thought-journal tag keeps selected notes easy to find. Re-sending identical text on the same date is safely ignored.</p>
+            <p className="panel-body">Notes → Share → Send Copy → Send to Mind</p>
           </div>
       </div>
-      <Note icon="lock">{demo
-        ? "This is a setup preview. Open your real record to create the private URLs and key."
-        : "The Health URL accepts only approved wellness metrics. The Notes URL accepts only thought text and optional metadata; neither URL can read your record. Replacing or turning off the shared key affects both connections, but thoughts already saved in Mind remain."}</Note>
+      </details>
     </section>
   );
 }
@@ -545,11 +525,10 @@ function GoalsPanel({ goals, onGoals }: { goals: GoalSettings; onGoals: (goals: 
     setDraft((current) => ({ ...current, [key]: value }));
 
   return (
-    <section className="panel wide-panel">
-      <div className="panel-head wrap">
-        <div>
-          <h2>Goals</h2>
-        </div>
+    <details className="tl-section setup-details">
+      <summary>Goals</summary>
+      <div className="tl-section-head">
+
         <div className="heading-actions">
           {dirty ? (
             <>
@@ -563,7 +542,7 @@ function GoalsPanel({ goals, onGoals }: { goals: GoalSettings; onGoals: (goals: 
           ) : (
             <span className="saved-flag">
               <Icon name="check" />
-              All goals saved
+              Saved
             </span>
           )}
         </div>
@@ -571,7 +550,7 @@ function GoalsPanel({ goals, onGoals }: { goals: GoalSettings; onGoals: (goals: 
       <div className="settings-grid">
         <NumberSetting
           label="Sleep"
-          detail="hours per night"
+          detail="h/night"
           value={draft.sleepHours}
           min={4}
           max={14}
@@ -580,7 +559,7 @@ function GoalsPanel({ goals, onGoals }: { goals: GoalSettings; onGoals: (goals: 
         />
         <NumberSetting
           label="Bedtime consistency"
-          detail="minutes of range"
+          detail="min"
           value={draft.sleepConsistencyMinutes}
           min={15}
           max={360}
@@ -589,11 +568,11 @@ function GoalsPanel({ goals, onGoals }: { goals: GoalSettings; onGoals: (goals: 
         />
         <SelectSetting
           label="Daily medication"
-          detail="show it on the home screen"
+          detail="Today"
           value={draft.trackMedication ? "yes" : "no"}
           options={[
-            { value: "yes", label: "Track it" },
-            { value: "no", label: "Hide it" },
+            { value: "yes", label: "Show" },
+            { value: "no", label: "Hide" },
           ]}
           onChange={(value) => set("trackMedication", value === "yes")}
         />
@@ -608,19 +587,40 @@ function GoalsPanel({ goals, onGoals }: { goals: GoalSettings; onGoals: (goals: 
           onChange={(value) => set("weightGoalLb", value === "" ? null : value)}
         />
         <SelectSetting
-          label="Weight direction"
-          detail="how the goal is read"
+          label="Phase"
+          detail=""
           value={draft.weightDirection}
           options={[
             { value: "maintain", label: "Maintain" },
-            { value: "lose", label: "Lose" },
-            { value: "gain", label: "Gain" },
+            { value: "lose", label: "Cut" },
+            { value: "gain", label: "Bulk" },
           ]}
           onChange={(value) => set("weightDirection", value as WeightDirection)}
         />
+        {draft.weightDirection !== "maintain" ? (
+          <>
+            <DateSetting
+              label={draft.weightDirection === "lose" ? "Cut started" : "Bulk started"}
+              detail=""
+              value={draft.phaseStart}
+              max={todayLocal()}
+              onChange={(value) => set("phaseStart", value)}
+            />
+            <NumberSetting
+              label="Rate"
+              detail="lb/week"
+              value={draft.weeklyRateLb ?? ""}
+              min={0.1}
+              max={5}
+              step={0.25}
+              optional
+              onChange={(value) => set("weeklyRateLb", value === "" ? null : value)}
+            />
+          </>
+        ) : null}
         <NumberSetting
           label="Protein"
-          detail="grams a day"
+          detail="g/day"
           value={draft.proteinTargetG ?? ""}
           min={30}
           max={400}
@@ -639,6 +639,6 @@ function GoalsPanel({ goals, onGoals }: { goals: GoalSettings; onGoals: (goals: 
           onChange={(value) => set("bodyFatTargetPercent", value === "" ? null : value)}
         />
       </div>
-    </section>
+    </details>
   );
 }

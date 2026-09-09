@@ -27,16 +27,29 @@ import {
   removeSleepEntry,
   removeTherapyNote,
   removeThoughtJournalEntry,
-  removeWorkoutSession,
   todayLocal,
+  localDateTime,
   upsertDailyEntry,
   upsertLabResult,
+  setLabAsk,
+  upsertThoughtLoop,
+  removeThoughtLoop,
+  upsertLoopEvent,
+  removeLoopEvent,
+  upsertHabit,
+  removeHabit,
+  upsertHabitEvent,
+  removeHabitEvent,
   upsertProgressPhoto,
   upsertSleepEntry,
   upsertTherapyNote,
   upsertThoughtJournalEntry,
+  type LoopEvent,
+  type HabitEvent,
+  type HabitDraft,
 } from "./health-model";
 import { demoHealthState } from "./demo-state";
+import { DEMO_PHOTO_ASSETS, readDemoPhoto } from "./demo-photos";
 import { applyImport } from "./import";
 import { subtractAppleHealthSyncOverlay } from "./apple-health-sync";
 import {
@@ -55,14 +68,19 @@ import { ImportDialog } from "./ui/import-dialog";
 import { CheckInModal, LabModal, MedicationModal, ShortcutsModal, SleepModal } from "./ui/modals";
 import { LabsView } from "./ui/labs-view";
 import { MedsView } from "./ui/meds-view";
+import { UrgesView } from "./ui/urges-view";
 import { MindView } from "./ui/mind-view";
-import { clearAllPhotos, deletePhoto, savePhoto } from "./ui/photo-store";
+import { recordId } from "./record-id";
+import { clearAllPhotos, deletePhoto, pausePhotoStorage, resumePhotoStorage, savePhoto } from "./ui/photo-store";
 import { MoreView } from "./ui/more-view";
 import { SleepView } from "./ui/sleep-view";
 import { SummaryView } from "./ui/summary-view";
+import { CompareView } from "./ui/compare-view";
+import { RecordDay } from "./ui/record-day";
+import { clearWorkoutDraft } from "./ui/workout-session";
 import { TodayView } from "./ui/today-view";
 import { formatTimestamp } from "./ui/format";
-import { Modal, SaveStatus, Theme, Toast, View, mobileNavOrder, navOrder, viewLabels } from "./ui/types";
+import { FitnessTab, MindTab, Modal, SaveStatus, Theme, Toast, View, mobileNavOrder, navOrder, viewLabels } from "./ui/types";
 
 const THEME_KEY = "bardia-health-theme";
 const initialState = emptyHealthState();
@@ -78,14 +96,7 @@ function persistLocalState(state: HealthState, base: HealthState | null, revisio
   }
 }
 
-function recordId(prefix: string): string {
-  if (typeof crypto.randomUUID === "function") return `${prefix}-${crypto.randomUUID()}`;
-  const bytes = crypto.getRandomValues(new Uint8Array(16));
-  bytes[6] = (bytes[6] & 0x0f) | 0x40;
-  bytes[8] = (bytes[8] & 0x3f) | 0x80;
-  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0"));
-  return `${prefix}-${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
-}
+
 
 function isTheme(value: unknown): value is Theme {
   return value === "system" || value === "light" || value === "dark";
@@ -93,25 +104,6 @@ function isTheme(value: unknown): value is Theme {
 
 function requestedDemoMode(): boolean {
   return typeof window !== "undefined" && new URLSearchParams(window.location.search).get("demo") === "1";
-}
-
-/** Says what the server removed, so a one-off cleanup is not a silent one. */
-function purgeMessage({
-  fields,
-  records,
-  snapshots,
-}: {
-  fields: string[];
-  records: number;
-  snapshots: number;
-}): string {
-  const named = fields.slice(0, 3).join(", ");
-  const rest = fields.length > 3 ? ` and ${fields.length - 3} more` : "";
-  const places = [
-    records ? `${records} ${records === 1 ? "record" : "records"}` : "",
-    snapshots ? `${snapshots} ${snapshots === 1 ? "snapshot" : "snapshots"}` : "",
-  ].filter(Boolean);
-  return `Purged ${named}${rest} from ${places.join(" and ") || "your saved record"}.`;
 }
 
 /** The inline bootstrap in the layout already applied this; read it back on mount. */
@@ -126,8 +118,21 @@ export default function Home() {
   // navigation, so synthetic memory can never turn into a saveable real state.
   const [demoMode] = useState(requestedDemoMode);
   const [view, setView] = useState<View>("today");
+  const [fitnessTab, setFitnessTab] = useState<FitnessTab>("coach");
+  const [mindTab, setMindTab] = useState<MindTab>("thoughts");
+  const [journalComposeRequest, setJournalComposeRequest] = useState(0);
+  const [journalDraft, setJournalDraft] = useState<"entry" | "edit" | null>(null);
+  const [fitnessRevision, setFitnessRevision] = useState(0);
+  const demoPhotos = useRef(new Map<string, Blob | null>());
+  const loadDemoPhoto = useCallback((id: string) => readDemoPhoto(id, demoPhotos.current), []);
+  const restoreDemoPhotos = useCallback(async (photos: Array<{ id: string; blob: Blob }>) => {
+    const restored = new Map<string, Blob | null>([...DEMO_PHOTO_ASSETS.keys()].map(id => [id, null]));
+    for (const photo of photos) restored.set(photo.id, photo.blob);
+    demoPhotos.current = restored;
+  }, []);
   const [modal, setModal] = useState<Modal>(null);
-  const [state, setState] = useState<HealthState>(() => demoMode ? demoHealthState(todayLocal()) : initialState);
+  const [workoutReset, setWorkoutReset] = useState(0);
+  const [state, setState] = useState<HealthState>(() => demoMode ? demoHealthState(todayLocal(), localDateTime().slice(11)) : initialState);
   const [appleOverlay, setAppleOverlay] = useState<Partial<ImportRecords> | null>(null);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>(() => demoMode ? "demo" : "loading");
   const [savedAt, setSavedAt] = useState("");
@@ -230,7 +235,7 @@ export default function Home() {
       // Demo mode branches before the private browser fallback or D1 record is
       // touched. It owns one synthetic in-memory state and drops it on reload.
       if (demoMode) {
-        updateState(() => demoHealthState(todayLocal()));
+        updateState(() => demoHealthState(todayLocal(), localDateTime().slice(11)));
         setSaveStatus("demo");
         setHydrated(true);
         return;
@@ -263,7 +268,6 @@ export default function Home() {
           state?: unknown;
           updatedAt?: string;
           revision?: number;
-          purged?: { fields: string[]; records: number; snapshots: number };
           appleOverlay?: Partial<ImportRecords> | null;
         };
         if (!active) return;
@@ -303,7 +307,7 @@ export default function Home() {
         if (choice.recoveryState) {
           const recovery = choice.recoveryState;
           setToast({
-            message: "An older offline copy differs from private sync. The server copy is shown.",
+            message: "Synced record loaded. Offline copy differs.",
             action: {
               label: "Use offline copy",
               run: () => updateState(() => recovery),
@@ -313,7 +317,7 @@ export default function Home() {
           setToast({
             message: `Kept this device's edits in ${choice.conflicts} startup ${choice.conflicts === 1 ? "conflict" : "conflicts"}.`,
           });
-        } else if (data.purged?.fields.length) setToast({ message: purgeMessage(data.purged) });
+        }
       } catch {
         if (!active) return;
         const chosen = local && "format" in local ? local.state : local ?? initialState;
@@ -394,7 +398,7 @@ export default function Home() {
           if (version === saveVersion.current) {
             setSaveStatus(savedLocally ? "local" : "error");
             if (!savedLocally) {
-              setToast({ message: "This change is not saved. Export a backup before leaving this page." });
+              setToast({ message: "Save failed. Download a backup." });
             }
           }
         }
@@ -412,25 +416,28 @@ export default function Home() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
-  const go = useCallback((next: View) => {
+  const go = useCallback((next: View, mindTarget?: MindTab, focusJournal = false) => {
+    if (next === "mind" && mindTarget) setMindTab(mindTarget);
+    if (next === "fitness") setFitnessTab("coach");
     setView(next);
     // A section change is a new screen. An animated carry-over can leave the
     // next heading above the viewport for several frames, especially on iOS.
     window.scrollTo({ top: 0, behavior: "auto" });
     window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => document.querySelector<HTMLElement>("#main h1")?.focus({ preventScroll: true }));
+      window.requestAnimationFrame(() => {
+        const heading = Array.from(document.querySelectorAll<HTMLElement>("#main h1"))
+          .find((element) => element.getClientRects().length > 0);
+        const editor = focusJournal ? document.querySelector<HTMLTextAreaElement>(".thought-form textarea") : null;
+        (editor ?? heading)?.focus({ preventScroll: true });
+      });
     });
   }, []);
 
   const notice = useCallback((message: string) => setToast({ message }), []);
 
   const openModal = useCallback((next: Modal) => {
-    if (demoMode && next?.kind === "import") {
-      notice("Import is available in your real record.");
-      return;
-    }
     setModal(next);
-  }, [demoMode, notice]);
+  }, []);
 
   /** Applies a whole-state change and offers a single-step undo for the ones that remove data. */
   /**
@@ -470,6 +477,7 @@ export default function Home() {
     });
   const saveSleep = (entry: SleepEntry) => updateState((current) => upsertSleepEntry(current, entry));
   const saveLab = (result: LabResult) => updateState((current) => upsertLabResult(current, result));
+  const askLab = (id: string, ask: boolean) => updateState((current) => setLabAsk(current, id, ask));
   // Takes either the goals to write or a function of the ones on record. The
   // set steppers on the Coach tab fire faster than React re-renders, and three
   // presses built from one captured copy of the goals are two presses lost.
@@ -530,30 +538,28 @@ export default function Home() {
 
   const addPhoto = async (photo: ProgressPhoto, blob: Blob) => {
     if (demoMode) {
-      notice("Progress photos stay out of demo mode.");
+      demoPhotos.current.set(photo.id, blob);
+      updateState(current => upsertProgressPhoto(current, photo));
       return;
     }
-    try {
-      await savePhoto(photo.id, blob);
-    } catch {
-      // Without the image there is nothing to show, so the record is not written
-      // either — a card that can never load is worse than no card.
-      notice("This browser would not store the photo.");
-      return;
-    }
+    // The photo form reports failure and retains the date for another attempt.
+    await savePhoto(photo.id, blob);
     updateState((current) => upsertProgressPhoto(current, photo));
   };
 
-  const deletePhotoRecord = (id: string) => {
-    if (demoMode) return;
-    void deletePhoto(id);
-    // The image itself is deleted from IndexedDB, so restoring only its metadata
-    // would create a card that can never load.
-    commit((current) => removeProgressPhoto(current, id), "Photo deleted.");
-  };
+  const updatePhotoRecord = (photo: ProgressPhoto) =>
+    commit((current) => upsertProgressPhoto(current, photo), "Photo details saved.");
 
-  const deleteSession = (startedAt: string) =>
-    commit((current) => removeWorkoutSession(current, startedAt), "Workout deleted.", true);
+  const deletePhotoRecord = async (id: string) => {
+    try {
+      if (demoMode) demoPhotos.current.set(id, null);
+      else await deletePhoto(id);
+      // A byte deletion cannot be undone by restoring metadata alone.
+      commit((current) => removeProgressPhoto(current, id), "Photo deleted.");
+    } catch {
+      notice("Could not delete the photo. Please try again.");
+    }
+  };
 
   const addTherapyNote = (text: string) =>
     updateState((current) =>
@@ -579,17 +585,28 @@ export default function Home() {
 
   const deleteTherapyNote = (id: string) => commit((current) => removeTherapyNote(current, id), "Note deleted.", true);
 
-  const addThought = ({ title, text, source }: { title: string; text: string; source: ThoughtJournalEntry["source"] }) =>
-    updateState((current) =>
-      upsertThoughtJournalEntry(current, {
-        id: recordId("thought"),
-        date: todayLocal(),
-        createdAt: new Date().toISOString(),
+  const saveLoop = (loop: { id?: string; name: string; reply: string }) =>
+    updateState((current) => upsertThoughtLoop(current, { ...loop, createdAt: current.thoughtLoops.find((entry) => entry.id === loop.id)?.createdAt }));
+  const deleteLoop = (id: string) => commit((current) => removeThoughtLoop(current, id), "Thought history deleted.", true);
+  const logLoopEvent = (event: LoopEvent) => updateState((current) => upsertLoopEvent(current, event));
+  const deleteLoopEvent = (id: string) => commit((current) => removeLoopEvent(current, id), "Occurrence deleted.", true);
+  const saveHabit = (habit: HabitDraft) =>
+    updateState((current) => upsertHabit(current, { ...habit, createdAt: current.habits.find((entry) => entry.id === habit.id)?.createdAt }));
+  const deleteHabit = (id: string) => commit((current) => removeHabit(current, id), "Habit deleted.", true);
+  const logHabitEvent = (event: HabitEvent) => updateState((current) => upsertHabitEvent(current, event));
+  const deleteHabitEvent = (id: string) => updateState(current => removeHabitEvent(current, id));
+  const addThought = ({ id, title, text, source }: { id?: string; title: string; text: string; source: ThoughtJournalEntry["source"] }) =>
+    commit((current) => {
+      const original = current.thoughtJournal.find((entry) => entry.id === id);
+      return upsertThoughtJournalEntry(current, {
+        id: original?.id ?? recordId("thought"),
+        date: original?.date ?? todayLocal(),
+        createdAt: original?.createdAt ?? new Date().toISOString(),
         title,
         text,
-        source,
-      }),
-    );
+        source: original?.source ?? source,
+      });
+    }, "Entry saved.");
 
   const deleteThought = (id: string) =>
     commit((current) => removeThoughtJournalEntry(current, id), "Thought deleted.", true);
@@ -606,7 +623,7 @@ export default function Home() {
       else if (key === "c") setModal({ kind: "checkin", date: todayLocal() });
       else if (key === "l") setModal({ kind: "lab" });
       else if (event.key === "?") setModal({ kind: "shortcuts" });
-      else if (/^[1-7]$/.test(key)) go(navOrder[Number(key) - 1]);
+      else if (/^[1-8]$/.test(key)) go(navOrder[Number(key) - 1]);
       else return;
       event.preventDefault();
     }
@@ -622,7 +639,7 @@ export default function Home() {
     if (saveStatus === "error") return "Not saved";
     return "Saved on this device";
   }, [saveStatus, savedAt]);
-  const mobileActive: View = ["labs", "summary", "data"].includes(view) ? "more" : view;
+  const mobileActive: View = ["labs", "summary", "data", "compare", "urges"].includes(view) ? "more" : view;
   const visibleState = useMemo(
     () => appleOverlay ? mergeRecords(state, appleOverlay) : state,
     [state, appleOverlay],
@@ -632,6 +649,7 @@ export default function Home() {
     if (destructiveChange.current) return;
     destructiveChange.current = true;
     try {
+      await pausePhotoStorage();
       await saveQueue.current;
       const response = await fetch("/api/health-state", {
         method: "DELETE",
@@ -649,12 +667,15 @@ export default function Home() {
       updateState(() => cleared);
       persistLocalState(cleared, cleared, serverRevision.current);
       await clearAllPhotos();
+      clearWorkoutDraft();
+      setWorkoutReset((value) => value + 1);
       setSaveStatus("saved");
       setSavedAt(data.updatedAt ?? cleared.updatedAt);
       setToast({ message: "Every record, snapshot, photo, and Apple connection was erased." });
     } catch (error) {
       setToast({ message: error instanceof Error ? error.message : "The record could not be erased." });
     } finally {
+      resumePhotoStorage();
       destructiveChange.current = false;
     }
   };
@@ -665,7 +686,7 @@ export default function Home() {
     return (
       <main className="boot-screen" aria-busy="true" aria-label="Loading Baseline">
         <span className="brand-mark">
-          <Icon name="pulse" />
+          <Icon name="baseline" />
         </span>
         <strong>Baseline</strong>
         <small>Opening Baseline…</small>
@@ -680,7 +701,7 @@ export default function Home() {
           <Icon name="lock" />
         </span>
         <strong>Baseline is private</strong>
-        <small>This ChatGPT account does not have access.</small>
+        <small>Account access denied.</small>
         <a className="button secondary small" href="/signout-with-chatgpt?return_to=/">
           Use another account
         </a>
@@ -697,15 +718,15 @@ export default function Home() {
       <aside className="sidebar" aria-label="Primary navigation">
         <button type="button" className="brand" onClick={() => go("today")}>
           <span className="brand-mark">
-            <Icon name="pulse" />
+            <Icon name="baseline" />
           </span>
           <span>
-            <strong>Baseline</strong>
-            <small>{demoMode ? "Demo data" : "Private record"}</small>
+            <strong>baseline</strong>
+            <small>Personal health record</small>
           </span>
         </button>
         <nav className="nav-list">
-          {navOrder.map((item) => (
+          {[{ label: "Track", items: navOrder.slice(0, 6) }, { label: "Review", items: navOrder.slice(6) }].map(group => <div className="nav-group" key={group.label}><span className="nav-group-label">{group.label}</span>{group.items.map((item) => (
             <button
               key={item}
               type="button"
@@ -716,7 +737,7 @@ export default function Home() {
               <Icon name={item} />
               <span>{viewLabels[item]}</span>
             </button>
-          ))}
+          ))}</div>)}
         </nav>
         <button
           type="button"
@@ -743,29 +764,26 @@ export default function Home() {
       </aside>
 
       <main className="main-content" id="main">
+        <header className="mobile-head">
+          <button type="button" className="brand compact" onClick={() => go("today")} aria-label="Baseline, today">
+            <span className="brand-mark"><Icon name="baseline" /></span>
+            <strong>baseline</strong>
+          </button>
+          <span className={`mobile-save-state ${demoMode ? "demo" : saveStatus}`} aria-live="polite">{demoMode ? "Demo record" : syncLabel}</span>
+        </header>
         {demoMode ? (
           <aside className="demo-banner" aria-label="Demo mode">
             <span>
-              <b>Demo data</b>
-              <span className="demo-banner-detail"> · changes reset when you leave</span>
+              <b>Fake data</b>
+              <span className="demo-banner-detail"> · resets on reload</span>
             </span>
             <button type="button" onClick={() => window.location.assign("/")}>Open my record</button>
           </aside>
-        ) : (
-          <header className="mobile-head">
-            <div className="brand compact">
-              <span className="brand-mark">
-                <Icon name="pulse" />
-              </span>
-              <strong>Baseline</strong>
-            </div>
-            <span className={`mobile-save-state ${saveStatus}`} aria-live="polite">{syncLabel}</span>
-          </header>
-        )}
+        ) : null}
 
         {!demoMode && (saveStatus === "local" || saveStatus === "error") ? (
           <aside className="mobile-sync-alert" role="status">
-            <span><b>{saveStatus === "error" ? "Not saved" : "Saved on this device only"}</b><small>Your latest edit has not reached private sync.</small></span>
+            <span><b>{saveStatus === "error" ? "Not saved" : "Saved on this device only"}</b><small>Sync pending.</small></span>
             <button type="button" className="button secondary small" onClick={() => setSaveAttempt((count) => count + 1)}>Retry</button>
           </aside>
         ) : null}
@@ -773,14 +791,14 @@ export default function Home() {
         {view === "today" && (
           <TodayView
             state={visibleState}
-            editableState={state}
             today={today}
             go={go}
             open={openModal}
             demo={demoMode}
             updateDaily={updateDaily}
             onDose={toggleDose}
-            onNotice={notice}
+            journalDraft={journalDraft}
+            onWriteJournal={() => { setJournalComposeRequest(value => value + 1); go("mind", "journal", true); }}
           />
         )}
         {view === "sleep" && (
@@ -788,21 +806,29 @@ export default function Home() {
         )}
         {view === "fitness" && (
           <FitnessView
+            key={fitnessRevision}
+            startAtWorkout={fitnessRevision > 0}
+            tab={fitnessTab}
+            onTab={setFitnessTab}
+            loadImage={demoMode ? loadDemoPhoto : undefined}
             state={visibleState}
             editableState={state}
             today={today}
             open={openModal}
-            demo={demoMode}
-            onAddPhoto={(photo, blob) => void addPhoto(photo, blob)}
+            onAddPhoto={addPhoto}
+            onUpdatePhoto={updatePhotoRecord}
             onDeletePhoto={deletePhotoRecord}
-            onDeleteSession={deleteSession}
             onDeleteDay={deleteDaily}
             onGoals={saveGoals}
             onNotice={notice}
           />
         )}
-        {view === "mind" && (
+        <div hidden={view !== "mind"} key={`mind:${workoutReset}`}>
           <MindView
+            tab={mindTab}
+            composeRequest={journalComposeRequest}
+            onJournalDraftChange={setJournalDraft}
+            onTab={setMindTab}
             state={visibleState}
             today={today}
             updateDaily={updateDaily}
@@ -811,23 +837,31 @@ export default function Home() {
             onDeleteNote={deleteTherapyNote}
             onAddThought={addThought}
             onDeleteThought={deleteThought}
+            onSaveLoop={saveLoop}
+            onDeleteLoop={deleteLoop}
+            onLoopEvent={logLoopEvent}
+            onDeleteLoopEvent={deleteLoopEvent}
             onNotice={notice}
           />
-        )}
+        </div>
         {view === "meds" && (
           <MedsView
             state={visibleState}
             today={today}
             open={openModal}
-            onDose={toggleDose}
+            onDose={setDose}
             onDeleteMedication={deleteMedication}
           />
         )}
-        {view === "labs" && <LabsView state={visibleState} open={openModal} onDeleteLab={deleteLab} />}
+        {view === "labs" && <LabsView state={visibleState} open={openModal} onDeleteLab={deleteLab} onAskLab={askLab} />}
         {view === "summary" && <SummaryView state={visibleState} today={today} onNotice={notice} />}
-        {view === "more" && <MoreView go={go} demo={demoMode} />}
+        {view === "compare" && <CompareView state={visibleState} today={today} open={openModal} onNotice={notice} />}
+        {view === "urges" && <UrgesView state={visibleState} today={today} onSave={saveHabit} onDelete={deleteHabit} onEvent={logHabitEvent} onDeleteEvent={deleteHabitEvent} />}
+        {view === "more" && <MoreView go={go} />}
         {view === "data" && (
           <DataView
+            loadImage={demoMode ? loadDemoPhoto : undefined}
+            restoreImages={demoMode ? restoreDemoPhotos : undefined}
             state={state}
             appleOverlay={appleOverlay}
             today={today}
@@ -838,7 +872,7 @@ export default function Home() {
             }}
             onGoals={saveGoals}
             open={openModal}
-            onRestoreState={(restored, message) => commit(() => restored, message)}
+            onRestoreState={(restored, message) => { if (!demoMode) clearWorkoutDraft(); setWorkoutReset((value) => value + 1); commit(() => restored, message); }}
             onErase={eraseEverything}
             onAppleChanged={setAppleOverlay}
             onNotice={notice}
@@ -862,16 +896,18 @@ export default function Home() {
         ))}
       </nav>
 
+      {modal?.kind === "record" && <RecordDay state={visibleState} editableState={state} initialDate={modal.date} today={today} open={openModal} onClose={() => setModal(null)} />}
+
       {modal?.kind === "checkin" && (
         <CheckInModal
           state={state}
           date={modal.date}
-          onClose={() => setModal(null)}
+          onClose={() => setModal(modal.returnToRecord ? { kind: "record", date: modal.date } : null)}
           onDose={setDose}
           onSave={(entry) => {
             if (entry) saveDaily(entry);
-            setModal(null);
-            notice(entry ? (entry.date === today ? "Today is saved." : `Saved for ${entry.date}.`) : "Medication answers saved.");
+            setModal(modal.returnToRecord ? { kind: "record", date: entry?.date ?? modal.date } : null);
+            notice(entry ? (entry.date === today ? "Saved." : `Saved for ${entry.date}.`) : "Doses saved.");
           }}
           onDelete={deleteDaily}
         />
@@ -881,11 +917,11 @@ export default function Home() {
           state={state}
           date={modal.date}
           source={modal.source}
-          onClose={() => setModal(null)}
+          onClose={() => setModal(modal.returnToRecord ? { kind: "record", date: modal.date } : null)}
           onSave={(entry) => {
             saveSleep(entry);
-            setModal(null);
-            notice("Sleep is saved.");
+            setModal(modal.returnToRecord ? { kind: "record", date: entry?.date ?? modal.date } : null);
+            notice("Sleep saved.");
           }}
           onDelete={deleteSleep}
         />
@@ -912,12 +948,20 @@ export default function Home() {
           onDelete={deleteLab}
         />
       )}
-      {!demoMode && modal?.kind === "import" && (
+      {modal?.kind === "import" && (
         <ImportDialog
+          source={modal.source}
+          demo={demoMode}
+          today={today}
           onClose={() => setModal(null)}
           onImport={(items) => {
             const before = stateRef.current;
             const next = applyImport(before, items);
+            if (items.some(item => item.include && item.kind === "records" && item.records.replaceWorkoutHistory)) {
+              setFitnessRevision(value => value + 1);
+              setFitnessTab("coach");
+              go("fitness");
+            }
             const added = [
               [next.sleepEntries.length - before.sleepEntries.length, "night", "nights"],
               [next.dailyEntries.length - before.dailyEntries.length, "day", "days"],
@@ -929,9 +973,11 @@ export default function Home() {
             setModal(null);
             commit(
               (current) => applyImport(current, items),
-              parts.length
+              items.some(item => item.include && item.kind === "records" && item.records.replaceWorkoutHistory)
+                ? "Workouts imported. Your next workout is updated."
+                : parts.length
                 ? `Imported ${parts.join(", ")}.`
-                : "Import finished. Existing records were updated in place.",
+                : "Import complete.",
               true,
             );
           }}

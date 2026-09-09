@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFileSync } from "node:fs";
 
-import { buildProgress } from "../app/training/progress.ts";
+import { buildProgress, strengthIndex } from "../app/training/progress.ts";
 import { toTable } from "../app/import/csv.ts";
 import { strongToRecords } from "../app/import/strong.ts";
 import { addDays, emptyHealthState, normalizeHealthState } from "../app/health-model.ts";
@@ -10,6 +10,29 @@ import { addDays, emptyHealthState, normalizeHealthState } from "../app/health-m
 const FIXTURE = readFileSync(new URL("./fixtures/strong-sample.csv", import.meta.url), "utf8");
 const NOW = new Date("2026-08-25T12:00:00Z");
 const TODAY = "2026-08-25";
+
+test("same-day sessions retain chronological order across imported timestamp formats", () => {
+  const rows = [set("Bench Press (Barbell)", "2026-08-18", 100, 10), set("Bench Press (Barbell)", TODAY, 110, 10), set("Bench Press (Barbell)", TODAY, 120, 10)];
+  rows[1].startedAt = `${TODAY}T09:00:00`;
+  const lift = buildProgress(stateOf({ workoutSets: rows }), TODAY).lifts[0];
+  assert.equal(lift.last, 160);
+  assert.equal(lift.sessionsSincePeak, 0);
+});
+
+test("assisted lift graphs compare matching reps, count less assistance as progress and retain zero", () => {
+  const rows = [40, 20, 0].map((assistanceLb, index) => ({ ...set("Pull Up (Assisted)", addDays(TODAY, (index - 2) * 7), null, 10), loadMode: "assisted", assistanceLb }));
+  const state = stateOf({ workoutSets: rows });
+  const progress = buildProgress(state, TODAY);
+  const lift = progress.lifts[0];
+  assert.deepEqual(lift.points.map(point => point.value), [40, 20, 0]);
+  assert.equal(lift.comparisonReps, 10);
+  assert.equal(lift.direction, "up");
+  assert.equal(lift.sessionsSincePeak, 0);
+  assert.equal(progress.trendPercent, null, "less assistance is not a percent gain in strength");
+  assert.ok(strengthIndex(state, TODAY).every(point => point.value === null));
+  rows[0].reps = 5;
+  assert.equal(buildProgress(stateOf({ workoutSets: rows }), TODAY).lifts.length, 0, "different reps are not comparable");
+});
 
 function stateOf(overrides = {}) {
   return normalizeHealthState({ ...emptyHealthState(NOW), ...overrides });

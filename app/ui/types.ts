@@ -12,10 +12,10 @@ import type { SleepSource } from "../health-model";
  *
  * Anything that is settings rather than a record lives behind the gear.
  */
-export type View = "today" | "sleep" | "fitness" | "mind" | "meds" | "labs" | "summary" | "data" | "more";
+export type View = "today" | "sleep" | "fitness" | "mind" | "meds" | "labs" | "summary" | "data" | "more" | "compare" | "urges";
 
 /** Fitness is one section with three faces rather than three sections. */
-export type FitnessTab = "coach" | "progress" | "lifting" | "body";
+export type FitnessTab = "coach" | "muscles" | "progress" | "body";
 
 export type Period = 14 | 30 | 90;
 export type SaveStatus = "loading" | "saved" | "saving" | "local" | "error" | "demo";
@@ -28,11 +28,12 @@ export type RecoveryMetric = "restingHeartRate" | "hrvMs";
 export type DailyMetric = BodyMetric | RecoveryMetric;
 
 export type Modal =
-  | { kind: "checkin"; date: string }
-  | { kind: "sleep"; date: string; source?: SleepSource }
+  | { kind: "record"; date: string }
+  | { kind: "checkin"; date: string; returnToRecord?: boolean }
+  | { kind: "sleep"; date: string; source?: SleepSource; returnToRecord?: boolean }
   | { kind: "lab"; id?: string }
   | { kind: "medication"; id?: string }
-  | { kind: "import" }
+  | { kind: "import"; source?: "strong" }
   | { kind: "shortcuts" }
   | null;
 
@@ -46,20 +47,22 @@ export const viewLabels: Record<View, string> = {
   sleep: "Sleep",
   fitness: "Fitness",
   mind: "Mind",
+  urges: "Urges",
   meds: "Meds",
   labs: "Labs",
   summary: "Summary",
   data: "Data & goals",
   more: "More",
+  compare: "Compare",
 };
 
-export const navOrder: View[] = ["today", "sleep", "fitness", "mind", "meds", "labs", "summary"];
+export const navOrder: View[] = ["today", "sleep", "fitness", "mind", "urges", "meds", "labs", "summary", "compare"];
 export const mobileNavOrder: View[] = ["today", "sleep", "fitness", "mind", "meds", "more"];
 
 export const fitnessTabs: Array<{ tab: FitnessTab; label: string }> = [
-  { tab: "coach", label: "Coach" },
-  { tab: "progress", label: "Progress" },
-  { tab: "lifting", label: "Lifting" },
+  { tab: "coach", label: "Plan" },
+  { tab: "muscles", label: "Muscles" },
+  { tab: "progress", label: "Strength" },
   { tab: "body", label: "Body" },
 ];
 
@@ -74,3 +77,5 @@ export const recoveryMetrics: Array<{ metric: RecoveryMetric; label: string; uni
   { metric: "restingHeartRate", label: "Resting heart rate", unit: "bpm" },
   { metric: "hrvMs", label: "HRV", unit: "ms" },
 ];
+
+export type MindTab = "journal" | "thoughts" | "therapy" | "meditation";

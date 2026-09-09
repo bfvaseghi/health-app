@@ -18,6 +18,7 @@ import { readZipDirectory, readZipEntryText } from "../app/import/zip.ts";
 import { applyImport, combineRecords, inspectFile, itemRecords, previewRecords } from "../app/import/index.ts";
 import {
   mergeAppleHealthSyncPayload,
+  mergeRestoredAppleHealthSyncPayload,
   normalizeAppleHealthSyncPayload,
   parseAppleHealthSync,
   subtractAppleHealthSyncOverlay,
@@ -212,6 +213,7 @@ test("an Apple export yields one night per morning, ignoring naps and untracked 
   assert.equal(day.weightLb, 176.4);
   assert.equal(day.restingHeartRate, 56);
   assert.equal(day.hrvMs, 47);
+  assert.equal(day.waterMl, 500);
 });
 
 test("Apple sleep is sessionized across midnight and overlapping summaries count once", async () => {
@@ -331,11 +333,11 @@ test("a file that is not an export explains itself instead of failing silently",
   const [item] = await inspectFile(fileOf("notes.json", "{ not json"));
   assert.equal(item.kind, "error");
   assert.equal(item.include, false);
-  assert.match(item.message, /not valid JSON/);
+  assert.match(item.message, /Invalid JSON/);
 
   const [zip] = await inspectFile(new File([new Blob(["nothing here"])], "broken.zip"));
   assert.equal(zip.kind, "error");
-  assert.match(zip.message, /not a readable zip/);
+  assert.match(zip.message, /Invalid ZIP/);
 });
 
 test("importing merges by night and source without blanking what is already recorded", async () => {
@@ -372,14 +374,14 @@ test("a weight column with no unit in its header says which unit it assumed", ()
   const table = toTable("date,Weight\n2026-08-22,181");
   const records = tableToRecords(table, autoMap(table), "other");
   assert.equal(records.dailyEntries[0].weightLb, 181);
-  assert.match(records.warnings[0], /no unit in the file, so it is being read as pounds/);
+  assert.match(records.warnings[0], /unit missing · assumed lb/);
 });
 
 test("an unmapped date column is reported rather than importing nothing quietly", () => {
   const table = toTable("something,else\n1,2");
   const records = tableToRecords(table, autoMap(table), "other");
   assert.equal(records.sleepEntries.length, 0);
-  assert.match(records.warnings[0], /No column is mapped to a date/);
+  assert.match(records.warnings[0], /Date column required/);
 });
 
 test("Health Auto Export JSON is read as Apple data", async () => {
@@ -550,7 +552,7 @@ test("the automatic Apple lane can be removed from a Version 7 base without eras
 /* ---------------------------------------------------------------- lifting */
 
 import { readFileSync } from "node:fs";
-import { isStrongTable, strongToRecords } from "../app/import/strong.ts";
+import { isStrongTable, strongNeedsWeightUnit, strongToRecords } from "../app/import/strong.ts";
 import {
   buildExerciseSummaries,
   buildWorkoutSessions,
@@ -569,7 +571,8 @@ test("a Strong export is recognized and its rest rows are not sets", () => {
   const records = strongToRecords(table);
   assert.equal(records.workoutSets.length, 30, "only working sets");
   assert.equal(records.dailyEntries.length, 0, "a lifting log is not a daily record");
-  assert.match(records.warnings[0], /Skipped 28 rest-timer rows/);
+  assert.ok(!records.warnings.some(warning => /rest-timer rows/.test(warning)));
+  assert.equal(records.workoutSets.filter(set => set.restSeconds !== null).length, 28);
 
   const [first] = records.workoutSets;
   assert.equal(first.date, "2026-04-14");
@@ -669,7 +672,7 @@ test("a full Baseline backup is rejected by the partial import path", async () =
   };
   const [item] = await inspectFile(fileOf("baseline-backup.json", JSON.stringify(backup)));
   assert.equal(item.kind, "error");
-  assert.match(item.message, /Restore a backup in Data & goals/);
+  assert.match(item.message, /Data & goals → Restore archive/);
 });
 
 test("one-rep max declines to guess past the range the formula describes", () => {
@@ -750,3 +753,64 @@ test("a first attempt is not a personal record, and a beaten one is", () => {
 function emptyRecordsShim() {
   return { dailyEntries: [], sleepEntries: [], labResults: [], workoutSets: [], skipped: 0, warnings: [] };
 }
+
+
+test("Apple archive restore fills gaps without replacing newer synced values", () => {
+  const archived = {
+    dailyEntries: [{ date: "2030-01-15", steps: 4000, weightLb: 170, note: "excluded", proteinG: 180 }],
+    sleepEntries: [{ date: "2030-01-15", source: "apple", durationHours: 6, deepHours: 1 }],
+    workoutSets: [{ exercise: "excluded" }],
+  };
+  const current = {
+    dailyEntries: [{ date: "2030-01-15", steps: 9000 }, { date: "2030-01-16", steps: 7000 }],
+    sleepEntries: [{ date: "2030-01-15", source: "apple", durationHours: 8 }],
+  };
+  const restored = mergeRestoredAppleHealthSyncPayload(archived, current);
+  assert.deepEqual(restored.dailyEntries, [
+    { date: "2030-01-16", steps: 7000 },
+    { date: "2030-01-15", steps: 9000, weightLb: 170 },
+  ]);
+  assert.deepEqual(restored.sleepEntries, [{ date: "2030-01-15", source: "apple", durationHours: 8, deepHours: 1 }]);
+  assert.equal(restored.workoutSets, undefined);
+  assert.deepEqual(mergeRestoredAppleHealthSyncPayload(archived, restored), restored);
+});
+
+
+test("Strong exports without units require a choice and convert pounds and kilos once", () => {
+  const table = toTable("Date,Workout Name,Exercise Name,Set Order,Weight,Reps\n2026-09-01 18:00:00,Session,Bench Press (Barbell),1,100,8");
+  assert.equal(strongNeedsWeightUnit(table), true);
+  assert.equal(strongToRecords(table, "lb").workoutSets[0].weightLb, 100);
+  assert.equal(strongToRecords(table, "kg").workoutSets[0].weightLb, 220.5);
+  const explicit = toTable("Date,Workout Name,Exercise Name,Set Order,Weight (lb),Reps\n2026-09-01 18:00:00,Session,Bench Press (Barbell),1,100,8");
+  assert.equal(strongNeedsWeightUnit(explicit), false);
+  assert.equal(strongToRecords(explicit, "kg").workoutSets[0].weightLb, 100);
+});
+
+test('blank or unrecognized Strong weight units require an explicit fallback', () => {
+  for (const unit of ['', 'stone']) {
+    const table = toTable(`Date,Workout Name,Exercise Name,Set Order,Weight,Weight Unit,Reps\n2026-09-01 18:00:00,Session,Bench Press (Barbell),1,100,${unit},8`);
+    assert.equal(strongNeedsWeightUnit(table), true);
+    assert.equal(strongToRecords(table, 'kg').workoutSets[0].weightLb, 220.5);
+  }
+});
+
+test("water imports retain units, aggregate a day, and do not double count a repeated file", async () => {
+  const table = toTable("date,water_ml\n2026-08-22,250\n2026-08-22,500\n2026-08-23,0");
+  const records = tableToRecords(table, autoMap(table), "other");
+  const first = mergeRecords(emptyHealthState(), records);
+  const repeated = mergeRecords(first, records);
+  assert.equal(repeated.dailyEntries.find(entry => entry.date === "2026-08-22").waterMl, 750);
+  assert.equal(repeated.dailyEntries.find(entry => entry.date === "2026-08-23").waterMl, 0);
+  const xml = '<HealthData>' + [['mL', 250], ['L', 0.5], ['fl_oz_us', 8], ['unknown', 99]].map(([unit, value]) => `<Record type="HKQuantityTypeIdentifierDietaryWater" unit="${unit}" value="${value}" startDate="2026-08-22 08:00:00 -0700" endDate="2026-08-22 08:00:00 -0700"/>`).join('') + '</HealthData>';
+  const apple = await parseAppleHealthXml(new Blob([xml]).stream());
+  assert.equal(apple.dailyEntries[0].waterMl, 987);
+});
+
+test("removing an Apple overlay preserves a day with only manual water left", () => {
+  const state = mergeRecords(emptyHealthState(), { dailyEntries: [{ date: "2026-08-22", steps: 3000, waterMl: 1750 }] });
+  const overlay = normalizeAppleHealthSyncPayload({ dailyEntries: [{ date: "2026-08-22", steps: 3000 }], sleepEntries: [] });
+  const result = subtractAppleHealthSyncOverlay(state, overlay);
+  assert.equal(result.dailyEntries.length, 1);
+  assert.equal(result.dailyEntries[0].waterMl, 1750);
+  assert.equal(result.dailyEntries[0].steps, null);
+});

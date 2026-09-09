@@ -1,5 +1,7 @@
 "use client";
 
+import { recordId } from "../record-id";
+
 import { FormEvent, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import {
   DailyEntry,
@@ -22,6 +24,7 @@ import {
 } from "../health-model";
 import { Icon } from "./icons";
 import { ConfirmButton, Field, ModalFrame, TextAreaField, TextField } from "./primitives";
+import { useDraftGuard } from "./use-draft-guard";
 
 function number(value: FormDataEntryValue | null): number | null {
   if (value === null || value === "") return null;
@@ -30,7 +33,7 @@ function number(value: FormDataEntryValue | null): number | null {
 }
 
 /** Prev / next / today controls so backfilling a missed day never means hunting in a date picker. */
-function DateStepper({ date, onChange }: { date: string; onChange: Dispatch<SetStateAction<string>> }) {
+function DateStepper({ date, onChange, label = "Date" }: { date: string; onChange: Dispatch<SetStateAction<string>>; label?: string }) {
   const today = todayLocal();
   return (
     <div className="date-stepper">
@@ -38,6 +41,7 @@ function DateStepper({ date, onChange }: { date: string; onChange: Dispatch<SetS
         <Icon name="chevron" />
       </button>
       <div>
+        <small className="tl-caps">{label}</small>
         <b>{dateLabel(date, { weekday: "long", month: "long", day: "numeric" })}</b>
         <input
           type="date"
@@ -45,7 +49,7 @@ function DateStepper({ date, onChange }: { date: string; onChange: Dispatch<SetS
           value={date}
           max={today}
           onChange={(event) => onChange(event.target.value || today)}
-          aria-label="Date"
+          aria-label={label}
         />
       </div>
       <button
@@ -78,6 +82,8 @@ export function CheckInModal({
 }) {
   const [date, setDate] = useState(initialDate);
   const [error, setError] = useState("");
+  const guard = useDraftGuard();
+  const close = () => guard.request(onClose);
   const existing = state.dailyEntries.find((entry) => entry.date === date);
   const draft = existing ?? emptyDailyEntry(date);
   // Only the medications actually due that day. A weekly injection is not a
@@ -97,6 +103,7 @@ export function CheckInModal({
       weightLb: number(data.get("weight")),
       bodyFatPercent: number(data.get("bodyfat")),
       proteinG: number(data.get("protein")),
+      waterMl: number(data.get("water")),
       note: String(data.get("note") ?? ""),
     };
     const issue = validateDailyEntry(entry);
@@ -117,11 +124,12 @@ export function CheckInModal({
   return (
     <ModalFrame
       title={date === todayLocal() ? "Today" : "Edit day"}
-      subtitle="Meds, weight, body fat, protein. Everything else is imported."
-      onClose={onClose}
+
+      onClose={close}
     >
-      <DateStepper date={date} onChange={setDate} />
-      <form onSubmit={submit} className="form-stack" key={date} noValidate>
+      {guard.notice}
+      <DateStepper date={date} onChange={next => guard.request(() => { setDate(next); setError(""); })} />
+      <form onSubmit={submit} onChangeCapture={guard.markDirty} className="form-stack" key={date} noValidate>
         {due.map((status) => (
           <fieldset className="radio-card" key={status.medication.id}>
             <legend>{status.medication.name}</legend>
@@ -162,6 +170,7 @@ export function CheckInModal({
 
         <div className="input-grid">
           <Field name="protein" label="Protein" suffix="g" step="1" min="0" max="500" value={draft.proteinG} />
+          <Field name="water" label="Water" suffix="mL" step="1" min="0" max="20000" value={draft.waterMl} />
           <div className="field read-only">
             <span>Steps</span>
             <p>{draft.steps === null ? "Not imported" : Math.round(draft.steps).toLocaleString("en-US")}</p>
@@ -176,13 +185,13 @@ export function CheckInModal({
           {existing ? (
             <ConfirmButton
               label="Delete this day"
-              confirmLabel="Delete for good"
+              confirmLabel="Delete permanently"
               className="button danger"
               onConfirm={() => onDelete(date)}
             />
           ) : null}
           <span className="spacer" />
-          <button type="button" className="button secondary" onClick={onClose}>
+          <button type="button" className="button secondary" onClick={close}>
             Cancel
           </button>
           <button className="button primary" type="submit">
@@ -211,21 +220,25 @@ export function SleepModal({
 }) {
   const [date, setDate] = useState(initialDate);
   const source = initialSource;
+  const guard = useDraftGuard();
+  const close = () => guard.request(onClose);
   const existing = state.sleepEntries.find((entry) => entry.date === date && entry.source === source);
 
   return (
     <ModalFrame
       title={existing ? "Edit sleep" : "Add sleep"}
-      subtitle="Use the date you woke up. Each source keeps its own record for the night."
-      onClose={onClose}
+
+      onClose={close}
     >
-      <DateStepper date={date} onChange={setDate} />
+      {guard.notice}
+      <DateStepper date={date} onChange={next => guard.request(() => setDate(next))} label="Wake date" />
       <SleepForm
         key={`${date}:${source}`}
         date={date}
         source={source}
         existing={existing}
-        onClose={onClose}
+        onClose={close}
+        onDirty={guard.markDirty}
         onSave={onSave}
         onDelete={onDelete}
       />
@@ -241,6 +254,7 @@ function SleepForm({
   onClose,
   onSave,
   onDelete,
+  onDirty,
 }: {
   date: string;
   source: SleepSource;
@@ -248,6 +262,7 @@ function SleepForm({
   onClose: () => void;
   onSave: (entry: SleepEntry) => void;
   onDelete: (date: string, source: SleepSource) => void;
+  onDirty: () => void;
 }) {
   const draft = existing ?? emptySleepEntry(date);
   const [bedtime, setBedtime] = useState(draft.bedtime);
@@ -263,9 +278,9 @@ function SleepForm({
       ...draft,
       date,
       source,
-      bedtime,
-      wakeTime,
-      durationHours: duration === "" ? null : Number(duration),
+      bedtime: String(data.get("bedtime") ?? ""),
+      wakeTime: String(data.get("wakeTime") ?? ""),
+      durationHours: number(data.get("duration")),
       quality: number(data.get("quality")) as SleepEntry["quality"],
       efficiencyPercent: number(data.get("efficiency")),
       deepHours: number(data.get("deep")),
@@ -284,28 +299,25 @@ function SleepForm({
   }
 
   return (
-    <form onSubmit={submit} className="form-stack" noValidate>
+    <form onSubmit={submit} onChangeCapture={onDirty} className="form-stack" noValidate>
       <div className="input-grid">
-        <div className="field read-only">
-          <span>Source</span>
-          <p>{source === "manual" ? "Manual entry" : `${source[0].toUpperCase() + source.slice(1)} import`}</p>
-        </div>
-        <Field name="duration" label="Duration" suffix="hours" step="0.1" min="1" max="18" value={duration} onChange={setDuration} />
         <TextField name="bedtime" label="Bedtime" type="time" value={bedtime} onChange={setBedtime} />
-        <TextField name="wakeTime" label="Wake time" type="time" value={wakeTime} onChange={setWakeTime} />
+        <TextField name="wakeTime" label="Woke up" type="time" value={wakeTime} onChange={setWakeTime} />
+        <Field name="duration" label="Time asleep" suffix="hours" step="0.1" min="1" max="18" value={duration} onChange={setDuration} />
+        <div className="field read-only"><span>Source</span><p>{source === "manual" ? "Manual entry" : `${source[0].toUpperCase() + source.slice(1)} import`}</p></div>
       </div>
 
       {estimate !== null ? (
         <div className="inline-hint">
-          <span>That window is {estimate.toFixed(1)} hours in bed.</span>
-          <button type="button" className="text-button" onClick={() => setDuration(estimate.toFixed(2))}>
+          <span>{estimate.toFixed(1)} h in bed</span>
+          <button type="button" className="text-button" onClick={() => { setDuration(estimate.toFixed(2)); onDirty(); }}>
             Use as duration
           </button>
         </div>
       ) : null}
 
-      <div className="form-section">
-        <span className="form-label">Optional detail</span>
+      <details className="form-section simple-history">
+        <summary>Notes &amp; recovery details</summary>
         <div className="input-grid">
           <Field name="quality" label="Quality" suffix="1–5" min="1" max="5" value={draft.quality} />
           <Field name="efficiency" label="Efficiency" suffix="%" min="0" max="100" value={draft.efficiencyPercent} />
@@ -314,9 +326,8 @@ function SleepForm({
           <Field name="rhr" label="Resting heart rate" suffix="bpm" min="20" max="250" value={draft.restingHeartRate} />
           <Field name="hrv" label="HRV" suffix="ms" min="0" max="500" value={draft.hrvMs} />
         </div>
-      </div>
-
-      <TextAreaField name="note" label="Optional note" value={draft.note} />
+        <TextAreaField name="note" label="Optional note" value={draft.note} />
+      </details>
 
       {error ? <p className="form-error" role="alert">{error}</p> : null}
 
@@ -324,7 +335,7 @@ function SleepForm({
         {existing ? (
           <ConfirmButton
             label="Delete this night"
-            confirmLabel="Delete for good"
+            confirmLabel="Delete permanently"
             className="button danger"
             onConfirm={() => onDelete(date, source)}
           />
@@ -371,7 +382,7 @@ export function MedicationModal({
     const name = String(data.get("name") ?? "").trim();
     const schedule = data.get("schedule") === "weekly" ? "weekly" : "daily";
     const medication: Medication = {
-      id: existing?.id ?? `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "med"}-${crypto.randomUUID()}`,
+      id: existing?.id ?? recordId("med"),
       name,
       schedule,
       dueDay: schedule === "weekly" ? Number(data.get("dueDay") ?? 1) : null,
@@ -389,13 +400,13 @@ export function MedicationModal({
   return (
     <ModalFrame
       title={existing ? "Edit medication" : "Add a medication"}
-      subtitle="Only what it is called and how often it is due. Nothing here is advice about taking it."
+
       onClose={onClose}
     >
       <form onSubmit={submit} className="form-stack" noValidate>
-        <TextField name="name" label="Name" value={existing?.name} required placeholder="Example: Finasteride" />
+        <TextField name="name" label="Name" value={existing?.name} required placeholder="Medication name" />
         <fieldset className="field">
-          <legend>How often</legend>
+          <legend>Schedule</legend>
           <div className="radio-row">
             <label>
               <input
@@ -421,7 +432,7 @@ export function MedicationModal({
         </fieldset>
         {weekly ? (
           <div className="field">
-            <label htmlFor="med-day">Day it is due</label>
+            <label htmlFor="med-day">Weekday</label>
             <select id="med-day" name="dueDay" defaultValue={String(existing?.dueDay ?? 1)}>
               {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"].map((day, index) => (
                 <option key={day} value={index}>
@@ -436,7 +447,7 @@ export function MedicationModal({
           {existing ? (
             <ConfirmButton
               label="Delete medication"
-              confirmLabel="Delete for good"
+              confirmLabel="Delete permanently"
               onConfirm={() => onDelete(existing.id)}
             />
           ) : (
@@ -481,7 +492,7 @@ export function LabModal({
     const name = String(data.get("name") ?? "").trim();
     const date = String(data.get("date"));
     const result: LabResult = {
-      id: existing?.id ?? `${date}-${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${crypto.randomUUID()}`,
+      id: existing?.id ?? recordId("lab"),
       name,
       date,
       value: number(data.get("value")),
@@ -489,6 +500,7 @@ export function LabModal({
       referenceLow: number(data.get("low")),
       referenceHigh: number(data.get("high")),
       note: String(data.get("note") ?? ""),
+      ask: data.get("ask") === "on",
     };
     const issue = validateLabResult(result);
     if (issue) {
@@ -502,7 +514,7 @@ export function LabModal({
   return (
     <ModalFrame
       title={existing ? "Edit lab result" : "Add lab result"}
-      subtitle="Use the exact units and reference range printed by the lab that ran it."
+
       onClose={onClose}
     >
       <form onSubmit={submit} className="form-stack" noValidate>
@@ -513,7 +525,7 @@ export function LabModal({
             name="name"
             list="known-lab-names"
             required
-            placeholder="Example: Ferritin"
+            placeholder="Test name"
             defaultValue={existing?.name}
           />
           <datalist id="known-lab-names">
@@ -538,12 +550,16 @@ export function LabModal({
           <Field name="high" label="Reference high" step="any" value={existing?.referenceHigh} />
         </div>
         <TextAreaField name="note" label="Optional note" value={existing?.note} />
+        <label className="check-row">
+          <input type="checkbox" name="ask" defaultChecked={existing?.ask ?? false} />
+          <span>Flag for summary</span>
+        </label>
         {error ? <p className="form-error" role="alert">{error}</p> : null}
         <div className="modal-actions">
           {existing ? (
             <ConfirmButton
               label="Delete result"
-              confirmLabel="Delete for good"
+              confirmLabel="Delete permanently"
               className="button danger"
               onConfirm={() => onDelete(existing.id)}
             />
@@ -566,15 +582,15 @@ const shortcuts: Array<[string, string]> = [
   ["S", "Add or edit a night"],
   ["C", "Log today"],
   ["L", "Add a lab result"],
-  ["1 – 7", "Jump to a section"],
+  ["1 – 8", "Jump to a section"],
   ["?", "Show this list"],
   ["Esc", "Close a dialog"],
-  ["← →", "Move through a chart once it has focus"],
+  ["← →", "Chart selection"],
 ];
 
 export function ShortcutsModal({ onClose, demo = false }: { onClose: () => void; demo?: boolean }) {
   return (
-    <ModalFrame title="Keyboard shortcuts" subtitle="Shortcuts pause while you are typing in a field." onClose={onClose}>
+    <ModalFrame title="Keyboard shortcuts" onClose={onClose}>
       <dl className="shortcut-list">
         {shortcuts.filter(([key]) => !demo || key !== "I").map(([key, description]) => (
           <div key={key}>
@@ -585,11 +601,6 @@ export function ShortcutsModal({ onClose, demo = false }: { onClose: () => void;
           </div>
         ))}
       </dl>
-      <div className="modal-actions">
-        <button type="button" className="button primary" onClick={onClose}>
-          Close
-        </button>
-      </div>
     </ModalFrame>
   );
 }

@@ -1,17 +1,20 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
-import type { DailyEntry, HealthState, TherapyNote, ThoughtJournalEntry } from "../health-model";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+import type { DailyEntry, HealthState, LoopEvent, TherapyNote, ThoughtJournalEntry } from "../health-model";
+import { ThoughtLoops, type LoopDraft } from "./thought-loops";
 import { addDays, dateLabel, mindSummary } from "../health-model";
+import { meditationWeeklyMinutes } from "../series";
 import { Icon } from "./icons";
-import { ConfirmButton, Empty, PageHeading, Stat } from "./primitives";
+import { ConfirmButton, RecordHeading } from "./primitives";
+import { Tide } from "./tide";
+import type { MindTab } from "./types";
 
-/**
- * Meditation, journaling, and the running list of things to raise. The list is
- * the point of the page: a thought is only ever captured on the day it turns
- * up, and trying to recall it in the room is how it gets lost.
- */
 export function MindView({
+  tab,
+  composeRequest = 0,
+  onJournalDraftChange,
+  onTab,
   state,
   today,
   updateDaily,
@@ -20,88 +23,141 @@ export function MindView({
   onDeleteNote,
   onAddThought,
   onDeleteThought,
+  onSaveLoop,
+  onDeleteLoop,
+  onLoopEvent,
+  onDeleteLoopEvent,
   onNotice,
 }: {
+  tab: MindTab;
+  composeRequest?: number;
+  onJournalDraftChange: (draft: "entry" | "edit" | null) => void;
+  onTab: (tab: MindTab) => void;
   state: HealthState;
   today: string;
   updateDaily: (date: string, update: (current: DailyEntry) => DailyEntry) => void;
   onAddNote: (text: string) => void;
   onToggleNote: (note: TherapyNote) => void;
   onDeleteNote: (id: string) => void;
-  onAddThought: (entry: { title: string; text: string; source: ThoughtJournalEntry["source"] }) => void;
+  onAddThought: (entry: { id?: string; title: string; text: string; source: ThoughtJournalEntry["source"] }) => void;
   onDeleteThought: (id: string) => void;
+  onSaveLoop: (loop: LoopDraft) => void;
+  onDeleteLoop: (id: string) => void;
+  onLoopEvent: (event: LoopEvent) => void;
+  onDeleteLoopEvent: (id: string) => void;
   onNotice: (message: string) => void;
 }) {
+  const activeTab = tab;
   const [draft, setDraft] = useState("");
+  const [adding, setAdding] = useState(false);
   const [showRaised, setShowRaised] = useState(false);
 
-  const summary = useMemo(() => mindSummary(state, today, 30), [state, today]);
   const open = state.therapyNotes.filter((note) => !note.shared);
   const raised = state.therapyNotes.filter((note) => note.shared);
-  const week = Array.from({ length: 14 }, (_, index) => addDays(today, index - 13));
-  const thoughtDates = new Set(state.thoughtJournal.map((entry) => entry.date));
-
   function submitNote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const text = draft.trim();
     if (!text) return;
     onAddNote(text);
     setDraft("");
+    setAdding(false);
   }
 
   return (
     <div className="page mind-page">
-      <PageHeading title="Mind" />
+      <RecordHeading title="Mind" />
+      <div className="mind-tabs record-tabs" role="tablist" aria-label="Mind">
+        {(["thoughts", "journal", "therapy", "meditation"] as const).map((value, index, tabs) => (
+          <button key={value} type="button" role="tab" id={`mind-tab-${value}`} aria-controls={`mind-panel-${value}`} aria-selected={activeTab === value} tabIndex={activeTab === value ? 0 : -1}
+            onClick={() => onTab(value)} onKeyDown={event => {
+              const next = event.key === "ArrowRight" ? (index + 1) % tabs.length : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : null;
+              if (next === null) return;
+              event.preventDefault();
+              onTab(tabs[next]);
+              (event.currentTarget.parentElement?.children[next] as HTMLButtonElement)?.focus();
+            }}>{value === "thoughts" ? "Rumination" : value === "journal" ? "Journal" : value === "therapy" ? "Therapy" : "Meditation"}</button>
+        ))}
+      </div>
 
+      <div id="mind-panel-thoughts" role="tabpanel" aria-labelledby="mind-tab-thoughts" hidden={activeTab !== "thoughts"}>
+      <ThoughtLoops
+        state={state}
+        today={today}
+        onSave={onSaveLoop}
+        onDelete={onDeleteLoop}
+        onEvent={onLoopEvent}
+        onDeleteEvent={onDeleteLoopEvent}
+        onNotice={onNotice}
+      />
+
+      </div>
+      <div id="mind-panel-journal" role="tabpanel" aria-labelledby="mind-tab-journal" hidden={activeTab !== "journal"}>
       <ThoughtJournal
+        composeRequest={composeRequest}
+        onDraftChange={onJournalDraftChange}
         entries={state.thoughtJournal}
+        today={today}
+        therapyNotes={state.therapyNotes}
+        onAddToTherapy={onAddNote}
         onAdd={onAddThought}
         onDelete={onDeleteThought}
         onNotice={onNotice}
       />
+      </div>
 
-      <section className="panel wide-panel mind-agenda">
-        <div className="panel-head wrap">
-          <div>
-            <h2>For therapy</h2>
-          </div>
-          <span className="panel-meta">{`${open.length} waiting`}</span>
+      <div id="mind-panel-meditation" role="tabpanel" aria-labelledby="mind-tab-meditation" hidden={tab !== "meditation"}>
+        <TodayPractices state={state} today={today} updateDaily={updateDaily} />
+      </div>
+
+      <div id="mind-panel-therapy" role="tabpanel" aria-labelledby="mind-tab-therapy" hidden={tab !== "therapy"}>
+      <section className="mind-panel-section" aria-labelledby="therapy-title">
+        <div className="tl-section-head">
+          <h2 className="mind-section-title" id="therapy-title">Topics for your next session</h2>
+          {adding ? null : (
+            <button type="button" className="text-button" onClick={() => setAdding(true)}>
+              <Icon name="plus" /> Add topic
+            </button>
+          )}
         </div>
 
-        <form className="note-form" onSubmit={submitNote}>
-          <input
-            value={draft}
-            placeholder="Something to bring up next session"
-            aria-label="Something to bring up next session"
-            onChange={(event) => setDraft(event.target.value)}
-          />
-          <button type="submit" className="button primary" disabled={!draft.trim()}>
-            <Icon name="plus" />
-            Add
-          </button>
-        </form>
+
+        {adding ? (
+          <form className="note-form" onSubmit={submitNote}>
+            <input
+              value={draft}
+              placeholder="Topic"
+              aria-label="Topic"
+              onChange={(event) => setDraft(event.target.value)}
+              autoFocus
+            />
+            <button type="submit" className="button primary" disabled={!draft.trim()}>
+              Add
+            </button>
+            <button type="button" className="button secondary" onClick={() => { setAdding(false); setDraft(""); }}>
+              Cancel
+            </button>
+          </form>
+        ) : null}
 
         {open.length ? (
-          <ul className="therapy-list">
+          <ul className="tl-rows tl-list">
             {open.map((note) => (
               <TherapyRow key={note.id} note={note} onToggle={onToggleNote} onDelete={onDeleteNote} />
             ))}
           </ul>
         ) : (
-          <Empty
-            icon="mind"
-            title="Nothing waiting"
-            body="Add a thought the day it turns up. Whatever is on this list comes out again in the appointment summary."
-          />
+          <p className="mind-status">No topics saved for your next session.</p>
         )}
 
         {raised.length ? (
           <>
-            <button type="button" className="text-button" onClick={() => setShowRaised((value) => !value)}>
-              {showRaised ? "Hide" : `Show ${raised.length} already raised`} <Icon name="chevron" />
-            </button>
+            <p className="tl-line">
+              <button type="button" className="text-button" onClick={() => setShowRaised((value) => !value)}>
+                {showRaised ? "Hide discussed" : `Discussed · ${raised.length}`}
+              </button>
+            </p>
             {showRaised ? (
-              <ul className="therapy-list raised">
+              <ul className="tl-rows tl-list">
                 {raised.map((note) => (
                   <TherapyRow key={note.id} note={note} onToggle={onToggleNote} onDelete={onDeleteNote} />
                 ))}
@@ -111,91 +167,56 @@ export function MindView({
         ) : null}
       </section>
 
-      <TodayPractices state={state} today={today} updateDaily={updateDaily} />
-
-      <section className="panel wide-panel mind-history">
-        <div className="panel-head">
-          <div>
-            <h2>Last 14 days</h2>
-          </div>
-        </div>
-        <ol className="mind-strip" aria-label="Meditation and journaling, last fourteen days">
-          {week.map((date) => {
-            const entry = state.dailyEntries.find((item) => item.date === date);
-            const minutes = entry?.meditationMinutes ?? 0;
-            const journaled = Boolean(entry?.journaled) || thoughtDates.has(date);
-            return (
-              <li
-                key={date}
-                className={date === today ? "current" : ""}
-                aria-label={`${dateLabel(date, { weekday: "long", month: "long", day: "numeric" })}: ${
-                  minutes ? `${minutes} minutes meditated` : "no meditation"
-                }, ${journaled ? "journaled" : "not journaled"}.`}
-              >
-                <small aria-hidden="true">{dateLabel(date, { weekday: "narrow" })}</small>
-                <span aria-hidden="true" className={minutes ? "day-dot strong" : "day-dot"}>
-                  {minutes || "—"}
-                </span>
-                <i aria-hidden="true" className={journaled ? "med-pip is-taken" : "med-pip"} />
-              </li>
-            );
-          })}
-        </ol>
-        <p className="panel-body">
-          The top number is minutes meditated; the bar underneath marks a day you journaled.
-        </p>
-      </section>
-
-      <section className="hero-panel mind-hero">
-        <div className="hero-score">
-          <span className="moon-orb">
-            <Icon name="mind" />
-          </span>
-          <div>
-            <p className="kicker">Last 30 days</p>
-            <strong>{`${summary.meditationDays} ${summary.meditationDays === 1 ? "day" : "days"}`}</strong>
-            <small>meditated</small>
-          </div>
-        </div>
-        <div className="stat-row">
-          <Stat label="Minutes" value={`${summary.meditationMinutes}`} detail="sat in total" />
-          <Stat label="Journaled" value={`${summary.journalDays} / 30`} detail="days written" />
-          <Stat label="To raise" value={`${open.length}`} detail="waiting for a session" />
-          <Stat label="Raised" value={`${raised.length}`} detail="already covered" />
-        </div>
-      </section>
+      </div>
     </div>
   );
 }
 
 function ThoughtJournal({
+  composeRequest,
+  onDraftChange,
   entries,
+  today,
+  therapyNotes,
+  onAddToTherapy,
   onAdd,
   onDelete,
   onNotice,
 }: {
+  composeRequest: number;
+  onDraftChange: (draft: "entry" | "edit" | null) => void;
   entries: ThoughtJournalEntry[];
-  onAdd: (entry: { title: string; text: string; source: ThoughtJournalEntry["source"] }) => void;
+  today: string;
+  therapyNotes: TherapyNote[];
+  onAddToTherapy: (text: string) => void;
+  onAdd: (entry: { id?: string; title: string; text: string; source: ThoughtJournalEntry["source"] }) => void;
   onDelete: (id: string) => void;
   onNotice: (message: string) => void;
 }) {
   const [title, setTitle] = useState("");
   const [text, setText] = useState("");
   const [source, setSource] = useState<ThoughtJournalEntry["source"]>("manual");
+  const [editingId, setEditingId] = useState<string | undefined>();
   const [showAll, setShowAll] = useState(false);
+  const [writing, setWriting] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [query, setQuery] = useState("");
+  useEffect(() => { if (composeRequest > 0) setWriting(true); }, [composeRequest]);
+  useEffect(() => { onDraftChange(writing ? editingId ? "edit" : "entry" : null); }, [writing, editingId, onDraftChange]);
 
   async function pasteFromNotes() {
     try {
       const value = (await navigator.clipboard.readText()).trim();
       if (!value) {
-        onNotice("Copy a note in Apple Notes first.");
+        onNotice("Clipboard empty.");
         return;
       }
       setText((current) => current.trim() ? `${current.trimEnd()}\n\n${value}` : value);
       setSource("apple-notes");
-      onNotice(text.trim() ? "Apple Notes text added below your draft." : "Apple Notes text pasted. Review it before saving.");
+      setWriting(true);
+      onNotice(text.trim() ? "Text appended." : "Text pasted.");
     } catch {
-      onNotice("Copy the note, then press and hold in the journal box to paste it.");
+      onNotice("Paste into the entry field using your device’s paste command.");
     }
   }
 
@@ -203,122 +224,184 @@ function ThoughtJournal({
     event.preventDefault();
     const value = text.trim();
     if (!value) return;
-    onAdd({ title: title.trim(), text: value, source });
+    onAdd({ id: editingId, title: title.trim(), text: value, source });
+    setEditingId(undefined);
     setTitle("");
     setText("");
     setSource("manual");
+    setWriting(false);
   }
 
-  const shown = showAll ? entries : entries.slice(0, 4);
+  const words = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+  const matched = words.length ? entries.filter((entry) => {
+    const haystack = `${entry.title} ${entry.text} ${entry.date} ${dateLabel(entry.date, { month: "long", day: "numeric", year: "numeric" })}`.toLocaleLowerCase();
+    return words.every((word) => haystack.includes(word));
+  }) : entries;
+  const shown = showAll ? matched : matched.slice(0, 4);
+  const therapyText = (entry: ThoughtJournalEntry) => `${dateLabel(entry.date, { month: "short", day: "numeric", year: "numeric" })}${entry.title ? ` · ${entry.title}` : ""}\n${entry.text}`;
   return (
-    <section className="panel wide-panel thought-journal" aria-labelledby="thought-journal-title">
-      <div className="panel-head wrap">
-        <div>
-          <p className="kicker">Private reflections</p>
-          <h2 id="thought-journal-title">Thought journal</h2>
-        </div>
-        <button type="button" className="button secondary small" onClick={() => void pasteFromNotes()}>
-          <Icon name="copy" /> Paste from Notes
-        </button>
+    <section className="mind-panel-section" aria-labelledby="thought-journal-title">
+      <div className="tl-section-head">
+        <h2 className="mind-section-title" id="thought-journal-title">
+          Journal
+        </h2>
+        {writing ? (
+          <button type="button" className="text-button" onClick={() => void pasteFromNotes()}>
+            <Icon name="copy" /> Paste from Notes
+          </button>
+        ) : (
+          <button type="button" className="button primary small" onClick={() => setWriting(true)}>
+            <Icon name="pencil" /> Write entry
+          </button>
+        )}
       </div>
-      <p className="panel-body">Write freely here. Nothing becomes a therapy topic unless you add it to that list yourself.</p>
+      {writing || !entries.length ? <p className="mind-section-description">Record what you are feeling, what set off a recurring thought, or what you want to explore in therapy.</p> : null}
+      {writing ? (
       <form className="thought-form" onSubmit={submit}>
+        {editingId ? <p className="mind-section-description">Editing entry from {dateLabel(entries.find(entry => entry.id === editingId)?.date ?? today, { month: "short", day: "numeric", year: "numeric" })}</p> : null}
         <input
           value={title}
           maxLength={160}
           placeholder="Title (optional)"
-          aria-label="Thought title"
+          aria-label="Entry title"
           onChange={(event) => setTitle(event.target.value)}
         />
         <textarea
+          autoFocus
           value={text}
           maxLength={10_000}
           placeholder="What is on your mind?"
-          aria-label="Thought journal entry"
+          aria-label="Mental health journal entry"
           onChange={(event) => {
             setText(event.target.value);
             if (!event.target.value) setSource("manual");
           }}
         />
         <div className="thought-form-foot">
-          <small>{source === "apple-notes" ? "Pasted from Apple Notes" : "Saved to your private Baseline record"}</small>
-          <button type="submit" className="button primary" disabled={!text.trim()}>
-            <Icon name="plus" /> Save thought
-          </button>
+          <small>{source === "apple-notes" ? "Pasted from Apple Notes" : ""}</small>
+          <span className="tl-actions" style={{ margin: 0 }}>
+            <button type="button" className="button secondary" onClick={() => { setWriting(false); setText(""); setTitle(""); setSource("manual"); setEditingId(undefined); }}>
+              Cancel
+            </button>
+            <button type="submit" className="button primary" disabled={!text.trim()}>
+              {editingId ? "Save changes" : "Save entry"}
+            </button>
+          </span>
         </div>
       </form>
+      ) : null}
 
+      {entries.length ? <div className="journal-history">
+        <div className="journal-history-head"><h3 className="journal-history-title">Recent entries</h3>
+      {entries.length ? (
+        searching ? <div className="journal-search">
+          <input type="search" autoFocus placeholder="Search entries" aria-label="Search journal entries" value={query} onChange={(event) => { setQuery(event.target.value); setShowAll(false); }} />
+          <button type="button" className="text-button" onClick={() => { setSearching(false); setQuery(""); }}>Close</button>
+        </div> : <button type="button" className="text-button" onClick={() => setSearching(true)}>Search entries</button>
+      ) : null}
+        </div>
       {shown.length ? (
-        <ol className="thought-list">
+        <ol className="tl-rows tl-list">
           {shown.map((entry) => (
-            <li key={entry.id}>
-              <div className="thought-meta">
-                <span>{entry.source === "apple-notes" ? "Apple Notes" : "Baseline"}</span>
-                <time dateTime={entry.date}>{dateLabel(entry.date, { month: "short", day: "numeric", year: "numeric" })}</time>
-              </div>
-              {entry.title ? <h3>{entry.title}</h3> : null}
-              <p>{entry.text}</p>
-              <ConfirmButton label={`Delete thought from ${entry.date}`} onConfirm={() => onDelete(entry.id)} />
+            <li key={entry.id} className="journal-entry">
+              <details>
+                <summary>
+                  <span className="entry-date" aria-hidden="true"><b>{dateLabel(entry.date, { day: "numeric" })}</b><small>{dateLabel(entry.date, { month: "short" })}</small></span>
+                  <span className="entry-summary-copy"><b>{entry.title || dateLabel(entry.date, { weekday: "long", month: "long", day: "numeric" })}</b>
+                  <small>{entry.date === today ? "Today" : dateLabel(entry.date, { month: "short", day: "numeric", year: "numeric" })}{entry.source === "apple-notes" ? " · Apple Notes" : ""}</small>
+                  <span className="entry-preview">{entry.text}</span></span>
+                  <Icon name="chevron" />
+                </summary>
+                <p className="tl-thought-text">{entry.text}</p>
+                <div className="journal-tools">
+                  <button type="button" className="text-button" disabled={writing} onClick={() => { setEditingId(entry.id); setTitle(entry.title); setText(entry.text); setSource(entry.source); setWriting(true); document.getElementById("thought-journal-title")?.scrollIntoView({ block: "start" }); }}>Edit entry</button>
+                  <button type="button" className="text-button" disabled={therapyNotes.some((note) => note.text === therapyText(entry))} onClick={() => { onAddToTherapy(therapyText(entry)); onNotice("Added to therapy topics."); }}>
+                    {therapyNotes.some((note) => note.text === therapyText(entry)) ? "Added to therapy" : "Add to therapy"}
+                  </button>
+                  <ConfirmButton label={`Delete entry from ${entry.date}`} onConfirm={() => onDelete(entry.id)} />
+                </div>
+              </details>
             </li>
           ))}
         </ol>
       ) : (
-        <Empty icon="journal" title="No thoughts yet" body="Write here or paste text you copied from Apple Notes." />
+        <p className="tl-line">{words.length ? "No matching entries." : "No entries."}</p>
       )}
-      {entries.length > 4 ? (
-        <button type="button" className="text-button" onClick={() => setShowAll((value) => !value)}>
-          {showAll ? "Show recent" : `Show all ${entries.length}`} <Icon name="chevron" />
-        </button>
+      {matched.length > 4 ? (
+        <p className="tl-line">
+          <button type="button" className="text-button" onClick={() => setShowAll((value) => !value)}>
+            {showAll ? "Show recent" : `Show all ${matched.length}`}
+          </button>
+        </p>
       ) : null}
-      <p className="thought-shortcut-note">
-        Want one-tap transfer? Use the Apple Notes Shortcut URL and private key shown in Data &amp; goals.
-      </p>
+      </div> : null}
+      {!entries.length && !writing ? <p className="mind-status">Your saved entries will appear here.</p> : null}
     </section>
   );
 }
 
-function TodayPractices({
-  state,
-  today,
-  updateDaily,
-}: {
+export function TodayPractices({ state, today, updateDaily }: {
   state: HealthState;
   today: string;
   updateDaily: (date: string, update: (current: DailyEntry) => DailyEntry) => void;
 }) {
-  const entry = state.dailyEntries.find((item) => item.date === today);
-  const minutes = entry?.meditationMinutes ?? null;
-  return (
-    <section className="panel wide-panel mind-practices">
-      <div className="panel-head wrap">
-        <div><p className="kicker">Today</p><h2>Practices</h2></div>
-        <span className="panel-meta">{minutes ? `${minutes} min meditated` : "Meditation not logged"}</span>
+  const currentDay = state.dailyEntries.find(item => item.date === today);
+  const minutes = currentDay?.meditationMinutes ?? null;
+  const weekly = useMemo(() => meditationWeeklyMinutes(state, today, 8), [state, today]);
+  const recentWeek = useMemo(() => mindSummary(state, today, 7), [state, today]);
+  const [editingDate, setEditingDate] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
+  const [note, setNote] = useState("");
+  const notes = state.dailyEntries.filter(entry => entry.date <= today && entry.meditationNote.trim()).sort((a, b) => b.date.localeCompare(a.date));
+  const editDay = (date: string) => {
+    const recorded = state.dailyEntries.find(entry => entry.date === date);
+    setDraft(recorded?.meditationMinutes == null ? "" : String(recorded.meditationMinutes));
+    setNote(recorded?.meditationNote ?? "");
+    setEditingDate(date);
+  };
+  const logMinutes = (value: number) => updateDaily(today, current => ({ ...current, meditationMinutes: value }));
+  return <section className="mind-panel-section meditation-practice" aria-labelledby="meditation-title">
+    <h2 className="mind-section-title" id="meditation-title">Meditation</h2>
+    <div className="practice-overview">
+      <div className="practice-today"><Icon name={(minutes ?? 0) > 0 ? "check" : "mind"} /><div><strong>{(minutes ?? 0) > 0 ? "Done today" : minutes === 0 ? "No meditation today" : "Not logged today"}</strong>{(minutes ?? 0) > 0 ? <span>{minutes} minutes</span> : null}</div></div>
+      <div className="consistency-number" role="status"><strong>{recentWeek.meditationDays} <span>out of 7</span></strong><span>days meditated · last 7 days</span></div>
+    </div>
+    {editingDate ? <form className="meditation-form insight-form" onSubmit={event => {
+      event.preventDefault();
+      const fields = new FormData(event.currentTarget);
+      const date = String(fields.get("date") ?? editingDate);
+      const entered = String(fields.get("minutes") ?? "").trim();
+      const insight = String(fields.get("insight") ?? "").trim();
+      const value = entered ? Number(entered) : null;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || date > today || (value !== null && (!Number.isInteger(value) || value < 0 || value > 240))) return;
+      updateDaily(date, current => ({ ...current, meditationMinutes: value, meditationNote: insight }));
+      setEditingDate(null);
+    }}>
+      <div className="meditation-edit-fields"><label>Date<input type="date" name="date" required max={today} value={editingDate} onChange={event => { if (event.target.value) editDay(event.target.value); }} /></label><label>Minutes · optional<input type="number" name="minutes" min="0" max="240" step="1" inputMode="numeric" value={draft} onChange={event => setDraft(event.target.value)} /></label></div>
+      <label>Insights<textarea name="insight" autoFocus value={note} onChange={event => setNote(event.target.value)} placeholder="What did you notice or learn?" rows={4} maxLength={2000} /></label>
+      <div className="tl-actions"><button type="submit" className="button primary">Save</button><button type="button" className="text-button" onClick={() => setEditingDate(null)}>Cancel</button>{state.dailyEntries.some(entry => entry.date === editingDate && entry.meditationMinutes != null) ? <button type="button" className="text-button" onClick={() => setDraft("")}>Clear minutes</button> : null}</div>
+    </form> : <>
+      <div className="tl-actions">
+        {(minutes ?? 0) <= 0 ? [10, 20].map(value => <button key={value} type="button" className="button secondary" onClick={() => logMinutes(value)}>Log {value} min</button>) : null}
+        <button type="button" className="text-button" onClick={() => editDay(today)}><Icon name="pencil" />{minutes === null ? "Other duration" : "Edit minutes"}</button>
       </div>
-      <div className="practice-actions">
-        <span role="group" aria-label="Meditation minutes">
-          {[10, 20].map((value) => (
-            <button
-              type="button"
-              key={value}
-              className={minutes === value ? "chip primary" : "chip"}
-              aria-pressed={minutes === value}
-              onClick={() => updateDaily(today, (current) => ({ ...current, meditationMinutes: minutes === value ? null : value }))}
-            >
-              <Icon name="mind" /> {value} min
-            </button>
-          ))}
-        </span>
-        <button
-          type="button"
-          className={entry?.journaled ? "button primary" : "button secondary"}
-          aria-pressed={entry?.journaled === true}
-          onClick={() => updateDaily(today, (current) => ({ ...current, journaled: !current.journaled }))}
-        >
-          <Icon name="journal" /> {entry?.journaled ? "Journaled" : "Mark journaled"}
-        </button>
-      </div>
-    </section>
-  );
+      <section className="meditation-insights" aria-label="Meditation insights"><div className="tl-section-head"><h3>Insights</h3><button type="button" className="text-button" onClick={() => editDay(today)}>{currentDay?.meditationNote ? "Edit today" : "Add insight"}</button></div>
+        {notes.length ? <ol>{notes.slice(0, 1).map(entry => <li key={entry.date}><div><span>{entry.date === today ? "Today" : dateLabel(entry.date, { month: "short", day: "numeric", year: "numeric" })}{entry.meditationMinutes ? ` · ${entry.meditationMinutes} min` : ""}</span><button type="button" className="text-button" aria-label={`Edit insight for ${entry.date}`} onClick={() => editDay(entry.date)}>Edit</button></div><p>{entry.meditationNote}</p></li>)}</ol> : <p className="mind-status">Save what you noticed during meditation.</p>}
+      </section>
+    </>}
+    <details className="simple-history">
+      <summary>Past days &amp; insights</summary>
+      <Tide data={weekly} label="Meditation, minutes a week" unit=" min" min={0} format={value => String(Math.round(value))} empty="No meditation records." />
+      <ol className="practice-history" aria-label="Meditation minutes, last 14 days">
+        {Array.from({ length: 14 }, (_, index) => addDays(today, index - 13)).map(date => {
+          const day = state.dailyEntries.find(entry => entry.date === date);
+          return <li key={date} className={date === today ? "current" : ""}><button type="button" aria-label={`Edit meditation for ${date}: ${day?.meditationMinutes == null ? "not recorded" : `${day.meditationMinutes} minutes`}`} onClick={() => { editDay(date); document.getElementById("meditation-title")?.scrollIntoView({ block: "start" }); }}><small>{dateLabel(date, { weekday: "short" })}</small><b>{day?.meditationMinutes ?? "—"}</b></button></li>;
+        })}
+      </ol>
+      <button type="button" className="text-button" onClick={() => editDay(addDays(today, -1))}>Log another day</button>
+      {notes.length > 1 ? <ol className="earlier-insights">{notes.slice(1).map(entry => <li key={entry.date}><button type="button" className="text-button" onClick={() => editDay(entry.date)}>{dateLabel(entry.date, { month: "short", day: "numeric", year: "numeric" })} · Edit</button><p>{entry.meditationNote}</p></li>)}</ol> : null}
+    </details>
+  </section>;
 }
 
 function TherapyRow({
@@ -331,23 +414,23 @@ function TherapyRow({
   onDelete: (id: string) => void;
 }) {
   return (
-    <li>
+    <li className={note.shared ? "tl-row is-static done" : "tl-row is-static"}>
       <button
         type="button"
         className={note.shared ? "therapy-check done" : "therapy-check"}
-        aria-label={note.shared ? `Move “${note.text}” back to the list` : `Mark “${note.text}” as raised`}
+        aria-label={note.shared ? `Move “${note.text}” back to the list` : `Mark “${note.text}” as discussed`}
         onClick={() => onToggle(note)}
       >
         <Icon name="check" />
       </button>
-      <div>
-        <p>{note.text}</p>
+      <span className="tl-row-copy">
+        <b className="tl-plain">{note.text}</b>
         <small>
           {note.shared && note.sharedDate
-            ? `Raised ${dateLabel(note.sharedDate, { month: "short", day: "numeric" })}`
+            ? `Discussed ${dateLabel(note.sharedDate, { month: "short", day: "numeric" })}`
             : dateLabel(note.date, { month: "short", day: "numeric" })}
         </small>
-      </div>
+      </span>
       <ConfirmButton label={`Delete “${note.text}”`} onConfirm={() => onDelete(note.id)} />
     </li>
   );

@@ -2,591 +2,209 @@
 
 import { useMemo, useState } from "react";
 import type { AddedSet, GoalSettings, HealthState } from "../health-model";
-import type {
-  FixChoice,
-  MuscleDetail,
-  MuscleOutlook,
-  Plan,
-  PlannedExercise,
-  PlannedSession,
-  WorkoutWeekStreak,
-} from "../training/coach";
+import { buildWorkoutSessions, dateLabel } from "../health-model";
+import type { FixChoice, MuscleDetail, MuscleOutlook, Plan, PlannedSession } from "../training/coach";
 import {
-  DAY_CHOICES,
-  buildBlock,
-  currentBlockWeek,
-  minimumDirect,
-  planToText,
-  recommendDays,
-  unclassifiedExercises,
-  adjustChoice,
-  muscleDetail,
-  nextSession,
-  remainingSessions,
-  weekStart,
-  weekLabel,
-  weekOutlook,
-  withAddedSets,
+  DAY_CHOICES, baseCoverage, currentTrainingWeek, minimumDirect, planToText,
+  unclassifiedExercises, adjustChoice, muscleDetail, nextSession,
+  remainingSessions, weekStart, sessionToText, sessionMinutes, weekOutlook,
   trainingAnchorSets,
-  workoutWeekStreak,
 } from "../training/coach";
 import type { Muscle } from "../training/muscles";
 import { muscleLabels } from "../training/muscles";
 import { Icon } from "./icons";
-import { copyText, listWords } from "./format";
-import { ConfirmButton, Empty, Fold } from "./primitives";
+import { copyText, downloadBlob, listWords } from "./format";
+import { ConfirmButton } from "./primitives";
+import { WorkoutPrescription as Lift } from "./workout-prescription";
+import { workoutLabel } from "./workout-labels";
 import type { Modal } from "./types";
 
-/**
- * A four-week block, built from the log. Three weeks that climb and one that
- * backs off, each week taking whatever number of days you have time for.
- *
- * There is no list of adjustments. What the log says is wrong with the
- * programme — a muscle getting nothing, a rest timer set for the wrong rep
- * range, too few sessions — is already applied to the weeks below. Reading
- * about a problem and then fixing it yourself is two jobs; this is one.
- */
+/** The plan and muscle graph use the same post-import calculation. */
 export function CoachTab({
-  state,
-  today,
-  open,
-  demo,
-  onGoals,
-  onNotice,
+  state, today, open, onGoals, onNotice, onMuscles, onWorkout, mode = "workout", stage = "week", onStage, selected = null, onSelect,
 }: {
   state: HealthState;
   today: string;
   open: (modal: Modal) => void;
-  demo: boolean;
   onGoals: (goals: GoalSettings | ((current: GoalSettings) => GoalSettings)) => void;
   onNotice: (message: string) => void;
+  onMuscles: () => void;
+  onWorkout?: () => void;
+  mode?: "workout" | "muscles";
+  stage?: "week" | "workout";
+  onStage?: (stage: "week" | "workout") => void;
+  selected?: string | null;
+  onSelect?: (name: string | null) => void;
 }) {
-  // Which week of the block it is, worked out from how long you have been
-  // training. The block is real — volume climbs for three weeks and the fourth
-  // backs off — but it is not something to be understood or kept in step with,
-  // so there is nothing here to choose. There is this week's plan.
-  const week = useMemo(() => currentBlockWeek(state, today), [state, today]);
-
-  const advice = useMemo(() => recommendDays(state, today), [state, today]);
-  const block = useMemo(() => buildBlock(state, today, state.goals.trainingDays), [state, today]);
+  const { week, block, plan, planned } = useMemo(() => currentTrainingWeek(state, today), [state, today]);
+  const hasHistory = state.workoutSets.filter(set => set.date <= today).length >= 10;
   const unknown = useMemo(() => unclassifiedExercises(state.workoutSets), [state.workoutSets]);
-  const streak = useMemo(() => workoutWeekStreak(state, today), [state, today]);
-
-  // What the coach wrote, plus whatever you added to it yourself.
-  const plan = useMemo(
-    () => withAddedSets(block[Math.min(week, block.length - 1)], state, today),
-    [block, week, state, today],
-  );
-  // Whichever session you are about to do is the one already open. Choosing a
-  // different day, or finishing one, moves it without being asked. After that
-  // the folds are independent: opening one is not a reason to close another,
-  // and wanting to see two sessions at once is not an unusual thing to want.
-  const [opened, setOpened] = useState<Set<string> | null>(null);
-  // What is banked this week and what the rest of the plan adds — the two
-  // halves of the only question the panel is for.
   const outlook = useMemo(() => weekOutlook(plan, state, today), [plan, state, today]);
-  // A Strong import changes the cards themselves, not just the muscle bars:
-  // completed direct work is worth one set, indirect work is worth half, and
-  // only the useful remainder stays on screen or gets copied back to Strong.
   const remaining = useMemo(() => remainingSessions(plan, state, today), [plan, state, today]);
+  const foundation = useMemo(() => baseCoverage(planned), [planned]);
+  const baseOutlook = useMemo(() => weekOutlook(plan, state, today, { baseOnly: true }), [plan, state, today]);
+  const sessions = useMemo(() => buildWorkoutSessions(state.workoutSets.filter(set => set.date <= today)), [state.workoutSets, today]);
+  const latest = sessions[0];
+  const importedCount = sessions.filter(session => session.date >= weekStart(today)).length;
+  const baseGaps = baseOutlook.filter(row => row.shortBy > 0);
+  const allGaps = outlook.filter(row => row.shortBy > 0);
+  const foundationMinutes = useMemo(() => {
+    if ((importedCount ? !baseGaps.length : foundation.complete) || plan.deload || planned.missing.length) return null;
+    return [60, 75, 90, 120].find(minutes => {
+      if (minutes <= state.goals.trainingSessionMinutes) return false;
+      const changed = { ...state, goals: { ...state.goals, trainingSessionMinutes: minutes } };
+      const alternative = currentTrainingWeek(changed, today).plan;
+      return importedCount ? weekOutlook(alternative, changed, today, { baseOnly: true }).every(row => row.shortBy === 0) : baseCoverage(alternative).complete;
+    }) ?? null;
+  }, [importedCount, baseGaps.length, foundation.complete, plan.deload, planned.missing.length, state, today]);
 
-  if (state.workoutSets.length < 10) {
-    return (
-      <section className="panel wide-panel">
-        <Empty
-          icon="dumbbell"
-          title="Nothing to build from yet"
-          body="Import a Strong export and this writes the block."
-          action={demo ? undefined : (
-            <button type="button" className="button primary" onClick={() => open({ kind: "import" })}>
-              <Icon name="upload" />
-              Import
-            </button>
-          )}
-        />
-      </section>
-    );
-  }
-
-  /** A day choice is remembered per week, so a busy week stays a busy week. */
-  const setDays = (value: number) => {
-    onGoals((current) => {
-      const days = [...current.trainingDays];
-      while (days.length < block.length) days.push(0);
-      // Choosing the suggested number puts that week back on automatic.
-      days[week] = value === advice.days ? 0 : value;
-      return { ...current, trainingDays: days };
-    });
+  const exportText = async (text: string) => {
+    if (await copyText(text)) onNotice("Workout text copied.");
+    else { downloadBlob("baseline-workout.txt", new Blob([text], { type: "text/plain" })); onNotice("Workout text downloaded."); }
   };
+  const importWorkout = () => open({ kind: "import", source: "strong" });
+  const setDays = (value: number) => {
+    onSelect?.(null);
+    onGoals(current => ({ ...current, trainingDays: Array.from({ length: block.length }, (_, index) => index === week ? value : current.trainingDays[index] ?? 4) }));
+  };
+  const targetDays = state.goals.trainingDays[week] || 4;
+  const frequency = <div className="training-frequency">
+    <div><b>Workouts this week</b><span>{state.goals.trainingSplit === "full-body" ? `2 full-body${targetDays > 2 ? ` + ${targetDays - 2} optional` : ""}` : "Upper / lower"}</span></div>
+    <div className="frequency-picker" role="group" aria-label="Weekly workout goal">{DAY_CHOICES.map(value => <button type="button" key={value} aria-label={`${value} workouts`} aria-pressed={targetDays === value} onClick={() => setDays(value)}>{value}</button>)}</div>
+  </div>;
 
-  const setsLeft = remaining.reduce((total, session) => total + session.sets, 0);
+  const steps = <nav className="fitness-flow" aria-label="Workout steps">{(["week", "workout"] as const).map((step, index) => <button key={step} type="button" aria-current={(hasHistory ? stage : "week") === step ? "step" : undefined} disabled={step === "workout" && !hasHistory} onClick={() => onStage?.(step)}><span>{index + 1}</span>{step === "week" ? "Set your week" : "Your workout"}</button>)}</nav>;
+
+  if (!hasHistory) return <div className="training-workspace workout-desk">{steps}<section className="week-setup-panel">
+    <span className="section-eyebrow"><Icon name="upload" /> Your Strong record</span>
+    <h2>Start with your workout history</h2>
+    <p>Import your Strong export to get a plan based on the exercises and weights you already use.</p>
+    <button type="button" className="button primary" onClick={importWorkout}><Icon name="upload" />Import Strong export</button>
+    {state.workoutSets.length ? <p className="field-note">At least 10 logged sets are needed.</p> : null}
+  </section></div>;
+
+  if (mode === "muscles") return <div className="training-workspace muscle-workspace">
+    <div className="training-section-heading"><div><h2>Muscle groups</h2><p>Week of {dateLabel(weekStart(today), { month: "short", day: "numeric" })}</p></div><button type="button" className="text-button" onClick={onWorkout}>Open workout <Icon name="arrow" /></button></div>
+    {frequency}
+    <Balance outlook={outlook} plan={plan} state={state} today={today} onGoals={onGoals} />
+    {state.goals.trainingSplit === "full-body" ? <section className="base-plan-check" aria-label="Two-workout coverage">
+      <h3><Icon name="fitness" /> Two-workout base</h3>
+      <p>{plan.deload ? "Lighter week: fewer sets in A and B." : baseGaps.length ? `${baseOutlook.length - baseGaps.length} of ${baseOutlook.length} muscle targets covered by logged work + remaining base workouts.` : "Logged work + remaining A and B cover all muscle targets."}</p>
+      {baseGaps.length && !plan.deload ? <p className="training-shortfall">Below target: {listWords(baseGaps.map(row => row.label.toLowerCase()))}.</p> : null}
+      {foundationMinutes ? <button type="button" className="button secondary small" onClick={() => onGoals(current => ({ ...current, trainingSessionMinutes: foundationMinutes }))}>Use {foundationMinutes}-minute workouts to fit the base</button> : null}
+    </section> : null}
+    <details className="training-explanation"><summary>How sets count</summary><p>Direct work counts as 1 set. Work as a supporting muscle counts as ½. Core counts direct sets only. Planned sets are still to do, including any optional visits you selected.</p><p>{plan.deload ? "The chart keeps the usual targets visible during this lighter week." : "The shaded band marks the weekly target. Open a muscle to see its exercises or adjust the remaining sets."}</p></details>
+    {planned.missing.length || unknown.length ? <Notes missing={planned.missing.map(muscle => muscleLabels[muscle].toLowerCase())} unknown={unknown} /> : null}
+  </div>;
+
   const next = nextSession(plan, state, today);
-  const shown = opened ?? new Set(next.session ? [next.session.name] : []);
-
-  return (
-    <>
-      <TrainingStreak streak={streak} />
-
-      <section className="coach-head">
-        <div className="coach-days" role="group" aria-label="Sessions this week">
-          {DAY_CHOICES.map((value) => (
-            <button
-              key={value}
-              type="button"
-              className={value === plan.days ? "active" : ""}
-              aria-pressed={value === plan.days}
-              onClick={() => setDays(value)}
-            >
-              <b>{value}</b>
-              <small>{value === advice.days ? "suggested" : "days"}</small>
-            </button>
-          ))}
-        </div>
-        <div className="block-state">
-          <span><b>{plan.deload ? "Deload" : `Build week ${week + 1}`}</b><small>of a fixed 4-week block</small></span>
-          <ConfirmButton
-            label="Restart block"
-            confirmLabel="Clear choices & restart"
-            className="text-button"
-            icon="undo"
-            onConfirm={() => onGoals((current) => ({
-              ...current,
-              trainingBlockStart: weekStart(today),
-              trainingAnchorSets: trainingAnchorSets(state, today),
-              trainingDays: [],
-              addedSets: [],
-            }))}
-          />
-        </div>
-      </section>
-
-      <section className="panel wide-panel">
-        <div className="panel-head wrap">
-          {/* The split and the size of the week, where the week is, rather
-              than floating above the page as a block of its own. */}
-          <div className="coach-summary">
-            <h2>{weekLabel(plan)}</h2>
-            <small>
-              {next.done
-                ? `${next.done} of ${next.of} logged · ${setsLeft ? `${setsLeft} sets left` : "week covered"}`
-                : `${plan.split} · ${setsLeft} sets${plan.deload ? " · backing off" : ""}`}
-            </small>
-          </div>
-          {remaining.length ? (
-            <button
-              type="button"
-              className="button secondary"
-              onClick={async () =>
-                onNotice(
-                  (await copyText(planToText({ ...plan, days: remaining.length, sessions: remaining })))
-                    ? "Copied."
-                    : "Copying is blocked here.",
-                )
-              }
-            >
-              <Icon name="copy" />
-              {next.done ? "Copy remaining" : "Copy for Strong"}
-            </button>
-          ) : null}
-        </div>
-
-        {/* Four sessions laid out at once is four sessions' worth of reading to
-            find the one you are about to do. They fold, and the one you are
-            about to do is the one that is open. */}
-        <div className="plan-list">
-          {remaining.map((session) => (
-            <SessionCard
-              key={session.name}
-              session={session}
-              isNext={session.name === next.session?.name}
-              onDrop={(exercise) =>
-                onGoals((current) => ({
-                  ...current,
-                  addedSets: current.addedSets.filter(
-                    (entry) =>
-                      !(
-                        entry.weekStart === weekStart(today) &&
-                        entry.session === session.name &&
-                        entry.exercise === exercise
-                      ),
-                  ),
-                }))
-              }
-              open={shown.has(session.name)}
-              onToggle={() => {
-                setOpened((current) => {
-                  const changed = new Set(current ?? shown);
-                  if (!changed.delete(session.name)) changed.add(session.name);
-                  return changed;
-                });
-              }}
-            />
-          ))}
-          {!remaining.length ? <p className="row-note">No more training needed this week.</p> : null}
-        </div>
-      </section>
-
-      <WeeklyProgression plan={plan} />
-
-      {plan.deload ? <ProgramReview plan={block[2] ?? plan} /> : null}
-
-      <Balance
-        outlook={outlook}
-        plan={plan}
-        state={state}
-        today={today}
-        onGoals={onGoals}
-      />
-
-      {/* The rule the whole load column runs on, said once. */}
-      <p className="coach-footnote">
-        {plan.deload
-          ? "An easier week on purpose: same weights, fewer sets, nothing taken to failure."
-          : "Hit the top of the rep range on every set and the load goes up (↑) the next time round."}
-      </p>
-
-      {plan.missing.length || unknown.length ? (
-        <Notes
-          missing={plan.missing.map((muscle) => muscleLabels[muscle].toLowerCase())}
-          unknown={unknown}
-        />
-      ) : null}
-    </>
-  );
-}
-
-/**
- * A streak is motivation, not another dashboard. It says only how long the
- * run is and whether this week has been banked yet.
- */
-function TrainingStreak({ streak }: { streak: WorkoutWeekStreak }) {
-  const label = streak.weeks === 1 ? "week" : "weeks";
-  return (
-    <section className="training-streak" aria-label={`${streak.weeks} ${label} of consecutive training`}>
-      <span className="streak-mark" aria-hidden="true"><Icon name="trophy" /></span>
-      <span className="streak-copy">
-        {streak.weeks ? (
-          <strong><span className="streak-count">{streak.weeks}</span>-week streak</strong>
-        ) : (
-          <strong>Start the streak</strong>
-        )}
-        <small>
-          {streak.currentWeek
-            ? "This week counts."
-            : streak.weeks
-              ? "One lift keeps it going."
-              : "Your next workout is week one."}
-        </small>
-      </span>
-    </section>
-  );
-}
-
-type ProgressionAction = "increase" | "hold" | "reduce";
-
-type ProgressionLine = {
-  exercise: PlannedExercise;
-  action: ProgressionAction;
-};
-
-/** One decision per Strong exercise, even when a split uses it twice. */
-function progressionLines(plan: Plan): ProgressionLine[] {
-  const byExercise = new Map<string, PlannedExercise>();
-  for (const session of plan.sessions) {
-    for (const exercise of session.exercises) {
-      const seen = byExercise.get(exercise.exercise);
-      // A back-off takes precedence over an increase, and an increase over a
-      // hold, should one exercise appear in more than one session.
-      if (!seen || exercise.stalled || (exercise.stepUp && !seen.stalled)) {
-        byExercise.set(exercise.exercise, exercise);
-      }
-    }
-  }
-  return [...byExercise.values()].map((exercise) => ({
-    exercise,
-    action: exercise.stalled ? "reduce" : exercise.stepUp ? "increase" : "hold",
+  // Only unfinished workouts can become instructions. A matched import is data,
+  // never an old plan with newly calculated targets presented as a completed log.
+  const hero = remaining.find(session => session.name === selected) ?? next.session;
+  const isNext = hero?.name === next.session?.name;
+  const drop = (session: PlannedSession, exercise: string) => onGoals(current => ({
+    ...current,
+    addedSets: current.addedSets.filter(entry => !(entry.weekStart === weekStart(today) && entry.session === session.name && entry.exercise === exercise)),
   }));
-}
 
-function progressionLoad(exercise: PlannedExercise): string {
-  if (exercise.assistanceLb !== null) return `${exercise.assistanceLb} lb assistance`;
-  if (exercise.weightLb !== null) return `${exercise.weightLb} lb`;
-  if (exercise.bodyweight) return "Bodyweight";
-  return "No load yet";
-}
-
-/**
- * The same load decisions already printed on the session cards, gathered into
- * one weekly check. This is an explanation of the plan, not another engine
- * that can disagree with it.
- */
-function WeeklyProgression({ plan }: { plan: Plan }) {
-  const [open, setOpen] = useState(false);
-  const lines = progressionLines(plan);
-  const increases = lines.filter((line) => line.action === "increase").length;
-  const reductions = lines.filter((line) => line.action === "reduce").length;
-  const holds = lines.length - increases - reductions;
-
-  return (
-    <section className="panel wide-panel coach-recommendations">
-      <Fold
-        title={<h2>Weekly progression</h2>}
-        summary={
-          <span className="fold-line">
-            {`${increases} increase · ${holds} hold · ${reductions} reduce`}
-          </span>
-        }
-        open={open}
-        onToggle={() => setOpen((current) => !current)}
-      >
-        <ul className="recommendation-list">
-          {lines.map(({ exercise, action }) => (
-            <li key={exercise.exercise}>
-              <span>{exercise.exercise}</span>
-              <b>{action.charAt(0).toUpperCase() + action.slice(1)}</b>
-              <small>{progressionLoad(exercise)}</small>
-            </li>
-          ))}
-        </ul>
-      </Fold>
+  if (stage === "week") return <div className="training-workspace workout-desk">{steps}
+    <section className="week-setup-panel">
+      <div className="week-setup-heading"><div><span className="section-eyebrow">Week of {dateLabel(weekStart(today), { month: "short", day: "numeric" })}</span><h2>Set your week</h2></div><span className="logged-count"><Icon name="check" />{importedCount} logged</span></div>
+      {frequency}
+      <p className="week-plan-explanation">{state.goals.trainingSplit === "full-body" ? "A and B are your full-body base. Extra visits add to them." : "Your upper and lower workouts adapt to the visits available."}</p>
+      <div className="strong-receipt"><Icon name="upload" /><div><b>{latest ? `Last workout imported · ${dateLabel(latest.date, { month: "short", day: "numeric" })}` : "No imported workouts"}</b><span>Finished another workout in Strong?</span></div><button type="button" className="button secondary small" onClick={importWorkout}>Update record</button></div>
     </section>
-  );
-}
-
-/**
- * After the three building weeks, say which existing Strong lifts have earned
- * another block and which ones deserve a look. Recommendations only: exercise
- * selection still changes in Strong and arrives through the next import.
- */
-function ProgramReview({ plan }: { plan: Plan }) {
-  const [open, setOpen] = useState(false);
-  const lines = progressionLines(plan);
-  const review = lines.filter((line) => line.action === "reduce");
-  const keep = lines.filter((line) => line.action !== "reduce");
-
-  return (
-    <section className="panel wide-panel coach-recommendations program-review">
-      <Fold
-        title={<h2>Program review</h2>}
-        summary={
-          <span className={review.length ? "fold-line warn" : "fold-line"}>
-            {review.length
-              ? `${review.length} ${review.length === 1 ? "lift needs" : "lifts need"} a look after this block.`
-              : "Keep the same exercise roster next block."}
-          </span>
-        }
-        open={open}
-        onToggle={() => setOpen((current) => !current)}
-      >
-        <>
-          <p className="review-lead">Nothing changes automatically. Make any swap in Strong, then import it.</p>
-          <ul className="recommendation-list">
-            {review.map(({ exercise }) => (
-              <li key={exercise.exercise}>
-                <span>{exercise.exercise}</span>
-                <b>Review</b>
-                <small>Stalled across recent sessions</small>
-              </li>
-            ))}
-            {keep.length ? (
-              <li>
-                <span>{`${keep.length} ${keep.length === 1 ? "lift" : "lifts"}`}</span>
-                <b>Keep</b>
-                <small>Still holding or progressing</small>
-              </li>
-            ) : null}
-          </ul>
-        </>
-      </Fold>
+    <section className="week-next-panel" aria-label="Next workout preview">
+      <span className="section-eyebrow">Up next{next.session?.tier === "extra" ? " · optional" : ""}</span>
+      <h2>{next.session ? workoutLabel(next.session) : "Your week is logged"}</h2>
+      <p>{next.session ? `${next.session.exercises.length} exercises · ${sessionMinutes(next.session)} minutes` : `${importedCount} workouts imported this week`}</p>
+      {next.session ? <button type="button" className="button primary" onClick={() => { onSelect?.(null); onStage?.("workout"); }}>Show my workout <Icon name="arrow" /></button> : <button type="button" className="button secondary" onClick={onMuscles}>Review muscle coverage <Icon name="arrow" /></button>}
+      {remaining.length > 1 ? <details className="later-workouts"><summary>Then {remaining.length - 1} more {remaining.length === 2 ? "workout" : "workouts"}</summary>{remaining.slice(1).map(session => <button type="button" key={session.name} onClick={() => { onSelect?.(session.name); onStage?.("workout"); }}><span>{workoutLabel(session)}{session.tier === "extra" ? " · optional" : ""}</span><Icon name="chevron" /></button>)}</details> : null}
     </section>
-  );
+    <button type="button" className="coverage-link" onClick={onMuscles}><Icon name="baseline" /><span><b>Muscle coverage</b><small>{allGaps.length && !plan.deload ? `${allGaps.length} groups below target in the current plan` : "See logged sets and your remaining plan"}</small></span><Icon name="chevron" /></button>
+    <details className="plan-settings standalone-settings plan-settings-fold"><summary><Icon name="settings" /> Plan settings</summary>
+      <div className="tl-section-head"><span className="tl-caps">{plan.deload ? "Lighter week · 4 of 4" : `Week ${week + 1} of 4`}</span><ConfirmButton label="Restart block" confirmLabel="Clear choices & restart" className="text-button" icon="undo" onConfirm={() => onGoals(current => ({ ...current, trainingBlockStart: weekStart(today), trainingAnchorSets: trainingAnchorSets(state, today), trainingDays: [], addedSets: [] }))} /></div>
+      <label className="plan-field"><span>Plan structure</span><select aria-label="Plan structure" value={state.goals.trainingSplit} onChange={event => onGoals(current => ({ ...current, trainingSplit: event.target.value as GoalSettings["trainingSplit"] }))}><option value="full-body">Two full-body workouts + optional extras</option><option value="upper-lower">Upper / lower split</option></select></label>
+      <label className="plan-field"><span>Time limit per workout</span><select aria-label="Time limit per workout" value={state.goals.trainingSessionMinutes} onChange={event => onGoals(current => ({ ...current, trainingSessionMinutes: Number(event.target.value) }))}>{[45, 60, 75, 90, 120].map(minutes => <option key={minutes} value={minutes}>{minutes} minutes</option>)}</select></label>
+      {remaining.length > 1 ? <button type="button" className="text-button" onClick={() => void exportText(planToText({ ...plan, days: remaining.length, sessions: remaining.map(session => ({ ...session, name: workoutLabel(session) })) }))}>Copy remaining week</button> : null}
+    </details>
+  </div>;
+
+  return <div className="training-workspace workout-desk workout-detail">{steps}
+    <section className="workout-sheet" aria-label="Next workout plan">
+      <header className="workout-sheet-cover next-workout-cover">
+        <div className="workout-sheet-label"><Icon name="fitness" /><span>{hero ? isNext ? "Next workout" : "Later this week" : "No workouts remaining"}{hero?.tier === "extra" ? " · optional" : ""}</span></div>
+        <div className="workout-sheet-title"><h2 id="fitness-step-heading" tabIndex={-1}>{hero ? workoutLabel(hero) : "Your week is logged"}</h2>{hero ? <span><Icon name="clock" /> {sessionMinutes(hero)} min</span> : null}</div>
+        <p>{hero ? `${hero.exercises.length} exercises · ${hero.sets} sets${plan.deload ? " · lighter week" : ""}` : `${importedCount} workouts logged this week`}</p>
+        {hero ? <button type="button" className="button primary small" onClick={() => void exportText(sessionToText(plan, { ...hero, name: workoutLabel(hero) }))}><Icon name="copy" />Copy for Strong</button> : null}
+      </header>
+      {hero ? <>
+        <div className="prescription-table-heading"><span>Your targets</span><span>Tap an exercise for the last log &amp; changes</span></div>
+        <div className="session-exercises" aria-label={`${workoutLabel(hero)}, exercises`}>
+          {hero.exercises.map((exercise, index) => <Lift key={`${hero.name}:${exercise.exercise}`} number={index + 1} exercise={exercise} targetLabel={isNext ? "Next workout" : "This workout"} onDrop={exercise.byHand ? () => drop(hero, exercise.exercise) : undefined} />)}
+        </div>
+      </> : null}
+    </section>
+    <div className="workout-finish"><Icon name="upload" /><div><b>{hero ? "After this workout" : "Update your record"}</b><p>{hero ? "Log it in Strong, then import the updated export." : "Import your latest Strong export to update the plan."}</p></div><button type="button" className="button secondary small" onClick={importWorkout}>Import completed workout</button></div>
+    <button type="button" className="coverage-link" onClick={onMuscles}><Icon name="baseline" /><span><b>Muscle coverage</b><small>{allGaps.length && !plan.deload ? `${allGaps.length} groups below target in the current plan` : "See how this workout fits your week"}</small></span><Icon name="chevron" /></button>
+    <details className="training-explanation"><summary>How these targets are calculated</summary><p>Targets use your imported Strong history. Open each exercise to see the previous workout and why its weight or rest changed.</p><p>Copy for Strong copies text; paste the targets into your routine. Strong exports its rest timer setting, not a measurement of how long you rested.</p></details>
+  </div>;
 }
 
-/** A list of muscle names reads as a sentence, so it starts like one. */
-function sentence(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
-}
-
-/** Halves are real here — 12.5, not 12.5000 and not 13. */
+/** Half-set credits stay visible rather than rounding up. */
 function sets(value: number): string {
   return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
-/**
- * Whether every muscle gets enough work this week.
- *
- * One number per muscle against one target. Earlier versions split direct and
- * indirect sets into two columns, then two views, and both were wrong for the
- * same reason: they are not two goals. Rowing trains the biceps. A target that
- * counted only curls would have you curling on top of a back day already spent,
- * and a second target for indirect work is a goal nobody set. So a set counts
- * once where the muscle is the point of the lift and half where it is not, and
- * the total is what the target is met or missed by.
- *
- * The number is a projection, not a score: what is logged since Monday plus
- * what the sessions still to come will add. Midweek that is the only version of
- * the question worth answering — being behind on Wednesday means nothing if
- * Thursday covers it.
- */
-function Balance({
-  outlook,
-  plan,
-  state,
-  today,
-  onGoals,
-}: {
+function Balance({ outlook, plan, state, today, onGoals }: {
   outlook: MuscleOutlook[];
   plan: Plan;
   state: HealthState;
   today: string;
   onGoals: (goals: GoalSettings | ((current: GoalSettings) => GoalSettings)) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [row, setRow] = useState<Muscle | null>(null);
-
-  const short = outlook.filter((entry) => entry.status === "under");
-  const allThresholdsPass = outlook.every(
-    (entry) => entry.projected >= entry.target.min && entry.direct >= minimumDirect(entry.muscle),
-  );
-  const ceiling = Math.max(...outlook.map((entry) => Math.max(entry.target.max, entry.projected)), 1);
-
-  // Only the open row is itemised. Working out every muscle's week to draw one
-  // of them is eleven times the work for the same screen.
-  const detail = useMemo(
-    () => (row ? muscleDetail(plan, state, row, today) : null),
-    [row, plan, state, today],
-  );
-
-  /**
-   * Records a change to one lift in one session, folding it into any change
-   * already recorded for it — so a plus and a minus cancel to nothing rather
-   * than accumulating into a pile of entries that happen to sum to zero.
-   */
-  const change = (choice: FixChoice, sets: number) => {
-    const monday = weekStart(today);
-    const same = (entry: AddedSet) =>
-      entry.weekStart === monday && entry.session === choice.session && entry.exercise === choice.exercise;
-    // Folded into the goals on record rather than the copy this render closed
-    // over, so holding the plus does not throw away every press but the last.
-    onGoals((current) => {
-      const already = current.addedSets.find(same)?.sets ?? 0;
-      const rest = current.addedSets.filter((entry) => !same(entry));
-      const total = already + sets;
-      return {
-        ...current,
-        addedSets: total === 0
-          ? rest
-          : [...rest, { weekStart: monday, session: choice.session, exercise: choice.exercise, sets: total }],
-      };
-    });
-  };
+  const ceiling = Math.max(...outlook.map(entry => Math.max(entry.target.max, entry.projected)), 1);
+  const detail = useMemo(() => row ? muscleDetail(plan, state, row, today) : null, [row, plan, state, today]);
   const adjust = (muscle: Muscle, direction: 1 | -1) => {
     const choice = adjustChoice(plan, state, muscle, direction, today);
-    if (choice) change(choice, direction);
+    if (!choice) return;
+    const same = (entry: AddedSet) => entry.weekStart === weekStart(today) && entry.session === choice.session && entry.exercise === choice.exercise;
+    onGoals(current => {
+      const total = (current.addedSets.find(same)?.sets ?? 0) + direction;
+      return { ...current, addedSets: [
+        ...current.addedSets.filter(entry => !same(entry)),
+        ...(total === 0 ? [] : [{ weekStart: weekStart(today), session: choice.session, exercise: choice.exercise, sets: total }]),
+      ] };
+    });
+  };
+  const label = (name: string) => {
+    const session = plan.sessions.find(session => session.name === name);
+    return session ? workoutLabel(session) : name;
   };
 
-  return (
-    <section className="panel wide-panel">
-      {/* One sentence, and everything behind it. Whether the week is covered is
-          the answer; which lifts and how many sets is the follow-up, and a
-          follow-up printed next to its question is just more to read.
-
-          A shortfall used to get a second control here, under the verdict, for
-          adding a lift to close it. Every row already opens onto a minus and a
-          plus that do the same job for any muscle, short or not, so the one up
-          here was a second way to do one thing — and the sentence names which
-          rows to open. */}
-      <Fold
-        title={<h2>Enough for every muscle</h2>}
-        summary={
-          <span className={short.length ? "fold-line warn" : "fold-line"}>
-            {short.length
-              ? sentence(
-                  `${listWords(short.map((entry) => entry.label.toLowerCase()))} ${short.length === 1 ? "falls" : "fall"} short this week.`,
-                )
-              : allThresholdsPass
-                ? `All ${outlook.length} pass the weekly guide and direct minimum.`
-                : `All ${outlook.length} get enough this week.`}
-          </span>
-        }
-        open={open}
-        onToggle={() => {
-          setOpen((current) => !current);
-          setRow(null);
-        }}
-      >
-        <>
-          <ul className="balance-list">
-            {outlook.map((entry) => {
-              const width = (value: number) => `${Math.min(100, (value / ceiling) * 100)}%`;
-              const status = entry.status === "under" ? "low" : entry.status === "over" ? "high" : "ok";
-              const directShort = entry.direct < minimumDirect(entry.muscle);
-              const totalShort = entry.projected < entry.target.min;
-              const statusLabel = directShort && totalShort
-                ? "needs both"
-                : directShort
-                  ? "needs direct"
-                  : totalShort
-                    ? "below guide"
-                    : entry.projected > entry.target.max
-                      ? "above guide"
-                      : "on target";
-              const isOpen = row === entry.muscle;
-              const canRemove = isOpen && Boolean(adjustChoice(plan, state, entry.muscle, -1, today));
-              const canAdd = isOpen && Boolean(adjustChoice(plan, state, entry.muscle, 1, today));
-              return (
-                <li key={entry.muscle} className={isOpen ? "balance-item is-open" : "balance-item"}>
-                  {/* The row opens. Which lifts are giving a muscle its week is
-                      the question the number provokes, and it is one row's
-                      worth of answer, not eleven rows of columns. */}
-                  <button
-                    type="button"
-                    className="balance-row"
-                    aria-expanded={isOpen}
-                    onClick={() => setRow((current) => (current === entry.muscle ? null : entry.muscle))}
-                  >
-                    <span className="balance-name">{entry.label}</span>
-                    <span className="balance-track">
-                      <span
-                        className="balance-band"
-                        style={{
-                          left: width(entry.target.min),
-                          width: `${((entry.target.max - entry.target.min) / ceiling) * 100}%`,
-                        }}
-                      />
-                      {/* Pale to where the week ends up, solid over the part
-                          already logged: a progress bar, read like one. */}
-                      <span className={`bar-coming is-${status}`} style={{ width: width(entry.projected) }} />
-                      <span className={`bar-direct is-${status}`} style={{ width: width(entry.done) }} />
-                    </span>
-                    <span className="balance-sets">
-                      <b>{sets(entry.projected)}</b>
-                      <small className={`balance-status is-${status}`}>{statusLabel}</small>
-                    </span>
-                  </button>
-                  {isOpen && detail ? (
-                    <Detail
-                      detail={detail}
-                      row={entry}
-                      canRemove={canRemove}
-                      canAdd={canAdd}
-                      onAdjust={(direction) => adjust(entry.muscle, direction)}
-                    />
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-
-          <p className="balance-legend">
-            <span className="key key-direct" /> logged
-            <span className="key key-coming" /> still to come
-            <span className="key key-band" /> enough
-          </p>
-        </>
-      </Fold>
-    </section>
-  );
+  return <section className="muscle-chart" aria-label="Weekly muscle group graph">
+    <div className="muscle-chart-legend"><span><i className="chart-key logged" />Logged</span><span><i className="chart-key planned" />Remaining plan</span><span><i className="chart-key target" />Target range</span></div>
+    <div className="muscle-chart-columns"><span>Muscle</span><span>Logged + planned = total</span></div>
+    <ul className="muscle-chart-list">{outlook.map(entry => {
+      const width = (value: number) => `${Math.min(100, value / ceiling * 100)}%`;
+      const isOpen = row === entry.muscle;
+      const directShort = entry.direct < minimumDirect(entry.muscle);
+      const status = entry.status === "under" ? "low" : entry.status === "over" ? "high" : "ok";
+      const statusLabel = directShort ? "Direct work below target" : entry.status === "under" ? "Below target" : entry.status === "over" ? "Above target" : "Within target";
+      const add = isOpen ? adjustChoice(plan, state, entry.muscle, 1, today) : null;
+      const remove = isOpen ? adjustChoice(plan, state, entry.muscle, -1, today) : null;
+      return <li key={entry.muscle} className={`muscle-chart-item ${status}${isOpen ? " is-open" : ""}`}>
+        <button type="button" className="muscle-chart-row" aria-expanded={isOpen} aria-label={`${entry.label}: ${sets(entry.done)} logged plus ${sets(entry.coming)} planned equals ${sets(entry.projected)} sets. Target ${entry.target.min} to ${entry.target.max}. ${statusLabel}. Show exercises`} onClick={() => setRow(current => current === entry.muscle ? null : entry.muscle)}>
+          <span className="muscle-chart-name">{entry.label}<Icon name="chevron" /></span>
+          <span className="muscle-chart-values">{sets(entry.done)} <i>+</i> {sets(entry.coming)} <i>=</i> <b>{sets(entry.projected)}</b></span>
+          <span className="muscle-chart-track" aria-hidden="true"><span className="muscle-chart-band" style={{ left: width(entry.target.min), width: width(entry.target.max - entry.target.min) }} /><span className="muscle-chart-planned" style={{ width: width(entry.projected) }} /><span className="muscle-chart-logged" style={{ width: width(entry.done) }} /></span>
+          <span className={`muscle-chart-target ${status}`}>{entry.target.min}–{entry.target.max} sets{entry.status === "under" ? " · low" : entry.status === "over" ? " · high" : ""}</span>
+        </button>
+        {isOpen && detail ? <Detail detail={{ ...detail, work: detail.work.map(item => ({ ...item, where: item.done ? `Logged ${item.where}` : label(item.where) })) }} row={entry} add={add ? { ...add, session: label(add.session) } : null} remove={remove ? { ...remove, session: label(remove.session) } : null} onAdjust={direction => adjust(entry.muscle, direction)} /> : null}
+      </li>;
+    })}</ul>
+  </section>;
 }
 
 /**
@@ -596,53 +214,39 @@ function Balance({
 function Detail({
   detail,
   row,
-  canRemove,
-  canAdd,
+  add,
+  remove,
   onAdjust,
 }: {
   detail: MuscleDetail;
   row: MuscleOutlook;
-  canRemove: boolean;
-  canAdd: boolean;
+  add: FixChoice | null;
+  remove: FixChoice | null;
   onAdjust: (direction: 1 | -1) => void;
 }) {
   const directFloor = minimumDirect(row.muscle);
   const directPass = row.direct >= directFloor;
-  const guidePass = row.projected >= row.target.min && row.projected <= row.target.max;
+  const underGuide = row.projected < row.target.min;
+  const overGuide = row.projected > row.target.max;
   return (
     <div className="row-detail">
       <div className="threshold-equation">
         <b>{`${sets(row.direct)} direct + ${sets(row.indirect)} indirect × ½ = ${sets(row.projected)} effective`}</b>
         <span className={directPass ? "threshold-check is-pass" : "threshold-check is-fail"}>
-          {`Direct minimum ${directFloor} ${directPass ? "✓" : "✕"}`}
+          {`Direct target ≥${directFloor} ${directPass ? "✓" : "✕"}`}
         </span>
-        <span className={guidePass ? "threshold-check is-pass" : "threshold-check is-fail"}>
-          {`Weekly guide ${row.target.min}–${row.target.max} ${guidePass ? "✓" : "✕"}`}
+        <span
+          className={
+            underGuide ? "threshold-check is-fail" : overGuide ? "threshold-check is-over" : "threshold-check is-pass"
+          }
+        >
+          {`Weekly target ${row.target.min}–${row.target.max} ${underGuide ? "✕" : overGuide ? "over" : "✓"}`}
         </span>
       </div>
-      {/* A week is a suggestion. Wanting a bit more chest than the middle of a
-          range is not a mistake to be protected from, and the number above goes
-          on saying what the change did — which is the only thing that makes
-          moving it safe. */}
-      <div className="row-tune">
-        <button
-          type="button"
-          aria-label={`One set less of ${row.label.toLowerCase()}`}
-          disabled={!canRemove}
-          onClick={() => onAdjust(-1)}
-        >
-          −
-        </button>
-        <b>{sets(row.projected)}</b>
-        <button
-          type="button"
-          aria-label={`One set more of ${row.label.toLowerCase()}`}
-          disabled={!canAdd}
-          onClick={() => onAdjust(1)}
-        >
-          +
-        </button>
-        {row.status === "under" ? <span className="row-gap">{`${sets(row.shortBy)} short of ${row.target.min}`}</span> : null}
+      <div className="muscle-set-adjustments">
+        {add ? <button type="button" className="text-button" onClick={() => onAdjust(1)}><Icon name="plus" /><span>Add 1 set<small>{add.exercise} · {add.session}</small></span></button> : null}
+        {remove ? <button type="button" className="text-button" onClick={() => onAdjust(-1)}><Icon name="minus" /><span>Remove 1 set<small>{remove.exercise} · {remove.session}</small></span></button> : null}
+        {row.status === "under" ? <span className="row-gap">{directPass ? `${sets(row.shortBy)} effective sets short` : `${sets(directFloor - row.direct)} direct sets short`}</span> : null}
       </div>
       {detail.work.length ? (
         <ul>
@@ -658,100 +262,10 @@ function Detail({
         </ul>
       ) : (
         <p className="row-note">
-          {canAdd ? "Nothing in the week trains it." : "No recent Strong exercise trains it."}
+          {add ? "No planned sets." : "No matching exercise in the remaining plan."}
         </p>
       )}
     </div>
-  );
-}
-
-/**
- * One session, folded. Open it and it is the card it always was.
- */
-function SessionCard({
-  session,
-  isNext,
-  open,
-  onToggle,
-  onDrop,
-}: {
-  session: PlannedSession;
-  isNext: boolean;
-  open: boolean;
-  onToggle: () => void;
-  onDrop: (exercise: string) => void;
-}) {
-  return (
-    <article className={open ? "plan-card is-open" : "plan-card"}>
-      <Fold
-        title={<b>{session.name}</b>}
-        summary={
-          <small>
-            {isNext ? <em className="plan-next">next</em> : null}
-            {`${session.sets} sets · ${session.exercises.length} lifts`}
-          </small>
-        }
-        open={open}
-        onToggle={onToggle}
-      >
-        <ul>
-          {session.exercises.map((exercise) => (
-            <li
-              key={`${session.name}:${exercise.exercise}`}
-              className="plan-item"
-            >
-              {/* The lift and the weight, which is what you are looking for
-                  standing at the rack. Everything else is the line underneath,
-                  where it does not compete for the glance. */}
-              <span className="plan-name">{exercise.exercise}</span>
-              {/* Up where you cleared the range last time. Down where the lift
-                  has not moved in three sessions and the load comes off to be
-                  built back. */}
-              <span
-                className={exercise.stepUp ? "plan-load up" : exercise.stalled ? "plan-load down" : "plan-load"}
-              >
-                {exercise.assistanceLb !== null ? (
-                  <>
-                    {exercise.assistanceLb}
-                    <small>lb assist</small>
-                  </>
-                ) : exercise.weightLb !== null ? (
-                  <>
-                    {exercise.weightLb}
-                    <small>lb</small>
-                  </>
-                ) : exercise.bodyweight ? (
-                  <small>Bodyweight</small>
-                ) : (
-                  // Logged, but nothing usable to read a load off. Better a
-                  // dash than a blank that looks like a bug.
-                  <span aria-label="no load logged for this yet">—</span>
-                )}
-                {exercise.stepUp ? <i aria-label={exercise.assistanceLb !== null ? "less assistance than last time" : "up from last time"}>{exercise.assistanceLb !== null ? "↓" : "↑"}</i> : null}
-                {exercise.stalled ? <i aria-label="backed off after a stall">↓</i> : null}
-              </span>
-              <span className="plan-meta">
-                {`${exercise.sets} × ${exercise.repRange}`}
-                <i aria-hidden="true">·</i>
-                {`${Math.round(exercise.restSeconds / 30) / 2} min rest`}
-                {/* You put it here, so you can take it away again. An addition
-                    with no way back is a trap, not a feature. */}
-                {exercise.byHand ? (
-                  <button
-                    type="button"
-                    className="plan-drop"
-                    aria-label={`Remove ${exercise.exercise} from ${session.name}`}
-                    onClick={() => onDrop(exercise.exercise)}
-                  >
-                    Remove
-                  </button>
-                ) : null}
-              </span>
-            </li>
-          ))}
-        </ul>
-      </Fold>
-    </article>
   );
 }
 
@@ -773,12 +287,12 @@ function Notes({ missing, unknown }: { missing: string[]; unknown: string[] }) {
         <>
           {missing.length ? (
             <p className="coach-footnote">
-              {`Not programmed: no recent Strong exercise trains ${listWords(missing)}.`}
+              {`No matching exercise: ${listWords(missing)}`}
             </p>
           ) : null}
           {unknown.length ? (
             <p className="coach-footnote">
-              {`Not counted, no rule matches the name: ${unknown.slice(0, 6).join(", ")}${
+              {`Unmapped exercises: ${unknown.slice(0, 6).join(", ")}${
                 unknown.length > 6 ? ` +${unknown.length - 6}` : ""
               }.`}
             </p>

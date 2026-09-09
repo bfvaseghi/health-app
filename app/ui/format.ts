@@ -7,6 +7,12 @@ export function formatTime(value: string): string {
   return formatClock(value) ?? "Unknown";
 }
 
+/** A clock value can be unwrapped across midnight for a continuous chart. */
+export function formatClockMinutes(value: number): string {
+  const minute = ((Math.round(value) % 1440) + 1440) % 1440;
+  return formatTime(`${String(Math.floor(minute / 60)).padStart(2, "0")}:${String(minute % 60).padStart(2, "0")}`);
+}
+
 export function average(values: Array<number | null>): number | null {
   const valid = values.filter((value): value is number => value !== null && Number.isFinite(value));
   if (!valid.length) return null;
@@ -83,4 +89,12 @@ export function listWords(words: string[], cap = 3): string {
   if (words.length <= cap) return `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
   const rest = words.length - cap;
   return `${words.slice(0, cap).join(", ")} and ${rest} ${rest === 1 ? "other" : "others"}`;
+}
+
+/** Hours as a clock-like label: 8.2 → "8h 12m", 8 → "8h". */
+export function hoursLabel(value: number): string {
+  const whole = Math.floor(value);
+  const minutes = Math.round((value - whole) * 60);
+  if (minutes === 60) return `${whole + 1}h`;
+  return minutes ? `${whole}h ${String(minutes).padStart(2, "0")}m` : `${whole}h`;
 }

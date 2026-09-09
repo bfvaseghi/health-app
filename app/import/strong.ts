@@ -44,7 +44,21 @@ function columnIndex(table: Table, ...names: string[]): number {
   return -1;
 }
 
-export function strongToRecords(table: Table): ParsedRecords {
+function recognizedWeightUnit(value: string): "lb" | "kg" | null {
+  if (/^(kg|kgs|kilograms?)$/i.test(value.trim())) return "kg";
+  if (/^(lb|lbs|pounds?)$/i.test(value.trim())) return "lb";
+  return null;
+}
+
+export function strongNeedsWeightUnit(table: Table): boolean {
+  const weight = columnIndex(table, "weight", "weightlb", "weightkg");
+  const unit = columnIndex(table, "weightunit");
+  const header = normalizeHeader(table.headers[weight] ?? "");
+  if (header === "weightlb" || header === "weightkg") return false;
+  return table.rows.some(row => (toNumber(row[weight] ?? "") ?? 0) !== 0 && !recognizedWeightUnit(row[unit] ?? ""));
+}
+
+export function strongToRecords(table: Table, defaultWeightUnit: "lb" | "kg" = "lb"): ParsedRecords {
   const records = emptyRecords();
   // Strong exports its complete history. Re-importing must therefore remove
   // sets that were renamed or deleted in Strong instead of accumulating ghosts.
@@ -64,13 +78,12 @@ export function strongToRecords(table: Table): ParsedRecords {
   };
 
   if (at.date === -1 || at.exercise === -1) {
-    records.warnings.push("This looks like a Strong export but has no date or exercise column.");
+    records.warnings.push("Strong export: date or exercise column missing.");
     return records;
   }
 
   const weightHeader = table.headers[at.weight] ?? "";
   const headerKilos = normalizeHeader(weightHeader) === "weightkg" || /\bkg\b|kilogram/i.test(weightHeader);
-  let rest = 0;
   let invalidOrder = 0;
   let repeatedOrder = 0;
   const usedOrders = new Map<string, Set<number>>();
@@ -83,7 +96,6 @@ export function strongToRecords(table: Table): ParsedRecords {
     // same exercise in the same session. Blank or tagged set orders are not rest.
     const order = cell(at.order);
     if (/^rest\s*timer$/i.test(order)) {
-      rest += 1;
       const seconds = toNumber(cell(at.seconds));
       const stamp = cell(at.date);
       const exercise = cell(at.exercise).replace(/^\*+\s*/, "").trim();
@@ -127,7 +139,8 @@ export function strongToRecords(table: Table): ParsedRecords {
 
     const weight = toNumber(cell(at.weight));
     const unit = cell(at.weightUnit);
-    const kilos = unit ? /\bkg\b|kilogram/i.test(unit) : headerKilos;
+    const resolvedUnit = recognizedWeightUnit(unit) ?? (headerKilos ? "kg" : normalizeHeader(weightHeader) === "weightlb" ? "lb" : defaultWeightUnit);
+    const kilos = resolvedUnit === "kg";
     const convertedWeight = weight === null || weight === 0 ? null : kilos ? Math.round(weight * 2.204_62 * 10) / 10 : weight;
     const assisted = /assisted/i.test(exercise) || (convertedWeight !== null && convertedWeight < 0);
     const set: Record<string, unknown> = {
@@ -151,9 +164,6 @@ export function strongToRecords(table: Table): ParsedRecords {
     previous = { set, stamp, exercise };
   }
 
-  if (rest) {
-    records.warnings.push(`Skipped ${rest.toLocaleString("en-US")} rest-timer ${rest === 1 ? "row" : "rows"}.`);
-  }
   if (invalidOrder) {
     records.warnings.push(
       `Skipped ${invalidOrder.toLocaleString("en-US")} ${invalidOrder === 1 ? "set" : "sets"} with no numeric set order.`,
@@ -161,7 +171,7 @@ export function strongToRecords(table: Table): ParsedRecords {
   }
   if (repeatedOrder) {
     records.warnings.push(
-      `Renumbered ${repeatedOrder.toLocaleString("en-US")} repeated Strong ${repeatedOrder === 1 ? "set" : "sets"} so none are overwritten.`,
+      `Renumbered ${repeatedOrder.toLocaleString("en-US")} repeated Strong ${repeatedOrder === 1 ? "set" : "sets"}.`,
     );
   }
   return records;

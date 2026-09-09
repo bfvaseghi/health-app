@@ -10,9 +10,9 @@ const SNAPSHOT_LIMIT = 30;
 function routeError(error: unknown): Response {
   const message = error instanceof Error ? error.message : "Unexpected error";
   if (message.includes("no such table")) {
-    return Response.json({ error: "Private storage is still being prepared." }, { status: 503 });
+    return Response.json({ error: "Storage unavailable." }, { status: 503 });
   }
-  return Response.json({ error: "Private storage is temporarily unavailable." }, { status: 500 });
+  return Response.json({ error: "Storage unavailable." }, { status: 500 });
 }
 
 /**
@@ -23,14 +23,14 @@ function routeError(error: unknown): Response {
 export async function GET(request: Request) {
   const user = await getChatGPTUser();
   const userId = user?.email.toLowerCase() ?? null;
-  if (!userId) return Response.json({ error: "Sign in with ChatGPT." }, { status: 401 });
+  if (!userId) return Response.json({ error: "Sign in required." }, { status: 401 });
 
   const requested = new URL(request.url).searchParams.get("id");
 
   try {
     const db = getDb();
     if (!(await isBaselineOwner(db, userId))) {
-      return Response.json({ error: "This is a private record." }, { status: 403 });
+      return Response.json({ error: "Access denied." }, { status: 403 });
     }
 
     if (requested !== null) {
@@ -50,7 +50,7 @@ export async function GET(request: Request) {
       try {
         parsed = JSON.parse(row.payload);
       } catch {
-        return Response.json({ error: "That snapshot could not be read." }, { status: 422 });
+        return Response.json({ error: "Unreadable snapshot." }, { status: 422 });
       }
       return Response.json({ id, createdAt: row.createdAt, state: normalizeHealthState(parsed) });
     }

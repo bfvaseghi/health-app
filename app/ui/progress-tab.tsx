@@ -4,11 +4,11 @@ import { useMemo, useState } from "react";
 import type { HealthState } from "../health-model";
 import { dateLabel } from "../health-model";
 import type { LiftTrend } from "../training/progress";
-import { buildProgress } from "../training/progress";
+import { buildProgress, strengthIndex } from "../training/progress";
+import { Tide } from "./tide";
 import { Empty } from "./primitives";
 
 const WINDOWS = [8, 12, 26];
-const VISIBLE_LIFTS = 8;
 
 /**
  * Whether the lifts are moving.
@@ -19,16 +19,16 @@ const VISIBLE_LIFTS = 8;
  */
 export function ProgressTab({ state, today }: { state: HealthState; today: string }) {
   const [weeks, setWeeks] = useState(12);
-  const [allLifts, setAllLifts] = useState(false);
   const progress = useMemo(() => buildProgress(state, today, weeks), [state, today, weeks]);
 
-  const shown = allLifts ? progress.lifts : progress.lifts.slice(0, VISIBLE_LIFTS);
+  const shown = progress.lifts;
+  const strength = useMemo(() => strengthIndex(state, today, weeks), [state, today, weeks]);
   const holding = progress.lifts.length - progress.rising - progress.falling;
 
   return (
     <>
       <div className="progress-head">
-        <div className="range-picker" role="group" aria-label="Period">
+        <div className="tl-tabs" role="group" aria-label="Period">
           {WINDOWS.map((value) => (
             <button
               key={value}
@@ -52,45 +52,26 @@ export function ProgressTab({ state, today }: { state: HealthState; today: strin
 
       {progress.lifts.length ? (
         <>
-          <section className="verdict-row">
-            <Verdict
-              label="Going up"
-              value={progress.rising}
-              suffix={` of ${progress.lifts.length}`}
-              tone={progress.rising >= progress.falling ? "good" : "watch"}
-              detail={`${progress.falling} down, ${holding} holding`}
-            />
-            <Verdict
-              label="Strength"
-              value={progress.trendPercent}
-              suffix="%"
-              signed
-              tone={
-                progress.trendPercent === null || Math.abs(progress.trendPercent) < 2.5
-                  ? "flat"
-                  : progress.trendPercent > 0
-                    ? "good"
-                    : "watch"
-              }
-              detail={`typical lift, over ${progress.weeks} weeks`}
-            />
-            <Verdict
-              label="Volume"
-              value={progress.volume.change === null ? null : Math.round(progress.volume.change / 100) / 10}
-              suffix="k lb"
-              signed
-              tone="flat"
-              detail={
-                progress.volume.to === null
-                  ? "no sets logged"
-                  : `${Math.round(progress.volume.to / 100) / 10}k lb a week now`
-              }
-            />
-          </section>
+          <h2 className="tl-hero" style={{ marginTop: 14 }}>
+            {progress.rising === progress.lifts.length
+              ? "All lifts improving"
+              : progress.rising === 0
+                ? holding === progress.lifts.length
+                  ? "No change"
+                  : `${progress.falling} of ${progress.lifts.length} lifts declining`
+                : `${progress.rising} of ${progress.lifts.length} lifts improving`}
+          </h2>
+          <div className="progress-counts"><span><b>{progress.rising}</b> improving</span><span><b>{holding}</b> steady</span><span><b>{progress.falling}</b> declining</span></div>
 
-          <section className="panel wide-panel">
-            <div className="panel-head">
-              <h2>Every lift, session by session</h2>
+          <section className="tl-section progress-overall" aria-label="Overall strength">
+            <div className="tl-section-head"><span className="tl-caps">Overall strength · weekly best</span></div>
+            <p className="tl-line">Change from first recorded session</p>
+            <Tide data={strength} label="Weekly best, median change from first session" unit="%" format={value => `${value >= 100 ? "+" : ""}${Math.round((value - 100) * 10) / 10}`} />
+          </section>
+          <section className="tl-section progress-lifts" aria-label="Every lift, session by session">
+            <div className="tl-section-head">
+              <span className="tl-caps">Every lift · session by session</span>
+              <span className="tl-meta">{`over ${progress.weeks}w · now`}</span>
             </div>
             <div className="trend-head">
               <span />
@@ -103,25 +84,36 @@ export function ProgressTab({ state, today }: { state: HealthState; today: strin
                 <Row key={lift.exercise} lift={lift} />
               ))}
             </ul>
-            {progress.lifts.length > VISIBLE_LIFTS ? (
-              <div className="list-more">
-                <button type="button" className="button secondary" onClick={() => setAllLifts((value) => !value)}>
-                  {allLifts ? "Fewer" : `All ${progress.lifts.length}`}
-                </button>
-              </div>
-            ) : null}
-            <p className="balance-legend">
-              Estimated one-rep max from each session&rsquo;s best set, except bodyweight movements, which are compared
-              on reps. The direction is the slope across every session, not the first against the last.
-            </p>
+
           </section>
+          <details className="simple-history"><summary>How progress is measured</summary>
+          <p className="tl-line">
+            {progress.falling ? <><b>{progress.falling}</b>{` ${progress.falling === 1 ? "is" : "are"} down, `}</> : ""}
+            <b>{holding}</b>
+            {` holding · median trend `}
+            <b>{progress.trendPercent === null ? "—" : `${progress.trendPercent > 0 ? "+" : ""}${progress.trendPercent}%`}</b>
+            {` · ${progress.weeks} weeks`}
+            {progress.volume.to === null ? "" : (
+              <>
+                {" · "}
+                <b>{`${Math.round(progress.volume.to / 100) / 10}k lb`}</b>
+                {"/week"}
+                {progress.volume.change === null ? "" : ` (${progress.volume.change > 0 ? "+" : ""}${Math.round(progress.volume.change / 100) / 10}k)`}
+              </>
+            )}
+          </p>
+            <p className="balance-legend">
+              Estimated 1RM · bodyweight: reps
+              {state.workoutSets.some(set => set.loadMode === "assisted") ? " · Assisted lifts compare assistance at matching reps. Lower is better. Three comparable sessions required. Overall strength excludes assistance." : ""}
+            </p>
+          </details>
         </>
       ) : (
         <section className="panel wide-panel">
           <Empty
             icon="dumbbell"
             title="Not enough sessions yet"
-            body="A lift needs three sessions in the period before it can be said to be going anywhere. Import a Strong export or widen the period."
+            body="3 sessions per exercise required"
           />
         </section>
       )}
@@ -129,45 +121,17 @@ export function ProgressTab({ state, today }: { state: HealthState; today: strin
   );
 }
 
-/** One headline number, with what it is and how it is doing. */
-function Verdict({
-  label,
-  value,
-  suffix,
-  detail,
-  tone,
-  signed = false,
-}: {
-  label: string;
-  value: number | null;
-  suffix: string;
-  detail: string;
-  tone: string;
-  signed?: boolean;
-}) {
-  return (
-    <article className={`verdict ${tone}`}>
-      <span className="verdict-label">{label}</span>
-      <strong>
-        {value === null ? "—" : `${signed && value > 0 ? "+" : ""}${value}`}
-        {value === null ? "" : <small>{suffix}</small>}
-      </strong>
-      <small>{detail}</small>
-    </article>
-  );
-}
-
 /** One movement: its name, its line, where it went and where it is. */
 function Row({ lift }: { lift: LiftTrend }) {
-  const unit = lift.bodyweight ? "reps" : "lb";
+  const unit = lift.assisted ? "lb assistance" : lift.bodyweight ? "reps" : "lb";
   return (
     <li className={`trend-row ${lift.direction}`}>
       <span className="trend-name">
         {lift.exercise}
-        <small>{`${lift.sessions} sessions`}</small>
+        <small>{`${lift.sessions} sessions${lift.assisted ? ` · ${lift.comparisonReps} reps` : ""}`}</small>
       </span>
       <Spark lift={lift} />
-      <span className="trend-percent">{`${lift.percent > 0 ? "+" : ""}${lift.percent}%`}</span>
+      <span className="trend-percent">{lift.assisted ? `${Math.abs(Math.round((lift.last - lift.first) * 10) / 10)} lb ${lift.last < lift.first ? "less" : lift.last > lift.first ? "more" : "change"}` : `${lift.percent > 0 ? "+" : ""}${lift.percent}%`}</span>
       <span className="trend-value">
         {lift.last}
         <small>{unit}</small>
@@ -213,7 +177,7 @@ function Spark({ lift }: { lift: LiftTrend }) {
           Every session remains visible; the larger final mark says "now". */}
       {values.map((value, index) => (
         <line
-          key={lift.points[index].date}
+          key={`${lift.points[index].date}-${index}`}
           className={index === last ? "current" : undefined}
           x1={x(index)}
           y1={y(value)}

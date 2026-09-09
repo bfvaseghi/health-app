@@ -1,59 +1,65 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { recordId } from "../app/record-id.ts";
 
 import {
   addDays,
+  phaseProgress,
+  averageBedtime,
+  averageWakeTime,
   bedtimeMinutes,
+  buildHealthReport,
+  buildLabTrends,
   compareDailyMetric,
+  dailyEntriesCsv,
   dateLabel,
   daysBetween,
+  dueToday,
   emptyHealthState,
-  findRetiredFields,
   entriesInWindow,
+  estimateSleepHours,
+  filterLabTrends,
+  findRetiredFields,
+  isDue,
+  labAskReason,
   labRangeStatus,
+  labResultsCsv,
+  loggingCoverage,
+  medicationAdherence,
+  medicationDosesCsv,
+  medicationStatus,
+  medicationStatuses,
   mergeRecords,
+  mindSummary,
   normalizeDailyEntry,
   normalizeGoals,
   normalizeHealthState,
   normalizeLabResult,
   normalizeSleepEntry,
+  normalizeThoughtJournalEntry,
   normalizeWorkoutSet,
   preferredSleepEntries,
-  sleepConsistencyRange,
-  upsertDailyEntry,
-  upsertLabResult,
-  upsertSleepEntry,
-  validIsoDate,
-  averageBedtime,
-  averageWakeTime,
-  buildHealthReport,
-  buildLabTrends,
-  dailyEntriesCsv,
-  estimateSleepHours,
-  filterLabTrends,
-  labResultsCsv,
-  loggingCoverage,
+  recordDose,
   removeDailyEntry,
   removeLabResult,
+  removeMedication,
   removeSleepEntry,
   reportToText,
+  setLabAsk,
+  sleepConsistencyRange,
   sleepDebtHours,
   sleepEntriesCsv,
-  medicationAdherence,
-  isDue,
-  medicationStatus,
-  medicationStatuses,
-  dueToday,
-  recordDose,
-  upsertMedication,
-  removeMedication,
-  medicationDosesCsv,
-  mindSummary,
-  normalizeThoughtJournalEntry,
   thoughtJournalCsv,
+  upsertDailyEntry,
+  upsertLabResult,
+  upsertMedication,
+  upsertSleepEntry,
   upsertThoughtJournalEntry,
+  validIsoDate,
 } from "../app/health-model.ts";
-import { createBaselineArchive, parseBackupFile } from "../app/portability.ts";
+import { createSourceArchive } from "../build/source-archive.ts";
+import { readZipDirectory, openZipEntry } from "../app/import/zip.ts";
+import { createBaselineArchive, parseBackupFile, restoreArchivePhotos } from "../app/portability.ts";
 import { parseThoughtJournalShortcut, thoughtJournalFingerprint } from "../app/thought-journal.ts";
 import {
   chooseInitialState,
@@ -142,12 +148,22 @@ test("the complete archive round-trips while unrelated JSON is rejected", async 
   });
   const archive = await createBaselineArchive(state, {
     dailyEntries: [{ date: "2030-01-15", steps: 9000 }],
-  });
+  }, new Blob([createSourceArchive(process.cwd())]));
   const parsed = await parseBackupFile(new File([archive], "baseline.zip", { type: "application/zip" }));
   assert.equal(parsed.state.dailyEntries[0].proteinG, 180);
   assert.equal(parsed.state.dailyEntries[0].steps, null, "automatic Apple data stays outside the editable backup");
   assert.equal(parsed.state.thoughtJournal[0].text, "Synthetic journal text");
   assert.equal(parsed.summary.thoughts, 1);
+  assert.equal(parsed.appleOverlay.dailyEntries[0].steps, 9000);
+  const entries = await readZipDirectory(archive);
+  const sourceEntry = entries.find((entry) => entry.name === "source/baseline-source.zip");
+  assert.ok(sourceEntry, "the full archive contains source bytes");
+  const sourceZip = await new Response(await openZipEntry(archive, sourceEntry)).blob();
+  const sourceNames = (await readZipDirectory(sourceZip)).map((entry) => entry.name);
+  assert.ok(sourceNames.includes("baseline/app/health-model.ts"));
+  assert.ok(sourceNames.includes("baseline/worker/index.ts"));
+  assert.ok(sourceNames.includes("baseline/.openai/hosting.json"));
+  assert.ok(!sourceNames.some((name) => /baseline-backup|qa.html|baseline-source.zip/.test(name)));
 
   const legacyV2 = await parseBackupFile(new File([JSON.stringify({
     format: "baseline-backup",
@@ -155,6 +171,7 @@ test("the complete archive round-trips while unrelated JSON is rejected", async 
     createdAt: "2030-01-15T12:00:00.000Z",
     state: { ...state, thoughtJournal: undefined },
   })], "baseline-v2.json", { type: "application/json" }));
+  assert.equal(legacyV2.appleOverlay, null);
   assert.deepEqual(legacyV2.state.thoughtJournal, [], "version 2 backups remain restorable");
 
   await assert.rejects(
@@ -331,6 +348,7 @@ test("daily normalization accepts numeric text, rejects coercion traps, and appl
     "proteinG",
     "restingHeartRate",
     "steps",
+    "waterMl",
     "weightLb",
   ]);
   assert.equal(normalizeDailyEntry({ date: "2030-02-31" }), null);
@@ -405,6 +423,7 @@ test("lab and goal normalization produce safe, deterministic records", () => {
   assert.deepEqual(Object.keys(goals).sort(), [
     "addedSets",
     "bodyFatTargetPercent",
+    "phaseStart",
     "proteinTargetG",
     "sleepConsistencyMinutes",
     "sleepHours",
@@ -412,6 +431,9 @@ test("lab and goal normalization produce safe, deterministic records", () => {
     "trainingAnchorSets",
     "trainingBlockStart",
     "trainingDays",
+    "trainingSessionMinutes",
+    "trainingSplit",
+    "weeklyRateLb",
     "weightDirection",
     "weightGoalLb",
   ]);
@@ -728,9 +750,9 @@ test("the appointment report reports thin data as thin and flags entered ranges 
   assert.equal(report.end, "2030-01-15");
   const row = (id) => report.rows.find((item) => item.id === id);
   assert.equal(row("sleep-duration").value, "8.3 h");
-  assert.match(row("sleep-duration").detail, /from 2 recorded nights of 7/);
+  assert.match(row("sleep-duration").detail, /2\/7 nights/);
   assert.equal(row("sleep-goal-nights").value, "1 of 2");
-  assert.match(row("sleep-consistency").detail, /typical 11:45 PM to 8:00 AM/);
+  assert.match(row("sleep-consistency").detail, /11:45 PM to 8:00 AM/);
   // The old single tick migrates to one medication, and the report counts it
   // over the doses it was due rather than over the days in the period.
   assert.equal(row("medication-medication").label, "Medication");
@@ -739,10 +761,10 @@ test("the appointment report reports thin data as thin and flags entered ranges 
   assert.equal(row("medication"), undefined, "no roll-up row when there is only one");
   assert.equal(row("sleep-source").value, "Oura, Manual");
   assert.equal(row("weight").value, "180.0 lb");
-  assert.equal(row("weight").detail, "-2.0 lb across the period");
+  assert.equal(row("weight").detail, "-2.0 lb change");
   assert.equal(row("resting-heart-rate").value, "56 bpm");
   // The same reading on the day and on the night is one reading, not two.
-  assert.equal(row("resting-heart-rate").detail, "from 2 recorded readings of 7");
+  assert.equal(row("resting-heart-rate").detail, "2/7 readings");
   assert.equal(row("hrv").value, "No data");
   assert.equal(row("steps").value, "6,000");
   // Mood scales are gone for good; journalling and meditation are deliberately back.
@@ -762,7 +784,7 @@ test("the appointment report reports thin data as thin and flags entered ranges 
   assert.match(text, /Medication: 50%/);
   assert.match(text, /Ferritin 10 ng\/mL on 2030-01-02/);
   assert.doesNotMatch(text, /Vitamin D/);
-  assert.match(text, /not a diagnosis/);
+  assert.match(text, /Self-recorded data/);
   assert.doesNotMatch(text, /Copper/);
 });
 
@@ -774,11 +796,11 @@ test("csv export quotes separators and preserves missing values as empty cells",
   const lines = csv.split("\n");
   assert.equal(
     lines[0],
-    "date,medication_taken,weight_lb,body_fat_percent,steps,resting_heart_rate,hrv_ms,protein_g,calories_kcal,journaled,meditation_minutes,meditation_note,note",
+    "date,medication_taken,weight_lb,body_fat_percent,steps,resting_heart_rate,hrv_ms,protein_g,water_ml,calories_kcal,journaled,meditation_minutes,meditation_note,note",
   );
-  assert.match(lines[1], /^2030-01-14,yes,,,8000,,,,,no,,,/);
+  assert.match(lines[1], /^2030-01-14,yes,,,8000,,,,,,no,,,/);
   assert.match(csv, /"comma, ""quote"" and\nnewline"/);
-  assert.equal(lines.at(-1), "2030-01-15,,,,,,,,,no,,,");
+  assert.equal(lines.at(-1), "2030-01-15,,,,,,,,,,no,,,");
 
   assert.match(sleepEntriesCsv([sleep({ bedtime: "23:00", durationHours: 8 })]), /2030-01-15,manual,23:00,,8,/);
   assert.match(
@@ -812,21 +834,21 @@ test("the report carries training, nutrition and mind, and the list of things to
   const row = (id) => report.rows.find((item) => item.id === id);
 
   assert.equal(row("body-fat").value, "18.4%");
-  assert.equal(row("body-fat").detail, "-1.2 points across the period");
-  assert.equal(row("protein").value, "155 g a day");
-  assert.equal(row("protein").detail, "1 of 2 recorded days at or above 180 g");
+  assert.equal(row("body-fat").detail, "-1.2 points change");
+  assert.equal(row("protein").value, "155 g/day");
+  assert.equal(row("protein").detail, "1/2 days ≥ 180 g");
 
   assert.equal(row("workouts").value, "2");
-  assert.match(row("workouts").detail, /3 working sets/);
+  assert.match(row("workouts").detail, /3 sets/);
   // 185 × 5 × 2 + 135 × 10 = 3,200
   assert.equal(row("volume").value, "3,200 lb");
-  assert.equal(row("volume").detail, "2 distinct exercises");
+  assert.equal(row("volume").detail, "2 exercises");
   // Both lifts appear once, and a first attempt is a baseline rather than a record.
   assert.equal(row("records").value, "0");
-  assert.equal(row("records").detail, "none set in this period");
+  assert.equal(row("records").detail, "No new records");
 
   assert.equal(row("meditation").value, "2 of 7 days");
-  assert.equal(row("meditation").detail, "30 minutes in total");
+  assert.equal(row("meditation").detail, "30 min");
   assert.equal(row("journal").value, "1 of 7 days");
 
   // Only what has not been raised yet, and it survives into the copied text.
@@ -1011,4 +1033,159 @@ test("a superset marker is not part of the lift's name", () => {
 
   // A name that is nothing but the marker is not a lift.
   assert.equal(normalizeWorkoutSet({ date: "2030-01-15", exercise: "*", setNumber: 1 }), null);
+});
+
+test("a result marked to ask about joins the doctor list even inside its range", () => {
+  const within = { id: "vit-d", name: "Vitamin D", date: "2030-01-10", value: 45, unit: "ng/mL", referenceLow: 30, referenceHigh: 100, note: "" };
+  assert.equal(normalizeLabResult(within).ask, false, "old records default to unmarked");
+  assert.equal(normalizeLabResult({ ...within, ask: "yes" }).ask, false, "only a real true marks it");
+
+  let state = upsertLabResult(emptyHealthState(), within);
+  assert.deepEqual(buildHealthReport(state, "2030-01-15", 7).flaggedLabs, []);
+  assert.equal(labAskReason(buildLabTrends(state.labResults)[0]), null);
+
+  state = setLabAsk(state, "vit-d", true);
+  assert.equal(state.labResults[0].ask, true);
+  assert.equal(labAskReason(buildLabTrends(state.labResults)[0]), "flagged by you");
+  const report = buildHealthReport(state, "2030-01-15", 7);
+  assert.deepEqual(report.flaggedLabs.map((result) => result.id), ["vit-d"]);
+  assert.match(reportToText(report), /Vitamin D 45 ng\/mL on 2030-01-10 \(range 30 to 100 · flagged\)/);
+
+  assert.equal(setLabAsk(state, "missing", true), state, "an unknown id changes nothing");
+  state = setLabAsk(state, "vit-d", false);
+  assert.deepEqual(buildHealthReport(state, "2030-01-15", 7).flaggedLabs, []);
+});
+
+test("a cut or bulk is measured from its start, week against week, and says its pace", () => {
+  const base = emptyHealthState();
+  const entries = [];
+  // Five weeks of a steady cut: 200 down to about 196, weighed daily.
+  for (let back = 34; back >= 0; back -= 1) {
+    entries.push({ date: addDays("2030-03-07", -back), weightLb: 200 - (34 - back) * (0.8 / 7) });
+  }
+  const cutting = normalizeHealthState({ ...base, dailyEntries: entries, goals: { weightDirection: "lose", phaseStart: "2030-02-01", weeklyRateLb: 0.75 } });
+  const progress = phaseProgress(cutting, "2030-03-07");
+  assert.equal(progress.phase, "cut");
+  assert.equal(progress.start, "2030-02-01");
+  assert.equal(progress.weeks, 5);
+  assert.ok(progress.changeLb < -3 && progress.changeLb > -4.5, `change ${progress.changeLb}`);
+  assert.ok(Math.abs(progress.ratePerWeek + 0.8) < 0.15, `rate ${progress.ratePerWeek}`);
+  assert.equal(progress.pace, "on pace");
+  assert.equal(progress.proteinSuggestedG, 195);
+  assert.match(progress.sentence, /^week 5 · 196\.\d lb · down \d\.\d lb since Feb 1 · 0\.\d lb\/week \(target 0\.75\) · on pace$/);
+
+  // Bulking wants the other sign, and a slow bulk says so.
+  const bulking = normalizeHealthState({ ...base, dailyEntries: entries, goals: { weightDirection: "gain", phaseStart: "2030-02-01", weeklyRateLb: 0.5 } });
+  const bulk = phaseProgress(bulking, "2030-03-07");
+  assert.equal(bulk.phase, "bulk");
+  assert.equal(bulk.pace, "slow");
+  assert.equal(bulk.proteinSuggestedG, 155);
+
+  // Maintaining has no phase; a start in the future or missing falls back to four weeks.
+  assert.equal(phaseProgress(normalizeHealthState({ ...base, goals: { weightDirection: "maintain" } }), "2030-03-07"), null);
+  const noStart = phaseProgress(normalizeHealthState({ ...base, dailyEntries: entries, goals: { weightDirection: "lose" } }), "2030-03-07");
+  assert.equal(noStart.start, "2030-02-07");
+  assert.equal(noStart.targetRateLb, null);
+  assert.equal(noStart.pace, null);
+
+  // The goals normalise: a bad start is dropped, the rate is bounded.
+  const goals = normalizeGoals({ weightDirection: "lose", phaseStart: "yesterday", weeklyRateLb: 40 });
+  assert.equal(goals.phaseStart, "");
+  assert.equal(goals.weeklyRateLb, 5, "the rate is held to five pounds a week");
+});
+
+
+test("excluding therapy removes thought details from displayed and copied reports", async () => {
+  const { reportRows } = await import("../app/health-model.ts");
+  const { demoHealthState } = await import("../app/demo-state.ts");
+  const report = buildHealthReport(demoHealthState("2030-01-15"), "2030-01-15", 30);
+  assert.ok(reportRows(report).some((row) => row.id.startsWith("loop-")));
+  assert.ok(reportRows(report, false).every((row) => !row.id.startsWith("loop-")));
+  assert.match(reportToText(report), /Rumination/);
+  const text = reportToText(report, { includeTherapy: false, includeNotes: false });
+  assert.doesNotMatch(text, /Rumination|Needing to be certain|A decision I keep postponing/);
+  assert.match(text, /Average sleep/);
+});
+
+test("appointment choices keep displayed and copied sections consistent", async () => {
+  const { reportRows, reportOptionsFor } = await import("../app/health-model.ts");
+  const { demoHealthState } = await import("../app/demo-state.ts");
+  const report = buildHealthReport(demoHealthState("2030-01-15"), "2030-01-15", 30);
+  report.flaggedLabs = [{ id: "lab", date: "2030-01-14", name: "Demo marker", value: 8, unit: "U/L", referenceLow: 1, referenceHigh: 5, note: "" }];
+  report.notes = [{ date: "2030-01-15", note: "Private daily note" }];
+  report.toRaise = [{ id: "topic", date: "2030-01-15", text: "Private appointment topic", shared: false, sharedDate: "" }];
+
+  const doctor = reportOptionsFor("doctor");
+  const doctorText = reportToText(report, doctor);
+  assert.match(doctorText, /Demo marker/);
+  assert.doesNotMatch(doctorText, /Private appointment topic|Private daily note|Thought loop:/);
+  assert.ok(reportRows(report, doctor.includeTherapy, doctor.groups).every((row) => row.group !== "Mind"));
+
+  const therapy = reportOptionsFor("therapy");
+  const therapyText = reportToText(report, therapy);
+  assert.match(therapyText, /Private appointment topic/);
+  assert.match(therapyText, /Average sleep/);
+  assert.doesNotMatch(therapyText, /Demo marker|Private daily note|\nTraining\n|\nBody\n/);
+  const displayed = reportRows(report, therapy.includeTherapy, therapy.groups);
+  for (const row of displayed) assert.ok(therapyText.includes(`${row.label}: ${row.value}`));
+
+  const selected = { groups: ["Body"], includeLabs: false, includeTherapy: false, includeNotes: false };
+  const selectedText = reportToText(report, selected);
+  assert.doesNotMatch(selectedText, /Recorded:|\nSleep\n|\nMedication\n|Private|Demo marker/);
+  assert.ok(reportRows(report, false, selected.groups).every((row) => row.group === "Body"));
+  const all = reportToText(report, { ...reportOptionsFor("all"), includeNotes: true });
+  assert.match(all, /Private daily note/);
+  assert.match(all, /Private appointment topic/);
+  assert.match(all, /Demo marker/);
+});
+
+test("therapy agenda preserves a full journal entry and its dated title", async () => {
+  const { upsertTherapyNote } = await import("../app/health-model.ts");
+  const text = `Jan 15, 2030 · ${"Title".repeat(32)}\n${"Entry ".repeat(1666)}end`;
+  const state = upsertTherapyNote(emptyHealthState(), { id: "journal-topic", date: "2030-01-15", text, shared: false });
+  assert.equal(state.therapyNotes[0].text, text);
+  assert.ok(reportToText(buildHealthReport(state, "2030-01-15", 7)).includes(text));
+});
+
+
+test("record creation works when randomUUID is unavailable", () => {
+  const original = Object.getOwnPropertyDescriptor(crypto, "randomUUID");
+  Object.defineProperty(crypto, "randomUUID", { value: undefined, configurable: true });
+  try {
+    const first = recordId("med");
+    const second = recordId("med");
+    assert.match(first, /^med-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    assert.notEqual(first, second);
+  } finally {
+    if (original) Object.defineProperty(crypto, "randomUUID", original);
+    else delete crypto.randomUUID;
+  }
+});
+
+
+test("photo archive round trip can stay entirely in demo memory", async () => {
+  const image = new Blob([new Uint8Array([137, 80, 78, 71])], { type: "image/png" });
+  const state = normalizeHealthState({ ...emptyHealthState(), progressPhotos: [{ id: "demo-photo", date: "2030-01-15", weightLb: null, bodyFatPercent: null, note: "" }], goals: { trainingSplit: "upper-lower", trainingSessionMinutes: 75 } });
+  const archive = await createBaselineArchive(state, null, new Blob([createSourceArchive(process.cwd())]), async id => id === "demo-photo" ? image : null);
+  const parsed = await parseBackupFile(new File([archive], "demo.zip"));
+  assert.equal(parsed.state.goals.trainingSplit, "upper-lower");
+  assert.equal(parsed.state.goals.trainingSessionMinutes, 75);
+  const restored = [];
+  assert.equal(await restoreArchivePhotos(parsed, async photos => { restored.push(...photos); }), 1);
+  assert.equal(restored[0].id, "demo-photo");
+  assert.deepEqual(new Uint8Array(await restored[0].blob.arrayBuffer()), new Uint8Array(await image.arrayBuffer()));
+});
+
+test("water survives saved records and partial imports while unknown stays unknown", () => {
+  assert.equal(normalizeDailyEntry({ date: "2030-01-15" }).waterMl, null);
+  assert.equal(normalizeDailyEntry({ date: "2030-01-15", waterMl: true }).waterMl, null);
+  let state = upsertDailyEntry(emptyHealthState(), { date: "2030-01-15", waterMl: 1750, proteinG: 180 });
+  state = normalizeHealthState(JSON.parse(JSON.stringify(state)));
+  assert.equal(state.dailyEntries[0].waterMl, 1750);
+  const merged = mergeRecords(state, { dailyEntries: [{ date: "2030-01-15", steps: 8000 }] });
+  assert.equal(merged.dailyEntries[0].waterMl, 1750);
+  assert.equal(merged.dailyEntries[0].proteinG, 180);
+  const cleared = upsertDailyEntry(merged, { ...merged.dailyEntries[0], waterMl: null });
+  assert.equal(cleared.dailyEntries[0].waterMl, null);
+  assert.equal(cleared.dailyEntries[0].steps, 8000);
 });

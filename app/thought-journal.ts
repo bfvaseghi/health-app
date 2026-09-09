@@ -30,13 +30,13 @@ export function parseThoughtJournalShortcut(
     return { ok: false, error: "Thought text is required." };
   }
   const text = record.text.trim();
-  if (text.length > 10_000) return { ok: false, error: "Thought text must be 10,000 characters or less." };
+  if (text.length > 10_000) return { ok: false, error: "Thought: 10,000 characters maximum." };
 
   if (record.title !== undefined && typeof record.title !== "string") {
     return { ok: false, error: "Title must be text." };
   }
   const title = typeof record.title === "string" ? record.title.trim() : "";
-  if (title.length > 160) return { ok: false, error: "Title must be 160 characters or less." };
+  if (title.length > 160) return { ok: false, error: "Title: 160 characters maximum." };
 
   if (record.createdAt !== undefined && typeof record.createdAt !== "string") {
     return { ok: false, error: "Created time must be an ISO timestamp." };
@@ -68,7 +68,7 @@ export function parseThoughtJournalShortcut(
     return { ok: false, error: "Source key must be text." };
   }
   const sourceKey = typeof rawSourceKey === "string" ? rawSourceKey.trim() : "";
-  if (sourceKey.length > 160) return { ok: false, error: "Source key must be 160 characters or less." };
+  if (sourceKey.length > 160) return { ok: false, error: "Source key: 160 characters maximum." };
 
   return { ok: true, value: { text, title, date, createdAt, sourceKey } };
 }

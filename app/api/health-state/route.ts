@@ -1,10 +1,13 @@
 import { and, desc, eq, notInArray, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
+import { stateBackupQuery } from "../../../db/state-backup";
 import { appleHealthSyncs, healthStateBackups, healthStates } from "../../../db/schema";
 import { normalizeAppleHealthSyncPayload } from "../../apple-health-sync";
 import { isBaselineOwner } from "../../baseline-owner";
 import { getChatGPTUser } from "../../chatgpt-auth";
 import { HealthState, emptyHealthState, normalizeHealthState } from "../../health-model";
+import { clearOwnerPhotos, isSameOriginPhotoRequest } from "../../photo-api";
+import { photoBucket } from "../../private-photo-storage";
 
 const MAX_PAYLOAD_BYTES = 1_500_000;
 const BACKUP_LIMIT = 30;
@@ -12,12 +15,12 @@ const BACKUP_LIMIT = 30;
 function routeError(error: unknown): Response {
   const message = error instanceof Error ? error.message : "Unexpected error";
   if (message.includes("no such table")) {
-    return Response.json({ error: "Private storage is still being prepared." }, { status: 503 });
+    return Response.json({ error: "Storage unavailable." }, { status: 503 });
   }
   // First line only: a driver error repeats the bound parameters below it, and
   // those carry the user's identifier and record.
   console.error("health-state:", message.split("\n")[0]);
-  return Response.json({ error: "Private storage is temporarily unavailable." }, { status: 500 });
+  return Response.json({ error: "Storage unavailable." }, { status: 500 });
 }
 
 async function authenticatedUserId(): Promise<string | null> {
@@ -68,12 +71,12 @@ function revisionHeaders(revision: number): HeadersInit {
 
 export async function GET() {
   const userId = await authenticatedUserId();
-  if (!userId) return Response.json({ error: "Sign in with ChatGPT." }, { status: 401 });
+  if (!userId) return Response.json({ error: "Sign in required." }, { status: 401 });
 
   try {
     const db = getDb();
     if (!(await isBaselineOwner(db, userId))) {
-      return Response.json({ error: "This is a private record." }, { status: 403 });
+      return Response.json({ error: "Access denied." }, { status: 403 });
     }
     const [[row], [apple]] = await Promise.all([
       db
@@ -99,7 +102,7 @@ export async function GET() {
     try {
       parsed = JSON.parse(row.payload);
     } catch {
-      return Response.json({ error: "The saved record could not be read." }, { status: 422 });
+      return Response.json({ error: "Unreadable saved record." }, { status: 422 });
     }
 
     const normalized = normalizeHealthState(parsed);
@@ -120,12 +123,12 @@ export async function GET() {
 
 export async function PUT(request: Request) {
   const userId = await authenticatedUserId();
-  if (!userId) return Response.json({ error: "Sign in with ChatGPT." }, { status: 401 });
+  if (!userId) return Response.json({ error: "Sign in required." }, { status: 401 });
 
   const expected = expectedRevision(request);
   if (expected === null) {
     return Response.json(
-      { error: "Reload Baseline before saving this change." },
+      { error: "Reload required before saving." },
       { status: 428, headers: { "Cache-Control": "no-store" } },
     );
   }
@@ -159,7 +162,7 @@ export async function PUT(request: Request) {
   try {
     const db = getDb();
     if (!(await isBaselineOwner(db, userId))) {
-      return Response.json({ error: "This is a private record." }, { status: 403 });
+      return Response.json({ error: "Access denied." }, { status: 403 });
     }
     const [current] = await db
       .select({ payload: healthStates.payload, updatedAt: healthStates.updatedAt, revision: healthStates.revision })
@@ -178,7 +181,7 @@ export async function PUT(request: Request) {
       const revision = latest?.revision ?? 0;
       return Response.json(
         {
-          error: "A newer save arrived first.",
+          error: "Save conflict.",
           state: latestState,
           updatedAt: latestState?.updatedAt ?? latest?.updatedAt ?? null,
           revision,
@@ -209,17 +212,7 @@ export async function PUT(request: Request) {
       // D1 batches are transactional. The snapshot insert is conditional on the
       // same revision as the update, so a losing concurrent writer commits
       // neither a replacement nor a misleading recovery point.
-      const backup = db.insert(healthStateBackups).select(
-        db
-          .select({
-            userId: healthStates.userId,
-            payload: healthStates.payload,
-            createdAt: sql<string>`${now}`,
-            replacedRevision: healthStates.revision,
-          })
-          .from(healthStates)
-          .where(and(eq(healthStates.userId, userId), eq(healthStates.revision, expected))),
-      );
+      const backup = stateBackupQuery(db, userId, expected, now);
       const write = db
         .update(healthStates)
         .set({ payload, updatedAt: now, revision: nextRevision })
@@ -251,14 +244,15 @@ export async function PUT(request: Request) {
 }
 
 /** Irreversible owner action: keep preferences, remove every record and recovery copy. */
-export async function DELETE() {
+export async function DELETE(request: Request) {
   const userId = await authenticatedUserId();
-  if (!userId) return Response.json({ error: "Sign in with ChatGPT." }, { status: 401 });
+  if (!userId) return Response.json({ error: "Sign in required." }, { status: 401 });
+  if (!isSameOriginPhotoRequest(request)) return Response.json({ error: "Access denied." }, { status: 403 });
 
   try {
     const db = getDb();
     if (!(await isBaselineOwner(db, userId))) {
-      return Response.json({ error: "This is a private record." }, { status: 403 });
+      return Response.json({ error: "Access denied." }, { status: 403 });
     }
     const [current] = await db
       .select({ payload: healthStates.payload, updatedAt: healthStates.updatedAt, revision: healthStates.revision })
@@ -273,6 +267,7 @@ export async function DELETE() {
       goals: previous?.goals,
     });
     const revision = (current?.revision ?? 0) + 1;
+    await clearOwnerPhotos(photoBucket(), userId);
     const write = db
       .insert(healthStates)
       .values({ userId, payload: JSON.stringify(cleared), updatedAt: now, revision })

@@ -9,9 +9,9 @@ import {
   recentPersonalRecords,
   weeklyVolume,
 } from "../health-model";
-import { LineChart } from "./charts";
+import { Tide } from "./tide";
 import { Icon } from "./icons";
-import { ConfirmButton, Empty, Fold, Note, Segmented } from "./primitives";
+import { ConfirmButton, Note } from "./primitives";
 import type { Modal } from "./types";
 
 const VISIBLE_EXERCISES = 8;
@@ -19,12 +19,14 @@ const VISIBLE_EXERCISES = 8;
 /** Everything the Strong export adds up to: records, load, movements, sessions. */
 export function LiftingTab({
   state,
+  compact = false,
   today,
   open,
   demo,
   onDeleteSession,
 }: {
   state: HealthState;
+  compact?: boolean;
   today: string;
   open: (modal: Modal) => void;
   demo: boolean;
@@ -40,38 +42,38 @@ export function LiftingTab({
   // Three lenses on one history rather than three panels stacked down a page.
   // They answer different questions about the same sets, so only one of them is
   // ever the one you came for.
-  const [lens, setLens] = useState<Lens>("records");
-  const [openVolume, setOpenVolume] = useState(false);
+  const [lens, setLens] = useState<Lens>("sessions");
+  const [sessionLimit, setSessionLimit] = useState(20);
   const [openNote, setOpenNote] = useState(false);
 
   if (!state.workoutSets.length) {
     return (
-      <section className="panel wide-panel">
-        <Empty
-          icon="dumbbell"
-          title="No workouts yet"
-          body="Strong exports a CSV of every set you have logged. Drop it in and your history, records, and volume appear here."
-          action={demo ? undefined : (
+      <div className="tl-page">
+        <h2 className="tl-hero">No workouts yet</h2>
+        <p className="tl-lede">
+          Strong CSV
+        </p>
+        {demo ? null : (
+          <div className="tl-actions">
             <button type="button" className="button primary" onClick={() => open({ kind: "import" })}>
               <Icon name="upload" />
-              Import a Strong export
+              Import Strong
             </button>
-          )}
-        />
-      </section>
+          </div>
+        )}
+      </div>
     );
   }
 
   const exercise = summaries.find((entry) => entry.name === selected) ?? null;
   const listed = showAll ? summaries : summaries.slice(0, VISIBLE_EXERCISES);
-  const totalVolume = sessions.reduce((total, session) => total + session.volumeLb, 0);
 
   // What each fold says while it is closed. A fold whose head does not answer
   // anything is just a thing to click.
   const lastWeek = [...volume].reverse().find((point) => (point.value ?? 0) > 0) ?? null;
   const volumeLine = lastWeek
-    ? `${Math.round(lastWeek.value ?? 0).toLocaleString("en-US")} lb in the week of ${dateLabel(lastWeek.date)}`
-    : "Nothing in the last twelve weeks";
+    ? `${Math.round(lastWeek.value ?? 0).toLocaleString("en-US")} lb in the week of ${dateLabel(lastWeek.date, { month: "short", day: "numeric" })}`
+    : "No sets · 12 weeks";
   const lensLine =
     lens === "records"
       ? `${records.length} beaten in the last 60 days`
@@ -81,97 +83,50 @@ export function LiftingTab({
 
   return (
     <>
-      <section className="stat-strip">
-        <div className="stat-tile">
-          <small>Workouts</small>
-          <b>{sessions.length}</b>
-          <span>{sessions.length ? `since ${dateLabel(sessions.at(-1)!.date, { month: "short", year: "numeric" })}` : ""}</span>
-        </div>
-        <div className="stat-tile">
-          <small>Working sets</small>
-          <b>{sessions.reduce((total, session) => total + session.sets, 0).toLocaleString("en-US")}</b>
-          <span>rest timers excluded</span>
-        </div>
-        <div className="stat-tile">
-          <small>Exercises</small>
-          <b>{summaries.length}</b>
-          <span>distinct movements</span>
-        </div>
-        <div className="stat-tile">
-          <small>Total volume</small>
-          <b>{`${Math.round(totalVolume / 1_000).toLocaleString("en-US")}k`}</b>
-          <span>pounds moved</span>
-        </div>
-      </section>
+      {!compact ? <>
+      <h2 className="history-heading">
+        {`${sessions.length} ${sessions.length === 1 ? "workout" : "workouts"}`}
+      </h2>
+      <p className="tl-lede">Since {dateLabel(sessions.at(-1)!.date, { month: "long", year: "numeric" })}</p>
+      </> : null}
 
-      {/* The load chart is the page's one picture, and a picture is a lot of
-          room to give something you are not currently asking about. */}
-      <section className="panel wide-panel">
-        <Fold
-          title={<h2>Volume by week</h2>}
-          summary={<span className="fold-line">{volumeLine}</span>}
-          open={openVolume}
-          onToggle={() => setOpenVolume((current) => !current)}
-        >
-          <div className="fold-body">
-            <LineChart data={volume} label="Volume" empty="No sets in the last twelve weeks." />
-          </div>
-        </Fold>
-      </section>
 
-      <section className="panel wide-panel">
-        <div className="panel-head wrap">
-          <div className="coach-summary">
-            <h2>History</h2>
-            <small>{lensLine}</small>
+
+      <section className="tl-section lifting-history" aria-label="History">
+        <div className="tl-section-head">
+          <div className="tl-tabs" role="group" aria-label="History view">
+            {([["sessions", "Sessions"], ["exercises", "Exercises"], ["records", "Personal bests"]] as [Lens, string][]).map(([value, label]) => (
+              <button key={value} type="button" aria-pressed={lens === value} className={lens === value ? "active" : ""} onClick={() => setLens(value)}>
+                {label}
+              </button>
+            ))}
           </div>
-          <Segmented
-            label="What to look at"
-            value={lens}
-            options={[
-              { value: "records", label: "Records" },
-              { value: "exercises", label: "Exercises" },
-              { value: "sessions", label: "Sessions" },
-            ]}
-            onChange={(value) => setLens(value as Lens)}
-          />
         </div>
+        {lens !== "sessions" ? <p className="tl-line" style={{ marginTop: 8 }}>{lensLine}</p> : null}
 
         {lens === "records" ? (
           records.length ? (
             <>
-              <ul className="record-list">
+              <ul className="tl-rows tl-list">
                 {records.map((record) => (
-                  <li className="record-row pr-row" key={record.exercise}>
-                    <div className="pr-mark">
-                      <Icon name="trophy" />
-                    </div>
-                    <div className="pr-name">
+                  <li className="tl-row is-static" key={record.exercise}>
+                    <span className="tl-row-copy">
                       <b>{record.exercise}</b>
-                      <small>{dateLabel(record.date, { weekday: "short", month: "short", day: "numeric" })}</small>
-                    </div>
-                    <div>
-                      <small>Best set</small>
+                      <small>
+                        {dateLabel(record.date, { weekday: "short", month: "short", day: "numeric" })}
+                        {record.previous === null
+                          ? ""
+                          : ` · beat ${Math.round(record.previous)}${record.bodyweight ? " reps" : " lb"}`}
+                      </small>
+                    </span>
+                    <span className="tl-row-end stack up">
                       <b>
                         {record.bodyweight
                           ? `${record.reps ?? "—"} reps`
                           : `${record.weightLb ?? "—"} lb × ${record.reps ?? "—"}`}
                       </b>
-                    </div>
-                    <div>
-                      <small>{record.bodyweight ? "Best reps" : "Est. 1RM"}</small>
-                      <b>
-                        {record.bodyweight
-                          ? `${record.reps ?? "—"}`
-                          : record.oneRepMax === null
-                            ? "—"
-                            : `${record.oneRepMax} lb`}
-                      </b>
-                    </div>
-                    <div>
-                      <small>{record.bodyweight ? "Beat" : "Beat 1RM"}</small>
-                      <b>{record.previous === null ? "—" : `${Math.round(record.previous)}${record.bodyweight ? "" : " lb"}`}</b>
-                    </div>
+                      {record.bodyweight || record.oneRepMax === null ? null : <small>{`est. 1RM ${record.oneRepMax} lb`}</small>}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -189,14 +144,13 @@ export function LiftingTab({
                 </button>
                 {openNote ? (
                   <Note>
-                    An estimated one-rep max is Epley&rsquo;s formula on your best set, not a lift you performed. It
-                    stops reporting past fifteen reps, where the arithmetic describes endurance rather than strength.
+                    Estimated 1RM · Epley formula · 1–15 reps
                   </Note>
                 ) : null}
               </div>
             </>
           ) : (
-            <p className="panel-body">Nothing beaten in the last sixty days.</p>
+            <p className="tl-line">No new records · 60 days</p>
           )
         ) : null}
 
@@ -240,13 +194,16 @@ export function LiftingTab({
                         asking you to pick something. */}
                     {isOpen && exercise ? (
                       <div className="exercise-detail">
-                        <LineChart
+                        <Tide
                           data={exercise.history.map((session) => ({
                             date: session.date,
                             value: exercise.bodyweight ? session.topReps : session.oneRepMax,
                           }))}
-                          label={exercise.bodyweight ? "Reps" : "Est. 1RM"}
-                          empty="Not enough sessions to draw a line."
+                          label={exercise.bodyweight ? "Best reps, session by session" : "Estimated one-rep max, session by session"}
+                          unit={exercise.bodyweight ? " reps" : " lb"}
+                          format={(value) => String(Math.round(value))}
+                          empty="No trend yet."
+                          dateFormat={{ month: "short", day: "numeric" }}
                         />
                         <dl className="report-rows">
                           <div>
@@ -282,46 +239,60 @@ export function LiftingTab({
               })}
             </ul>
             {summaries.length > VISIBLE_EXERCISES ? (
-              <div className="list-more">
-                <button type="button" className="button secondary" onClick={() => setShowAll((value) => !value)}>
+              <p className="tl-line">
+                <button type="button" className="text-button" onClick={() => setShowAll((value) => !value)}>
                   {showAll ? "Show fewer" : `Show all ${summaries.length}`}
                 </button>
-              </div>
+              </p>
             ) : null}
           </>
         ) : null}
 
         {lens === "sessions" ? (
-          <ul className="record-list">
-          {sessions.slice(0, 20).map((session) => (
-            <li className="record-row session-row" key={session.startedAt}>
-              <div className="date-tile">
-                <b>{dateLabel(session.date, { weekday: "short" })}</b>
-                <small>{dateLabel(session.date)}</small>
-              </div>
-              <div className="session-name">
-                <b>{session.name || "Workout"}</b>
-                <small>{session.exercises.slice(0, 3).join(", ")}{session.exercises.length > 3 ? `, +${session.exercises.length - 3}` : ""}</small>
-              </div>
-              <div>
-                <small>Sets</small>
-                <b>{session.sets}</b>
-              </div>
-              <div>
-                <small>Volume</small>
-                <b>{`${session.volumeLb.toLocaleString("en-US")} lb`}</b>
-              </div>
-              <div className="row-actions">
-                <ConfirmButton
-                  label={`Delete the session on ${dateLabel(session.date)}`}
-                  onConfirm={() => onDeleteSession(session.startedAt)}
-                />
-              </div>
-            </li>
-          ))}
+          <>
+          <ul className="tl-rows tl-list">
+            {sessions.slice(0, sessionLimit).map((session) => (
+              <li className="tl-row is-static" key={session.startedAt}>
+                <button type="button" className="tl-row-copy tl-row-link" onClick={() => open({ kind: "record", date: session.date })}>
+                  <b>{session.name || "Workout"}</b>
+                  <small>
+                    {dateLabel(session.date, { weekday: "short", month: "short", day: "numeric" })}
+                    {` · ${session.exercises.slice(0, 3).join(", ")}${session.exercises.length > 3 ? `, +${session.exercises.length - 3}` : ""}`}
+                  </small>
+                </button>
+                <span className="tl-row-end stack">
+                  <b>{`${session.sets} sets`}</b>
+                  <small>{`${session.volumeLb.toLocaleString("en-US")} lb`}</small>
+                </span>
+                <div className="row-actions">
+                  <ConfirmButton
+                    label={`Delete the session on ${dateLabel(session.date)}`}
+                    onConfirm={() => onDeleteSession(session.startedAt)}
+                  />
+                </div>
+              </li>
+            ))}
           </ul>
+          {sessions.length > sessionLimit ? <button type="button" className="text-button" onClick={() => setSessionLimit((value) => value + 20)}>Earlier workouts</button> : null}
+          </>
         ) : null}
       </section>
+      {/* The load, week by week, as a tide: the page's one picture. */}
+      <details className="tl-section simple-history"><summary>Weekly training volume</summary>
+        <div className="tl-section-head">
+          <span className="tl-caps">Volume · pounds a week · 12 weeks</span>
+          <span className="tl-meta">{volumeLine}</span>
+        </div>
+        <Tide
+          data={volume.map((point) => ({ date: point.date, value: point.value && point.value > 0 ? point.value : null }))}
+          label="Volume, pounds moved a week"
+          unit=" lb"
+          min={0}
+          format={(value) => Math.round(value).toLocaleString("en-US")}
+          empty="No sets in the last twelve weeks."
+          dateFormat={{ month: "short", day: "numeric" }}
+        />
+      </details>
     </>
   );
 }

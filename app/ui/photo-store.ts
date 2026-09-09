@@ -1,17 +1,13 @@
-/**
- * Progress photos live in this device's own IndexedDB, not in the synced record.
- *
- * A synced payload is capped at about 1.5 MB, which a handful of photos would
- * blow through immediately. So the record keeps only what describes a photo —
- * its date, weight, body fat, note — and the image itself stays here. That means
- * photos do not follow you to another device and do not survive clearing site
- * data, which the Lifting page says plainly rather than hiding.
- */
+/** Photo bytes are private server records. IndexedDB preserves legacy photos and caches uploads. */
+import { typedPhoto } from "../photo-format";
 
 const DB_NAME = "bardia-health-photos";
 const STORE = "photos";
 const MAX_EDGE = 1_100;
 const QUALITY = 0.74;
+const operations = new Map<string, Promise<unknown>>();
+const loading = new Map<string, Promise<Blob | null>>();
+let erasing = false;
 
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -25,55 +21,106 @@ function open(): Promise<IDBDatabase> {
 }
 
 function run<T>(mode: IDBTransactionMode, action: (store: IDBObjectStore) => IDBRequest<T>): Promise<T> {
-  return open().then(
-    (db) =>
-      new Promise<T>((resolve, reject) => {
-        const transaction = db.transaction(STORE, mode);
-        const request = action(transaction.objectStore(STORE));
-        request.onsuccess = () => resolve(request.result);
-        request.onerror = () => reject(request.error ?? new Error("Photo storage failed."));
-        transaction.oncomplete = () => db.close();
-      }),
-  );
+  return open().then(db => new Promise<T>((resolve, reject) => {
+    const transaction = db.transaction(STORE, mode);
+    const request = action(transaction.objectStore(STORE));
+    // A successful request is not a committed write. Wait for the transaction.
+    transaction.oncomplete = () => { db.close(); resolve(request.result); };
+    transaction.onabort = () => { db.close(); reject(transaction.error ?? new Error("Photo storage failed.")); };
+    transaction.onerror = () => transaction.abort();
+  }));
 }
 
-export async function savePhoto(id: string, blob: Blob): Promise<void> {
-  await run("readwrite", (store) => store.put(blob, id));
+function inOrder<T>(id: string, action: () => Promise<T>): Promise<T> {
+  const job = (operations.get(id) ?? Promise.resolve()).catch(() => {}).then(() => {
+    if (erasing) throw new Error("Photos are being erased.");
+    return action();
+  });
+  operations.set(id, job);
+  const cleanup = () => { if (operations.get(id) === job) operations.delete(id); };
+  void job.then(cleanup, cleanup);
+  return job;
 }
 
-export async function loadPhoto(id: string): Promise<Blob | null> {
-  try {
-    return (await run<Blob | undefined>("readonly", (store) => store.get(id))) ?? null;
-  } catch {
-    return null;
+async function requestPhoto(id: string, method = "GET", blob?: Blob): Promise<Response> {
+  const response = await fetch(`/api/photos/${encodeURIComponent(id)}`, {
+    method, credentials: "same-origin", cache: "no-store", signal: AbortSignal.timeout(60_000),
+    ...(blob ? { body: blob, headers: { "Content-Type": blob.type } } : {}),
+  });
+  if (!response.ok && !(method === "GET" && response.status === 404)) {
+    throw new Error(response.status === 401 || response.status === 403 ? "Sign in to your Baseline account to access photos." : "Photo storage is unavailable. Please try again.");
   }
+  return response;
 }
 
-export async function deletePhoto(id: string): Promise<void> {
-  try {
-    await run("readwrite", (store) => store.delete(id));
-  } catch {
-    // A photo that cannot be deleted from storage is not worth blocking the
-    // record's removal; the record is what the app reads.
-  }
+async function cachePhoto(id: string, blob: Blob): Promise<void> {
+  // A tagged cache must never be mistaken for a legacy photo and re-uploaded
+  // after the authoritative image has been deleted on another device.
+  await run("readwrite", store => store.put({ blob, synced: true }, id)).catch(() => {});
 }
+
+/** The caller only adds the dated record after its bytes are durably saved. */
+export function savePhoto(id: string, blob: Blob): Promise<void> {
+  return inOrder(id, async () => {
+    const image = await typedPhoto(blob);
+    await requestPhoto(id, "PUT", image);
+    await cachePhoto(id, image);
+  });
+}
+
+/** Restore all images before making restored metadata visible. */
+export async function savePhotos(photos: Array<{ id: string; blob: Blob }>): Promise<void> {
+  for (const photo of photos) await savePhoto(photo.id, photo.blob);
+}
+
+export function loadPhoto(id: string): Promise<Blob | null> {
+  if (erasing) return Promise.resolve(null);
+  const pending = loading.get(id);
+  if (pending) return pending;
+  const result = inOrder(id, async () => {
+    const response = await requestPhoto(id);
+    if (response.status !== 404) {
+      const blob = await response.blob();
+      if (!blob.type.startsWith("image/")) throw new Error("Photo unavailable.");
+      return blob;
+    }
+    const legacy = await run<unknown>("readonly", store => store.get(id)).catch(() => null);
+    if (!(legacy instanceof Blob)) return null;
+    // Open an old photo on its original device once to carry it forward.
+    const image = await typedPhoto(legacy);
+    await requestPhoto(id, "PUT", image);
+    await cachePhoto(id, image);
+    return image;
+  });
+  loading.set(id, result);
+  const cleanup = () => { if (loading.get(id) === result) loading.delete(id); };
+  void result.then(cleanup, cleanup);
+  return result;
+}
+
+export function deletePhoto(id: string): Promise<void> {
+  return inOrder(id, async () => {
+    await requestPhoto(id, "DELETE");
+    await run("readwrite", store => store.delete(id)).catch(() => {});
+  });
+}
+
+/** Drain uploads and legacy migrations before the server erases the bucket. */
+export async function pausePhotoStorage(): Promise<void> {
+  erasing = true;
+  await Promise.allSettled([...operations.values()]);
+}
+
+export function resumePhotoStorage(): void { erasing = false; }
 
 export async function storedPhotoIds(): Promise<string[]> {
-  try {
-    const keys = await run<IDBValidKey[]>("readonly", (store) => store.getAllKeys());
-    return keys.map(String);
-  } catch {
-    return [];
-  }
+  try { return (await run<IDBValidKey[]>("readonly", store => store.getAllKeys())).map(String); }
+  catch { return []; }
 }
 
+/** Called only after the server has removed the owner's photo objects. */
 export async function clearAllPhotos(): Promise<void> {
-  try {
-    await run("readwrite", (store) => store.clear());
-  } catch {
-    // The caller still clears synced metadata; inaccessible browser storage
-    // must not make the rest of an erase operation lie about succeeding.
-  }
+  await run("readwrite", store => store.clear()).catch(() => {});
 }
 
 /**
@@ -97,7 +144,7 @@ async function decode(file: File): Promise<CanvasImageSource & { width: number; 
     return await new Promise((resolve, reject) => {
       const image = new Image();
       image.onload = () => resolve(image);
-      image.onerror = () => reject(new Error("That file could not be read as an image."));
+      image.onerror = () => reject(new Error("Unreadable image."));
       image.src = url;
     });
   } finally {

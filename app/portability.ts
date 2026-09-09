@@ -10,15 +10,17 @@ import {
   progressPhotosCsv,
   sleepEntriesCsv,
   therapyNotesCsv,
+  thoughtLoopsCsv,
+  habitsCsv,
   thoughtJournalCsv,
   workoutSetsCsv,
 } from "./health-model";
-import { normalizeAppleHealthSyncPayload } from "./apple-health-sync";
+import { normalizeAppleHealthSyncPayload, type AppleHealthSyncPayload } from "./apple-health-sync";
 import { openZipEntry, readZipDirectory, readZipEntryText } from "./import/zip";
-import { loadPhoto, savePhoto } from "./ui/photo-store";
+import { loadPhoto, savePhotos } from "./ui/photo-store";
 
 export const SOURCE_REPOSITORY = "https://github.com/bfvaseghi/health-app";
-export const SOURCE_ARCHIVE = `${SOURCE_REPOSITORY}/archive/refs/heads/main.zip`;
+export const SOURCE_ARCHIVE = "/baseline-source.zip";
 
 type BackupEnvelope = {
   format: "baseline-backup";
@@ -47,6 +49,7 @@ export type ParsedBackup = {
   state: HealthState;
   summary: BackupSummary;
   archive: File | null;
+  appleOverlay: AppleHealthSyncPayload | null;
   photoEntries: Array<{ id: string; entryName: string }>;
 };
 
@@ -127,7 +130,7 @@ function storedZip(files: ZipFile[]): Blob {
     localView.setUint32(22, file.data.length, true);
     localView.setUint16(26, name.length, true);
     new Uint8Array(local, 30).set(name);
-    localParts.push(local, file.data);
+    localParts.push(local, new Uint8Array(file.data).buffer);
 
     const central = new ArrayBuffer(46 + name.length);
     const centralView = new DataView(central);
@@ -160,13 +163,23 @@ function storedZip(files: ZipFile[]): Blob {
 function photoExtension(type: string): string {
   if (type === "image/png") return "png";
   if (type === "image/webp") return "webp";
+  if (type === "image/gif") return "gif";
+  if (type === "image/avif") return "avif";
   return "jpg";
 }
 
 export async function createBaselineArchive(
   state: HealthState,
   automaticApple: Partial<ImportRecords> | null = null,
+  sourceArchive?: Blob,
+  imageLoader: (id: string) => Promise<Blob | null> = loadPhoto,
 ): Promise<Blob> {
+  const source = sourceArchive ?? await fetch(SOURCE_ARCHIVE, { cache: "no-store" }).then((response) => {
+    if (!response.ok) throw new Error("Source archive unavailable.");
+    return response.blob();
+  });
+  if (!source) throw new Error("Source archive unavailable.");
+  await readZipDirectory(source);
   const backup = envelope(state);
   const automatic = normalizeAppleHealthSyncPayload(automaticApple);
   const combined = mergeRecords(state, automatic);
@@ -187,14 +200,13 @@ export async function createBaselineArchive(
     textFile("README.txt", [
       "BASELINE PORTABLE ARCHIVE",
       "",
-      "baseline-backup.json restores the editable record in Baseline.",
-      "automatic/apple-health.json preserves the read-only automatic Apple lane separately.",
-      "The csv folder contains human-readable tables, including automatic Apple values.",
-      "The photos folder contains locally available progress-photo images.",
-      "source.json points to the complete app source and a one-click source download.",
-      "",
-      "This archive may contain sensitive health information. Store it securely.",
+      "baseline-backup.json: editable record",
+      "automatic/apple-health.json: synced Apple Health records",
+      "csv/: tables",
+      "photos/: available progress photos",
+      "source/baseline-source.zip: app source and bundled assets",
     ].join("\n")),
+    { name: "source/baseline-source.zip", data: new Uint8Array(await source.arrayBuffer()) },
     textFile("manifest.json", JSON.stringify(manifest, null, 2)),
     textFile("source.json", JSON.stringify(backup.source, null, 2)),
     textFile("baseline-backup.json", JSON.stringify(backup, null, 2)),
@@ -209,13 +221,15 @@ export async function createBaselineArchive(
     textFile("csv/medication-doses.csv", medicationDosesCsv(state)),
     textFile("csv/therapy-notes.csv", therapyNotesCsv(state.therapyNotes)),
     textFile("csv/thought-journal.csv", thoughtJournalCsv(state.thoughtJournal)),
+    textFile("csv/thought-loops.csv", thoughtLoopsCsv(state.thoughtLoops, state.loopEvents)),
+    textFile("csv/cutting-back.csv", habitsCsv(state.habits, state.habitEvents)),
     textFile("csv/progress-photos.csv", progressPhotosCsv(state.progressPhotos)),
     textFile("csv/goals.csv", goalsCsv(state.goals)),
   ];
 
   const photoMap: Array<{ id: string; file: string; mimeType: string }> = [];
   for (const [index, photo] of state.progressPhotos.entries()) {
-    const blob = await loadPhoto(photo.id);
+    const blob = await imageLoader(photo.id);
     if (!blob) continue;
     const file = `photos/photo-${String(index + 1).padStart(4, "0")}.${photoExtension(blob.type)}`;
     photoMap.push({ id: photo.id, file, mimeType: blob.type || "image/jpeg" });
@@ -240,7 +254,7 @@ function parseJsonBackup(value: unknown): { state: HealthState; createdAt: strin
   const recognized = record.version === 1 && [
     "dailyEntries", "sleepEntries", "labResults", "workoutSets", "medications", "goals",
   ].some((key) => key in record);
-  if (!recognized) throw new Error("This is not a Baseline backup.");
+  if (!recognized) throw new Error("Not a Baseline backup.");
   return { state: normalizeHealthState(record), createdAt: typeof record.updatedAt === "string" ? record.updatedAt : null };
 }
 
@@ -248,8 +262,12 @@ export async function parseBackupFile(file: File): Promise<ParsedBackup> {
   if (/\.zip$/i.test(file.name) || file.type === "application/zip") {
     const entries = await readZipDirectory(file);
     const backupEntry = entries.find((entry) => entry.name === "baseline-backup.json");
-    if (!backupEntry) throw new Error("This archive does not contain a Baseline backup.");
+    if (!backupEntry) throw new Error("No Baseline backup in archive.");
     const parsed = parseJsonBackup(JSON.parse(await readZipEntryText(file, backupEntry)));
+    const appleEntry = entries.find((entry) => entry.name === "automatic/apple-health.json");
+    const appleOverlay = appleEntry
+      ? normalizeAppleHealthSyncPayload(JSON.parse(await readZipEntryText(file, appleEntry)))
+      : null;
     const known = new Set(parsed.state.progressPhotos.map((photo) => photo.id));
     const photoMapEntry = entries.find((entry) => entry.name === "photos/map.json");
     let photoEntries: Array<{ id: string; entryName: string }> = [];
@@ -261,7 +279,7 @@ export async function parseBackupFile(file: File): Promise<ParsedBackup> {
             const record = asRecord(value);
             const id = typeof record.id === "string" ? record.id : "";
             const entryName = typeof record.file === "string" ? record.file : "";
-            return known.has(id) && /^photos\/photo-\d{4}\.(?:jpe?g|png|webp)$/i.test(entryName) && available.has(entryName)
+            return known.has(id) && /^photos\/photo-\d{4}\.(?:jpe?g|png|webp|gif|avif)$/i.test(entryName) && available.has(entryName)
               ? [{ id, entryName }]
               : [];
           })
@@ -269,7 +287,7 @@ export async function parseBackupFile(file: File): Promise<ParsedBackup> {
     } else {
       // Version 1 archives used the photo id as the filename.
       photoEntries = entries
-        .filter((entry) => /^photos\/[^/]+\.(?:jpe?g|png|webp)$/i.test(entry.name))
+        .filter((entry) => /^photos\/[^/]+\.(?:jpe?g|png|webp|gif|avif)$/i.test(entry.name))
         .map((entry) => ({ id: entry.name.replace(/^photos\//, "").replace(/\.[^.]+$/, ""), entryName: entry.name }))
         .filter((entry) => known.has(entry.id));
     }
@@ -277,6 +295,7 @@ export async function parseBackupFile(file: File): Promise<ParsedBackup> {
       state: parsed.state,
       summary: backupSummary(parsed.state, parsed.createdAt),
       archive: file,
+      appleOverlay,
       photoEntries,
     };
   }
@@ -285,21 +304,24 @@ export async function parseBackupFile(file: File): Promise<ParsedBackup> {
     state: parsed.state,
     summary: backupSummary(parsed.state, parsed.createdAt),
     archive: null,
+    appleOverlay: null,
     photoEntries: [],
   };
 }
 
-export async function restoreArchivePhotos(parsed: ParsedBackup): Promise<number> {
+export async function restoreArchivePhotos(parsed: ParsedBackup, imageSaver: (photos: Array<{ id: string; blob: Blob }>) => Promise<void> = savePhotos): Promise<number> {
   if (!parsed.archive) return 0;
   const entries = await readZipDirectory(parsed.archive);
   const byName = new Map(entries.map((entry) => [entry.name, entry]));
-  let restored = 0;
+  const photos: Array<{ id: string; blob: Blob }> = [];
   for (const photo of parsed.photoEntries) {
     const entry = byName.get(photo.entryName);
     if (!entry) continue;
-    const blob = await new Response(await openZipEntry(parsed.archive, entry)).blob();
-    await savePhoto(photo.id, blob);
-    restored += 1;
+    const extension = photo.entryName.split(".").at(-1)?.toLowerCase();
+    const type = extension === "png" ? "image/png" : extension === "webp" ? "image/webp" : extension === "gif" ? "image/gif" : extension === "avif" ? "image/avif" : "image/jpeg";
+    const blob = await new Response(await openZipEntry(parsed.archive, entry), { headers: { "Content-Type": type } }).blob();
+    photos.push({ id: photo.id, blob });
   }
-  return restored;
+  await imageSaver(photos);
+  return photos.length;
 }

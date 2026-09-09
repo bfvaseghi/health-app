@@ -19,6 +19,7 @@ export type ImportField =
   | "weightLb"
   | "bodyFatPercent"
   | "proteinG"
+  | "waterMl"
   | "caloriesKcal"
   | "note";
 
@@ -149,6 +150,14 @@ export const importFields: FieldDefinition[] = [
     target: "daily",
     aggregate: "sum",
     aliases: ["calories", "energy", "kcal", "caloriesкcal", "caloriekcal"],
+  },
+  {
+    field: "waterMl",
+    label: "Water (mL)",
+    kind: "number",
+    target: "daily",
+    aggregate: "sum",
+    aliases: ["waterml", "watermilliliters", "watermillilitres"],
   },
   {
     field: "bodyFatPercent",
@@ -389,7 +398,7 @@ const sleepFields: ImportField[] = [
   "sleepQuality",
 ];
 
-const dailyFields: ImportField[] = ["steps", "weightLb", "bodyFatPercent", "proteinG", "caloriesKcal", "note"];
+const dailyFields: ImportField[] = ["steps", "weightLb", "bodyFatPercent", "proteinG", "waterMl", "caloriesKcal", "note"];
 
 /**
  * Turns a mapped table into records the health model can normalize. A night is
@@ -400,14 +409,14 @@ export function tableToRecords(table: Table, mapping: ColumnMapping[], source: S
   const records = emptyRecords();
   const used = mapping.filter((column) => column.field);
   if (!used.some((column) => column.field === "date" || column.field === "wakeTime")) {
-    records.warnings.push("No column is mapped to a date, so nothing can be imported from this file.");
+    records.warnings.push("Date column required.");
     return records;
   }
 
   const bareWeight = used.find((column) => column.field === "weightLb" && !weightUnitFromHeader(column.column));
   if (bareWeight) {
     records.warnings.push(
-      `“${bareWeight.column}” has no unit in the file, so it is being read as ${bareWeight.unit === "kg" ? "kilograms" : "pounds"}. Change it above if that is wrong.`,
+      `${bareWeight.column}: unit missing · assumed ${bareWeight.unit === "kg" ? "kg" : "lb"}`,
     );
   }
 
@@ -480,7 +489,7 @@ export function tableToRecords(table: Table, mapping: ColumnMapping[], source: S
   records.dailyEntries.push(...daily.values());
   if (rowsPerDate) {
     records.warnings.push(
-      `${rowsPerDate.toLocaleString("en-US")} extra ${rowsPerDate === 1 ? "row shared a date" : "rows shared a date"} with another; quantities were added together.`,
+      `${rowsPerDate.toLocaleString("en-US")} duplicate-date rows combined`,
     );
   }
   return records;

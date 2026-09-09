@@ -20,11 +20,11 @@ function bearerToken(request: Request): string | null {
 function syncError(error: unknown): Response {
   const message = error instanceof Error ? error.message : "Unexpected error";
   if (message.includes("no such table")) {
-    return Response.json({ error: "Apple Health sync is still being prepared." }, { status: 503, headers: NO_STORE });
+    return Response.json({ error: "Apple Health sync unavailable." }, { status: 503, headers: NO_STORE });
   }
   // Do not log this route's errors. A driver error can carry a bound payload,
   // and this endpoint receives health records without an interactive owner.
-  return Response.json({ error: "Apple Health sync is temporarily unavailable." }, { status: 500, headers: NO_STORE });
+  return Response.json({ error: "Apple Health sync unavailable." }, { status: 500, headers: NO_STORE });
 }
 
 async function readLimitedBody(request: Request): Promise<{ text: string } | { response: Response }> {
@@ -139,7 +139,7 @@ export async function POST(request: Request) {
       );
     }
     return Response.json(
-      { error: "Another sync is still being merged. Retry shortly." },
+      { error: "Sync busy. Retry." },
       { status: 503, headers: { ...NO_STORE, "Retry-After": "2" } },
     );
   } catch (error) {

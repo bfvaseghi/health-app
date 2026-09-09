@@ -1,5 +1,6 @@
 import { and, desc, eq, notInArray, sql } from "drizzle-orm";
 import { getDb } from "../../../db";
+import { stateBackupQuery } from "../../../db/state-backup";
 import { appleHealthSyncs, healthStateBackups, healthStates } from "../../../db/schema";
 import { hashAppleHealthSyncToken } from "../../apple-health-sync";
 import { isBaselineOwner } from "../../baseline-owner";
@@ -59,11 +60,11 @@ function sameRecord(left: ReturnType<typeof normalizeHealthState>, right: Return
 function ingestError(error: unknown): Response {
   const message = error instanceof Error ? error.message : "Unexpected error";
   if (message.includes("no such table")) {
-    return Response.json({ error: "Thought Journal sync is still being prepared." }, { status: 503, headers: NO_STORE });
+    return Response.json({ error: "Journal sync unavailable." }, { status: 503, headers: NO_STORE });
   }
   // Never log this endpoint's errors: a database driver error can repeat the
   // bound note text even when the route itself never includes it in a response.
-  return Response.json({ error: "Thought Journal sync is temporarily unavailable." }, { status: 500, headers: NO_STORE });
+  return Response.json({ error: "Journal sync unavailable." }, { status: 500, headers: NO_STORE });
 }
 
 /** Adds one selected Apple Note. The shared bearer key never grants read access. */
@@ -109,7 +110,7 @@ export async function POST(request: Request) {
       try {
         current = row ? normalizeHealthState(JSON.parse(row.payload)) : emptyHealthState();
       } catch {
-        return Response.json({ error: "The saved record could not be read." }, { status: 422, headers: NO_STORE });
+        return Response.json({ error: "Unreadable saved record." }, { status: 422, headers: NO_STORE });
       }
       const existing = current.thoughtJournal.find((entry) => entry.id === id);
       const now = new Date().toISOString();
@@ -139,17 +140,7 @@ export async function POST(request: Request) {
           .returning({ revision: healthStates.revision });
         if (!written.length) continue;
       } else {
-        const backup = db.insert(healthStateBackups).select(
-          db
-            .select({
-              userId: healthStates.userId,
-              payload: healthStates.payload,
-              createdAt: sql<string>`${now}`,
-              replacedRevision: healthStates.revision,
-            })
-            .from(healthStates)
-            .where(and(eq(healthStates.userId, connection.userId), eq(healthStates.revision, expected))),
-        );
+        const backup = stateBackupQuery(db, connection.userId, expected, now);
         const write = db
           .update(healthStates)
           .set({ payload, updatedAt: now, revision })
@@ -171,7 +162,7 @@ export async function POST(request: Request) {
       return Response.json({ stored: true, id, date: parsed.value.date, revision }, { status: 201, headers: NO_STORE });
     }
     return Response.json(
-      { error: "Another save is still being merged. Retry shortly." },
+      { error: "Save busy. Retry." },
       { status: 503, headers: { ...NO_STORE, "Retry-After": "2" } },
     );
   } catch (error) {

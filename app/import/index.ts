@@ -5,7 +5,7 @@ import { toTable } from "./csv";
 import { parseAppleHealthXml } from "./apple-health";
 import type { ColumnMapping, ParsedRecords } from "./mapping";
 import { autoMap, detectSource, emptyRecords, tableToRecords, toIsoDate, toNumber } from "./mapping";
-import { isStrongTable, strongToRecords } from "./strong";
+import { isStrongTable, strongNeedsWeightUnit, strongToRecords } from "./strong";
 import { ZipError, openZipEntry, readZipDirectory, readZipEntryText } from "./zip";
 
 export type ImportItem = {
@@ -18,7 +18,7 @@ export type ImportItem = {
   include: boolean;
 } & (
   | { kind: "table"; table: Table; mapping: ColumnMapping[] }
-  | { kind: "records"; records: ParsedRecords }
+  | { kind: "records"; records: ParsedRecords; strongTable?: Table; strongWeightUnit?: "lb" | "kg" | null }
   | { kind: "error"; message: string }
 );
 
@@ -56,7 +56,7 @@ function tableItem(fileName: string, entryName: string | undefined, text: string
       source: "other",
       include: false,
       kind: "error",
-      message: "This file has no rows under its header.",
+      message: "No data rows.",
     };
   }
 
@@ -72,6 +72,8 @@ function tableItem(fileName: string, entryName: string | undefined, text: string
       include: true,
       kind: "records",
       records: strongToRecords(table),
+      strongTable: table,
+      strongWeightUnit: strongNeedsWeightUnit(table) ? null : undefined,
     };
   }
 
@@ -252,7 +254,7 @@ function jsonItem(fileName: string, entryName: string | undefined, text: string)
   try {
     parsed = JSON.parse(text);
   } catch {
-    return { ...base, label: "Unreadable", source: "other", include: false, kind: "error", message: "This file is not valid JSON." };
+    return { ...base, label: "Unreadable", source: "other", include: false, kind: "error", message: "Invalid JSON." };
   }
 
   const record = asRecord(parsed);
@@ -263,7 +265,7 @@ function jsonItem(fileName: string, entryName: string | undefined, text: string)
       source: "other",
       include: false,
       kind: "error",
-      message: "Use Restore a backup in Data & goals so every record and goal is restored together.",
+      message: "Data & goals → Restore archive",
     };
   }
 
@@ -274,7 +276,7 @@ function jsonItem(fileName: string, entryName: string | undefined, text: string)
       source: "other",
       include: false,
       kind: "error",
-      message: "Use Restore a backup in Data & goals so every record and goal is restored together.",
+      message: "Data & goals → Restore archive",
     };
   }
 
@@ -303,7 +305,7 @@ function jsonItem(fileName: string, entryName: string | undefined, text: string)
     source: "other",
     include: false,
     kind: "error",
-    message: "Nothing in this file looks like daily or nightly records.",
+    message: "No daily or sleep records.",
   };
 }
 
@@ -368,7 +370,7 @@ export async function inspectFile(file: File, onProgress?: (fraction: number) =>
       const wanted = entries.filter(
         (entry) => !IGNORED_IN_ZIP.test(entry.name) && /\.(csv|json|xml)$/i.test(entry.name),
       );
-      if (!wanted.length) throw new ZipError("This archive has no CSV, JSON, or Apple Health export inside it.");
+      if (!wanted.length) throw new ZipError("No supported files in archive.");
 
       const items: ImportItem[] = [];
       for (const entry of wanted) {
@@ -399,7 +401,7 @@ export async function inspectFile(file: File, onProgress?: (fraction: number) =>
         source: "other",
         include: false,
         kind: "error",
-        message: error instanceof Error ? error.message : "This file could not be read.",
+        message: error instanceof Error ? error.message : "Unreadable file.",
       },
     ];
   }

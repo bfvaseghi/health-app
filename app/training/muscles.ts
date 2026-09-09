@@ -8,8 +8,8 @@
  * not a measurement.
  *
  * Matching is on keywords rather than exact names, because Strong lets you
- * rename anything: "Crunch (437 New York Ave)" and "*Cable Row (Mid-Back)" are
- * both real entries from a real export, and both have to land somewhere.
+ * rename anything: "Crunch (Example gym)" and "*Cable Row (Mid-Back)" are
+ * both example exercise names, and both have to land somewhere.
  */
 
 export type Muscle =
