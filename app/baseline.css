@@ -237,3 +237,17 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
 .why-this > summary::marker { color: var(--faint); }
 .why-this p { margin: 0 0 10px; font-size: .9375rem; line-height: 1.6; color: var(--muted); max-width: 62ch; }
 .why-this p:last-child { margin-bottom: 0; }
+
+/* Where the recommendation came from. */
+.record-age { margin: 10px 0 0; font-size: .8125rem; color: var(--cover-muted); }
+
+/* Every muscle group and when it was last worked: the coverage question,
+   answered at a glance instead of read off a budget chart. */
+.coverage-strip { padding: 16px 24px; border-top: 1px solid var(--line); }
+.coverage-strip-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); margin-bottom: 12px; }
+.coverage-strip ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px 12px; }
+.coverage-strip li { display: grid; gap: 1px; padding-left: 9px; border-left: 3px solid var(--accent-pale); }
+.coverage-strip li.is-behind { border-left-color: var(--warn); }
+.coverage-strip b { font-size: .8125rem; font-weight: 600; }
+.coverage-strip small { font-size: .75rem; color: var(--muted); }
+.coverage-strip li.is-behind small { color: var(--warn); }

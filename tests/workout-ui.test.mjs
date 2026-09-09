@@ -24,7 +24,7 @@ test("the workout screen gives compact targets with no separate Train or History
   assert.match(html, /role="tab"[^>]*>Progress<\/button>/);
   assert.doesNotMatch(html, /role="tab"[^>]*>History<\/button>/);
   assert.match(html, /aria-label="Next workout plan"/);
-  assert.match(plain(html), /Today Full body/);
+  assert.match(plain(html), /Do this next Full body/);
   assert.doesNotMatch(html, />Train<|Step 3/);
   assert.match(plain(html), /Copy for Strong/);
   // What to do when you finish, in one line rather than its own block.
@@ -109,7 +109,7 @@ test("a real Strong CSV import advances the workout and carries omitted core int
     const coreSets = second.exercises.filter(lift => lift.muscle === "core").reduce((sum, lift) => sum + lift.sets, 0);
     assert.equal(coreSets, 5, "the second base replaces the omitted core set");
     const html = view(imported, "workout", date);
-    assert.match(plain(html), /Today Full body/);
+    assert.match(plain(html), /Do this next Full body/);
     assert.doesNotMatch(html, /core-divider|workout-part/);
     for (const lift of second.exercises.filter(lift => lift.muscle === "core")) {
       assert.ok(plain(html).includes(lift.exercise.replace(/\s*\([^)]+\)$/, "")), "core exercises remain in the main workout");
@@ -159,8 +159,7 @@ test("Fitness opens on the workout itself, with no step to complete first", () =
   // The week is a line of context, and the import stays reachable from it.
   // The workout is named by what it trains, and says whether it is one you
   // need. Nothing about weeks, slots or coverage appears here.
-  assert.match(plain(html), /Today Full body/);
-  assert.match(plain(html), /This one you need/);
+  assert.match(plain(html), /Do this next Full body/);
   assert.doesNotMatch(plain(html), /Muscle coverage|of 4 logged|Workout \d/);
   // The reasoning is available without being somewhere you have to go.
   assert.match(plain(html), /Why this workout/);
