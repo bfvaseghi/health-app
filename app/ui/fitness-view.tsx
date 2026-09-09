@@ -76,7 +76,7 @@ export function FitnessView({
         </div>
       <div id="fitness-panel-coach" role="tabpanel" aria-labelledby="fitness-tab-coach" hidden={tab !== "coach"}>
       {tab === "coach" && (
-        <CoachTab selected={selected} onSelect={setSelected} state={state} today={today} open={open} onGoals={onGoals} onNotice={onNotice} onMuscles={() => navigate("muscles")} />
+        <CoachTab selected={selected} onSelect={setSelected} state={state} today={today} open={open} onGoals={onGoals} onNotice={onNotice} />
       )}
       </div>
       <div id="fitness-panel-progress" role="tabpanel" aria-labelledby="fitness-tab-progress" hidden={tab !== "progress"}>
@@ -84,7 +84,7 @@ export function FitnessView({
       </div>
       <div id="fitness-panel-muscles" role="tabpanel" aria-labelledby="fitness-tab-muscles" hidden={tab !== "muscles"}>
       {tab === "muscles" && (
-        <CoachTab selected={selected} onSelect={setSelected} state={state} today={today} open={open} onGoals={onGoals} onNotice={onNotice} mode="muscles" onMuscles={() => navigate("muscles")} onWorkout={() => navigate("coach")} />
+        <CoachTab selected={selected} onSelect={setSelected} state={state} today={today} open={open} onGoals={onGoals} onNotice={onNotice} mode="muscles" onWorkout={() => navigate("coach")} />
       )}
       </div>
       <div id="fitness-panel-body" role="tabpanel" aria-labelledby="fitness-tab-body" hidden={tab !== "body"}>

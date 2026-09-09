@@ -21,14 +21,13 @@ import type { Modal } from "./types";
 
 /** The plan and muscle graph use the same post-import calculation. */
 export function CoachTab({
-  state, today, open, onGoals, onNotice, onMuscles, onWorkout, mode = "workout", selected = null, onSelect,
+  state, today, open, onGoals, onNotice, onWorkout, mode = "workout", selected = null, onSelect,
 }: {
   state: HealthState;
   today: string;
   open: (modal: Modal) => void;
   onGoals: (goals: GoalSettings | ((current: GoalSettings) => GoalSettings)) => void;
   onNotice: (message: string) => void;
-  onMuscles: () => void;
   onWorkout?: () => void;
   mode?: "workout" | "muscles";
   selected?: string | null;
@@ -42,10 +41,8 @@ export function CoachTab({
   const foundation = useMemo(() => baseCoverage(planned), [planned]);
   const baseOutlook = useMemo(() => weekOutlook(plan, state, today, { baseOnly: true }), [plan, state, today]);
   const sessions = useMemo(() => buildWorkoutSessions(state.workoutSets.filter(set => set.date <= today)), [state.workoutSets, today]);
-  const latest = sessions[0];
   const importedCount = sessions.filter(session => session.date >= weekStart(today)).length;
   const baseGaps = baseOutlook.filter(row => row.shortBy > 0);
-  const allGaps = outlook.filter(row => row.shortBy > 0);
   const foundationMinutes = useMemo(() => {
     if ((importedCount ? !baseGaps.length : foundation.complete) || plan.deload || planned.missing.length) return null;
     return [60, 75, 90, 120].find(minutes => {
