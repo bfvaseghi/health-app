@@ -72,3 +72,10 @@ export function sinceLabel(days: number | null): string {
   if (days === 1) return "yesterday";
   return `${days} days ago`;
 }
+
+/** The same fact in a column: "today", "2d", "never". */
+export function sinceShort(days: number | null): string {
+  if (days === null) return "never";
+  if (days <= 0) return "today";
+  return `${days}d`;
+}

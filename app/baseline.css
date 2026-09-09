@@ -1,7 +1,12 @@
 /* Baseline's daily record: one working surface, compact actions, blue ink. */
 :root { --paper: #ffffff; --canvas: #eff3f5; --raised: #f7f9fa; --soft: #eaf0f3; --sidebar: 208px; }
-:root[data-theme="dark"] { --paper: #172f40; --canvas: #102330; --raised: #1b3546; --soft: #203b4c; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --paper: #172f40; --canvas: #102330; --raised: #1b3546; --soft: #203b4c; } }
+/* Dark surfaces need a real ladder, not four shades of the same navy.
+   The page ground was #102330 and a card was #172f40 — five points of
+   lightness apart, under a border at 16% alpha — so every card sat invisibly
+   on the page and the whole screen read as one navy field. The ground drops,
+   the card lifts, and the hairline is actually visible. */
+:root[data-theme="dark"] { --canvas: #081119; --paper: #152734; --raised: #1d3242; --soft: #243c4e; --cover: #1e3a50; --line: rgba(203, 221, 231, .22); --line-strong: rgba(203, 221, 231, .38); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --canvas: #081119; --paper: #152734; --raised: #1d3242; --soft: #243c4e; --cover: #1e3a50; --line: rgba(203, 221, 231, .22); --line-strong: rgba(203, 221, 231, .38); } }
 .app-shell { background-image: none; }
 .page, .tl-page, .mind-page, .view-fitness .fitness-page { width: 100%; max-width: 936px; margin-inline: auto; padding: 32px 32px 100px; }
 .record-heading { padding-bottom: 18px; margin-bottom: 24px; gap: 8px 16px; }
@@ -202,78 +207,158 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
 @media (max-width: 520px) { .daily-side { grid-template-columns: minmax(0, 1fr); } .daily-training { padding: 20px; } .week-setup-heading { align-items: flex-start; } .daily-checklist .water-tracker .tl-row { flex-wrap: wrap; } .daily-checklist .water-tracker .tl-row-copy { flex-basis: 80px; } }
 @media (max-width: 360px) { .record-tabs button { font-size: .8125rem; } .dose-card-body { grid-template-columns: minmax(0, 1fr); } .dose-card .consistency-number { max-width: none; margin-left: 38px; } .dose-card .consistency-number > strong > span { display: inline; } .daily-checklist .tl-row { flex-wrap: wrap; } }
 
-.compact-lift .lift-summary[aria-expanded="true"] .compact-lift-title > svg { transform: rotate(90deg); }
+/* ------------------------------------------------------------------ Fitness
 
-/* The week is one line of context above the workout, not a screen you finish
-   before the workout is allowed to appear. */
-.week-line { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px 14px; margin: 0 0 16px; font-size: .875rem; color: var(--muted); }
-.week-line b { font-weight: 600; color: var(--ink); }
-.week-line .text-button { min-height: 44px; }
+   Four rows, each stating its own answer while shut. What used to be four
+   numbered tabs: a stamp saying where the numbers came from, then Next up,
+   Coverage, Strength and Body. */
 
-/* Said once, above the rows, indented to sit over the numbers it names. */
-.prescription-columns { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr) minmax(0, .75fr); gap: 12px; margin: 0 24px; padding: 16px 0 10px 40px; border-bottom: 1px solid var(--line); font-size: .8125rem; letter-spacing: .01em; color: var(--muted); }
+/* Provenance, at the top, above everything derived from it. */
+.record-stamp { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 0 2px 0 14px; margin-bottom: 4px; border-left: 2px solid var(--accent-pale); text-align: left; font-size: .8125rem; line-height: 1.4; color: var(--muted); }
+.record-stamp > svg { width: 15px; height: 15px; flex: none; }
+.record-stamp > span { flex: 1; min-width: 0; }
+.record-stamp > b { flex: none; font-weight: 650; color: var(--accent-strong); }
+.record-stamp.is-accent { border-left-color: var(--accent); }
+.record-stamp.is-waiting, .record-stamp.is-stale { border-left-color: var(--warn); color: var(--warn); }
+.record-stamp.is-waiting > b, .record-stamp.is-stale > b { color: var(--warn); }
+
+.answer-stack { border-top: 1px solid var(--line); }
+.answer-row { position: relative; border-bottom: 1px solid var(--line); padding-left: 14px; }
+.answer-row::before { content: ""; position: absolute; left: 0; top: 0; bottom: -1px; width: 2px; background: var(--accent-pale); }
+.answer-row.is-primary::before { background: var(--accent); }
+.answer-row.is-warn::before { background: var(--warn); }
+.answer-row.is-empty::before { background: var(--line-strong); }
+.answer-row.is-empty .answer-lines { opacity: .62; }
+
+.answer-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 6px 12px; width: 100%; padding: 18px 0 10px; text-align: left; }
+.answer-eyebrow { grid-column: 1 / -1; display: flex; justify-content: space-between; align-items: baseline; gap: 12px; font-size: .6875rem; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+.answer-eyebrow > span:last-child { text-transform: none; letter-spacing: .01em; font-size: .75rem; white-space: nowrap; }
+.answer-lines { display: grid; gap: 3px; min-width: 0; }
+.answer-headline { font-size: 1.5rem; font-weight: 600; letter-spacing: -.022em; line-height: 1.15; }
+.answer-row.is-warn .answer-headline { color: var(--warn); }
+.answer-subline { font-size: .875rem; line-height: 1.45; color: var(--muted); }
+.answer-chevron { width: 16px; height: 16px; flex: none; align-self: center; color: var(--muted); }
+.answer-row.is-open .answer-chevron { transform: rotate(90deg); }
+.answer-graphic { padding-bottom: 14px; }
+.answer-action { padding-bottom: 18px; }
+.answer-action .button { width: 100%; }
+.answer-body { padding: 2px 0 24px; }
 
 /* What the button does, under the button's own label. */
 .copy-strong { align-items: center; text-align: left; }
 .copy-strong > span { display: grid; }
 .copy-strong small { font-weight: 400; opacity: .8; font-size: .75rem; margin-top: 1px; }
 
-/* The rest of the week: a short list, not a fold inside a preview panel. */
-.later-list { margin-top: 18px; border-top: 1px solid var(--line); }
-.later-list > button { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 52px; padding: 12px 4px; text-align: left; border-bottom: 1px solid var(--line); }
-.later-list > button > span { display: grid; }
-.later-list b { font-size: .9375rem; font-weight: 550; }
-.later-list small { font-size: .8125rem; color: var(--muted); margin-top: 2px; }
-.later-list > button > svg { width: 18px; height: 18px; color: var(--muted); flex: none; }
-.later-list > .text-button { margin-top: 10px; }
+/* One pip a session; filled when the engine has matched it to a real imported
+   workout. Importing fills one, which is the app showing it read the record. */
+.week-pips { display: flex; align-items: center; gap: 7px; font-size: .8125rem; color: var(--muted); }
+.week-pips i { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--line-strong); flex: none; }
+.week-pips i.is-done { background: var(--accent); border-color: var(--accent); }
+.week-pips i.is-now { border-color: var(--accent); border-style: solid; border-width: 3px; }
+.week-pips i.is-optional { border-style: dashed; }
+.week-pips span { margin-left: 5px; }
 
-/* The one line about what happens after the workout. */
-.after-line { margin: 22px 0 0; font-size: .875rem; line-height: 1.6; color: var(--muted); }
-.after-line .text-button { display: inline; min-height: 0; padding: 0; font-size: inherit; font-weight: 600; color: var(--ink); text-decoration: underline; }
+/* Eleven bars on one shared ceiling, so equal set counts draw equal heights.
+   The target floor is a notch on top of the fill, not a band underneath it. */
+.mini-coverage { display: grid; grid-template-columns: repeat(11, minmax(0, 1fr)); gap: 6px; }
+.mini-bar { display: grid; gap: 6px; justify-items: center; min-width: 0; }
+.mini-bar > span { position: relative; display: block; width: 100%; height: 36px; background: var(--soft); border-radius: 2px; overflow: hidden; }
+.mini-bar i { position: absolute; left: 0; right: 0; bottom: 0; display: block; }
+.mini-bar i.done { background: var(--accent); }
+.mini-bar i.planned { background: color-mix(in srgb, var(--accent) 48%, var(--soft)); }
+.mini-bar i.optional { background: color-mix(in srgb, var(--accent) 20%, var(--soft)); }
+.mini-bar i.notch { height: 2px; background: var(--ink); }
+.mini-bar.is-under i.done { background: var(--warn); }
+.mini-bar.is-under i.planned { background: color-mix(in srgb, var(--warn) 45%, var(--soft)); }
+.mini-bar.is-under i.optional { background: color-mix(in srgb, var(--warn) 20%, var(--soft)); }
+.mini-bar.is-under > span { box-shadow: inset 0 0 0 1px var(--warn); }
+.mini-bar.is-over i.done { background: var(--chart-bar); }
+.mini-bar small { font-size: .5625rem; letter-spacing: .04em; color: var(--faint); }
 
-/* The reasoning behind today's workout, available without being a destination. */
-.why-this { margin: 0; padding: 16px 24px 20px; border-top: 1px solid var(--line); }
-.why-this > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: .875rem; font-weight: 600; color: var(--muted); }
-.why-this > summary::marker { color: var(--faint); }
-.why-this p { margin: 0 0 10px; font-size: .9375rem; line-height: 1.6; color: var(--muted); max-width: 62ch; }
-.why-this p:last-child { margin-bottom: 0; }
+.lens-tabs { margin-bottom: 14px; }
+.chart-key-caption { margin: -12px 0 12px; font-size: .75rem; color: var(--muted); }
+.chart-axis { display: flex; justify-content: space-between; padding-bottom: 6px; font-size: .6875rem; color: var(--faint); border-bottom: 1px solid var(--line); }
+.chart-key.optional { background: color-mix(in srgb, var(--accent) 20%, var(--soft)); }
 
-/* Where the recommendation came from. */
-.record-age { margin: 10px 0 0; font-size: .8125rem; color: var(--cover-muted); }
+/* One grid on the list, not one per row: the per-row `auto` column sized each
+   track to its own value column, so the same set count drew different lengths
+   on different muscles — on the one picture in the section worth reading. */
+.fitness-page .muscle-chart-list { display: grid; grid-template-columns: 94px minmax(0, 1fr) 38px 34px; align-items: center; }
+.fitness-page .muscle-chart-item { display: contents; }
+.fitness-page .muscle-chart-row { display: contents; }
+.fitness-page .muscle-chart-item > .row-detail { grid-column: 1 / -1; padding: 2px 0 16px; }
+.fitness-page .muscle-chart-name { grid-column: 1; display: grid; grid-template-columns: minmax(0, 1fr) 12px; align-items: center; gap: 0 4px; padding: 9px 0; font-size: .875rem; font-weight: 550; border-bottom: 1px solid var(--line); }
+.fitness-page .muscle-chart-name > b { font-weight: 600; min-width: 0; }
+.fitness-page .muscle-chart-name > svg { width: 12px; height: 12px; color: var(--faint); }
+.fitness-page .muscle-chart-name small { grid-column: 1 / -1; font-size: .625rem; letter-spacing: .02em; color: var(--warn); }
+.fitness-page .muscle-chart-item.high .muscle-chart-name small { color: var(--muted); }
+.fitness-page .muscle-chart-track { grid-column: 2; height: 16px; margin: 0 10px; }
+.fitness-page .muscle-chart-total { grid-column: 3; text-align: right; font-size: .875rem; font-weight: 600; font-variant-numeric: tabular-nums; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.fitness-page .muscle-chart-last { grid-column: 4; text-align: right; font-size: .6875rem; color: var(--faint); font-variant-numeric: tabular-nums; padding: 9px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+.fitness-page .muscle-chart-item.low .muscle-chart-total { color: var(--warn); }
+.fitness-page .muscle-chart-item.is-missing { opacity: .55; }
+/* Painted last so the floor survives being met — it used to sit under the bar
+   and was therefore visible only when he had missed it. */
+.fitness-page .muscle-chart-track .muscle-chart-band { z-index: 2; background: none; border: 0; border-left: 2px solid var(--ink); border-right: 1px dashed var(--line-strong); }
+.fitness-page .muscle-chart-optional { background: color-mix(in srgb, var(--accent) 20%, var(--soft)); }
+.fitness-page .muscle-chart-item.is-open .muscle-chart-name,
+.fitness-page .muscle-chart-item.is-open .muscle-chart-total,
+.fitness-page .muscle-chart-item.is-open .muscle-chart-last { background: var(--paper); }
 
-/* Every muscle group and when it was last worked: the coverage question,
-   answered at a glance instead of read off a budget chart. */
-.coverage-strip { padding: 16px 24px; border-top: 1px solid var(--line); }
-.coverage-strip-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: .75rem; letter-spacing: .08em; text-transform: uppercase; color: var(--faint); margin-bottom: 12px; }
-.coverage-strip ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 10px 12px; }
-.coverage-strip li { display: grid; gap: 1px; padding-left: 9px; border-left: 3px solid var(--accent-pale); }
-.coverage-strip li.is-behind { border-left-color: var(--warn); }
-.coverage-strip b { font-size: .8125rem; font-weight: 600; }
-.coverage-strip small { font-size: .75rem; color: var(--muted); }
-.coverage-strip li.is-behind small { color: var(--warn); }
+.fix-picker { display: flex; flex-wrap: wrap; align-items: end; gap: 10px; margin: 12px 0 14px; }
+.fix-picker label { display: grid; gap: 4px; flex: 1 1 190px; min-width: 0; font-size: .75rem; color: var(--muted); }
+.fix-picker select { min-height: 44px; }
 
-/* The tabs are numbered because they are the loop, in order. */
-.fitness-page .record-tabs button { display: flex; align-items: center; justify-content: center; gap: 7px; }
-.step-n {
-  display: grid; place-items: center; flex: none;
-  width: 20px; height: 20px; border-radius: 50%;
-  background: var(--soft); color: var(--muted);
-  font-size: .6875rem; font-weight: 700; font-variant-numeric: tabular-nums;
+/* One lift, one line, under a column head stated once. */
+.lift-columns { display: grid; grid-template-columns: 4.75rem 5.25rem 3rem minmax(0, 1fr); gap: 8px; margin: 16px 0 0 32px; padding-bottom: 8px; border-bottom: 1px solid var(--line); font-size: .6875rem; letter-spacing: .04em; text-transform: uppercase; color: var(--faint); }
+.lift-row { border-bottom: 1px solid var(--line); }
+.lift-row > button { display: block; width: 100%; padding: 11px 0; text-align: left; }
+.lift-row-name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.lift-row-name b { font-size: .9375rem; font-weight: 600; }
+.lift-row-name em { font-style: normal; font-size: .75rem; color: var(--muted); }
+.lift-row-name .lift-falling { color: var(--warn); font-size: .875rem; }
+.lift-row-name > svg:last-child { width: 14px; height: 14px; margin-left: auto; color: var(--muted); flex: none; }
+.lift-row > button[aria-expanded="true"] .lift-row-name > svg:last-child { transform: rotate(90deg); }
+.lift-row .movement-icon { width: 24px; height: 24px; flex: none; }
+.lift-row-values { display: grid; grid-template-columns: 4.75rem 5.25rem 3rem minmax(0, 1fr); gap: 8px; margin: 5px 0 0 32px; font-size: .875rem; font-variant-numeric: tabular-nums; }
+.lift-chip { color: var(--muted); font-size: .8125rem; }
+.lift-chip.increase { color: var(--accent-strong); }
+.lift-chip.reset, .lift-chip.reduce { color: var(--warn); }
+.lift-chip small { display: block; font-size: .625rem; opacity: .85; }
+.lift-row .prescription-detail { padding: 0 0 16px 32px; }
+.lift-fills .text-button { min-height: 0; padding: 0; font-size: inherit; text-decoration: underline; }
+
+.trend-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
+.trend-filters button { min-height: 40px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--line-strong); font-size: .8125rem; }
+.trend-filters button.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.trend-group-head { display: flex; justify-content: space-between; gap: 12px; margin: 20px 0 2px; padding-top: 12px; border-top: 1px solid var(--line); font-size: .6875rem; letter-spacing: .1em; text-transform: uppercase; color: var(--faint); }
+.trend-est { color: var(--muted); font-size: .8125rem; }
+.strength-spark { display: block; width: 100%; height: 26px; }
+.strength-spark polyline { fill: none; stroke: var(--accent); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+
+.counted-fold { border-top: 1px solid var(--line); margin-top: 18px; }
+.counted-fold > summary { min-height: 44px; display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: .875rem; font-weight: 600; color: var(--muted); }
+.counted-fold > summary svg { width: 16px; height: 16px; }
+.excluded-list { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 8px; }
+.excluded-list li { display: grid; gap: 1px; font-size: .875rem; }
+.excluded-list small { font-size: .75rem; color: var(--muted); }
+
+.inline-field { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 14px 0 4px; font-size: .875rem; }
+.inline-field select { min-height: 44px; }
+.planned-minutes { margin: 4px 0 0; font-size: .875rem; color: var(--muted); }
+
+.session-chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 4px; }
+.session-chips button { display: grid; min-height: 44px; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--line-strong); font-size: .875rem; text-align: left; }
+.session-chips button[aria-pressed="true"] { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.session-chips button.is-optional { border-style: dashed; }
+.session-chips small { font-size: .625rem; opacity: .8; }
+
+.phase-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0; padding: 14px 16px; border: 1px solid var(--warn); border-radius: 10px; }
+.phase-confirm p { flex-basis: 100%; margin: 0; font-size: .875rem; line-height: 1.5; }
+
+@media (max-width: 400px) {
+  .answer-headline { font-size: 1.375rem; }
+  .fitness-page .muscle-chart-list { grid-template-columns: 86px minmax(0, 1fr) 34px 30px; }
+  .fitness-page .muscle-chart-track { margin: 0 7px; }
+  .lift-columns, .lift-row-values { grid-template-columns: 4.25rem 4.5rem 2.6rem minmax(0, 1fr); gap: 6px; }
 }
-.fitness-page .record-tabs button[aria-selected="true"] .step-n { background: var(--signal); color: var(--signal-ink); }
-
-/* Step one: how current your record is, and the three things to do about it. */
-.step-page { display: grid; gap: 22px; }
-.step-status { padding: 20px 22px; border: 1px solid var(--line); border-left: 4px solid var(--accent-pale); border-radius: 12px; background: var(--paper); display: grid; gap: 6px; }
-.step-status.is-stale { border-left-color: var(--warn); }
-.step-status .tl-caps { color: var(--faint); }
-.step-status b { font-size: 1.375rem; font-weight: 600; letter-spacing: -.02em; }
-.step-status > span:last-child { font-size: .9375rem; line-height: 1.6; color: var(--muted); max-width: 60ch; }
-
-.step-how { list-style: none; margin: 0; padding: 0; display: grid; gap: 20px; }
-.step-how li { display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 14px; align-items: start; }
-.step-how .n { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--cover); color: var(--signal); font-weight: 700; font-size: .875rem; }
-.step-how li > span:last-child { display: grid; gap: 5px; }
-.step-how b { font-size: 1.0625rem; font-weight: 600; }
-.step-how small { font-size: .9375rem; line-height: 1.6; color: var(--muted); max-width: 58ch; }
-.step-how .button { justify-self: start; margin-top: 6px; }

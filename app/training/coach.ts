@@ -1826,6 +1826,16 @@ export type MuscleOutlook = {
   done: number;
   /** Work the sessions still to come will add. */
   coming: number;
+  /**
+   * The same work split by whether you actually have to do it.
+   *
+   * A bar that reaches its target only because of a session the workout screen
+   * calls "only if you want it" is a promise conditional on optional work, and
+   * drawing the two the same way is how a week can look covered and then not
+   * be. These sum to `coming`.
+   */
+  comingRequired: number;
+  comingOptional: number;
   /** done + coming: where the week ends up if the rest of it gets done. */
   projected: number;
   /** The sets behind those numbers, for anyone who wants to see them. */
@@ -1863,6 +1873,8 @@ export function weekOutlook(plan: Plan, state: HealthState, asOf = todayLocal(),
 
   const comingDirect = new Map<Muscle, number>();
   const comingIndirect = new Map<Muscle, number>();
+  const optionalDirect = new Map<Muscle, number>();
+  const optionalIndirect = new Map<Muscle, number>();
   const remaining = remainingSessions(plan, state, asOf);
   // A plan that tags nothing still has a first two visits, and asking only
   // about them is the whole point of baseOnly. Without this the filter dropped
@@ -1876,11 +1888,16 @@ export function weekOutlook(plan: Plan, state: HealthState, asOf = todayLocal(),
   );
   for (const session of remaining) {
     if (options.baseOnly && !baseNames.has(session.name)) continue;
+    const optional = session.tier === "extra";
     for (const exercise of session.exercises) {
       const info = classifyExercise(exercise.exercise);
-      for (const muscle of info.direct) comingDirect.set(muscle, (comingDirect.get(muscle) ?? 0) + exercise.sets);
+      for (const muscle of info.direct) {
+        comingDirect.set(muscle, (comingDirect.get(muscle) ?? 0) + exercise.sets);
+        if (optional) optionalDirect.set(muscle, (optionalDirect.get(muscle) ?? 0) + exercise.sets);
+      }
       for (const muscle of info.indirect) {
         comingIndirect.set(muscle, (comingIndirect.get(muscle) ?? 0) + exercise.sets);
+        if (optional) optionalIndirect.set(muscle, (optionalIndirect.get(muscle) ?? 0) + exercise.sets);
       }
     }
   }
@@ -1890,6 +1907,7 @@ export function weekOutlook(plan: Plan, state: HealthState, asOf = todayLocal(),
     const indirect = (doneIndirect.get(muscle) ?? 0) + (comingIndirect.get(muscle) ?? 0);
     const done = workValue(doneDirect.get(muscle) ?? 0, doneIndirect.get(muscle) ?? 0);
     const coming = workValue(comingDirect.get(muscle) ?? 0, comingIndirect.get(muscle) ?? 0);
+    const comingOptional = workValue(optionalDirect.get(muscle) ?? 0, optionalIndirect.get(muscle) ?? 0);
     const projected = workValue(direct, indirect);
     const target = weeklyTargets[muscle];
     const shortBy = Math.max(
@@ -1901,6 +1919,11 @@ export function weekOutlook(plan: Plan, state: HealthState, asOf = todayLocal(),
       label: muscleLabels[muscle],
       done,
       coming,
+      comingRequired: workValue(
+        (comingDirect.get(muscle) ?? 0) - (optionalDirect.get(muscle) ?? 0),
+        (comingIndirect.get(muscle) ?? 0) - (optionalIndirect.get(muscle) ?? 0),
+      ),
+      comingOptional,
       projected,
       direct,
       indirect,
@@ -2580,9 +2603,17 @@ function sessionLines(session: PlannedSession): string[] {
   );
 }
 
-/** A single session as text — what you paste in on the way to the gym. */
-export function sessionToText(plan: Plan, session: PlannedSession): string {
-  const lines = [`${session.name} · ${weekLabel(plan)}`, "", ...sessionLines(session), ""];
+/**
+ * A single session as text — what you paste in on the way to the gym.
+ *
+ * The heading carries the day it was copied. Two workouts pasted into Strong in
+ * one week used to arrive under identical headings with no date on either, so
+ * the one artefact that leaves this app and lands where the training happens
+ * was the one with the least identity.
+ */
+export function sessionToText(plan: Plan, session: PlannedSession, copiedOn?: string): string {
+  const stamp = copiedOn ? ` · copied ${copiedOn}` : "";
+  const lines = [`${session.name} · ${weekLabel(plan)}${stamp}`, "", ...sessionLines(session), ""];
   return lines.join("\n").trimEnd();
 }
 

@@ -285,9 +285,9 @@ const aliases: Record<string, keyof typeof paths> = {
   urges: "pulse",
 };
 
-export function Icon({ name }: { name: string }) {
+export function Icon({ name, className }: { name: string; className?: string }) {
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" className={className}>
       {paths[name] ?? paths[aliases[name] ?? "spark"]}
     </svg>
   );

@@ -225,6 +225,14 @@ export type GoalSettings = {
   trainingBlockStart: string;
   /** Frozen direct-set baseline by muscle for this block. */
   trainingAnchorSets: Record<string, number>;
+  /**
+   * The last workout you copied out, and when.
+   *
+   * This is the only evidence the app has that the ball is in Strong's court:
+   * you took a workout out of here and have not brought a newer record back.
+   * Null once an import arrives carrying work done after the copy.
+   */
+  lastCopied: { at: string; session: string } | null;
 };
 
 /** One change you made to one lift in one session of one week. */
@@ -242,6 +250,16 @@ export type AddedSet = {
 export type HealthState = {
   version: 1;
   updatedAt: string;
+  /**
+   * When a Strong export was last brought in, as an ISO timestamp.
+   *
+   * Distinct from the date of the newest workout in the record, which is what
+   * the app used to print as "last updated". Those are different facts: one is
+   * about training, the other about the log, and reading the second off the
+   * first tells someone who has been lifting without importing that his record
+   * is current when it is a fortnight stale. Null when it was never recorded.
+   */
+  importedAt: string | null;
   medications: Medication[];
   medicationDoses: MedicationDose[];
   dailyEntries: DailyEntry[];
@@ -288,12 +306,14 @@ export const defaultGoals: GoalSettings = {
   addedSets: [],
   trainingBlockStart: "",
   trainingAnchorSets: {},
+  lastCopied: null,
 };
 
 export function emptyHealthState(now = new Date()): HealthState {
   return {
     version: 1,
     updatedAt: now.toISOString(),
+    importedAt: null,
     medications: [],
     medicationDoses: [],
     dailyEntries: [],
@@ -786,7 +806,15 @@ export function normalizeGoals(value: unknown): GoalSettings {
         .map(([key, value]) => [key, finiteNumber(value, 0, 30)] as const)
         .filter((entry): entry is [string, number] => entry[1] !== null),
     ),
+    lastCopied: normalizeLastCopied(goals.lastCopied),
   };
+}
+
+function normalizeLastCopied(value: unknown): GoalSettings["lastCopied"] {
+  const entry = recordValue(value);
+  const at = typeof entry.at === "string" && validIsoDate(entry.at.slice(0, 10)) ? entry.at : null;
+  const session = safeText(entry.session, 80);
+  return at && session ? { at, session } : null;
 }
 
 /**
@@ -1060,6 +1088,9 @@ export function normalizeHealthState(value: unknown): HealthState {
   return {
     version: 1,
     updatedAt: newestIsoTimestamp(state.updatedAt),
+    // A record saved before imports were stamped reports "not recorded" rather
+    // than borrowing a date from the newest workout, which is a different fact.
+    importedAt: typeof state.importedAt === "string" && validIsoDate(state.importedAt.slice(0, 10)) ? state.importedAt : null,
     medications,
     // What was already recorded against a medication wins over what is being
     // carried across, so a migrated day is never resurrected over an edit.

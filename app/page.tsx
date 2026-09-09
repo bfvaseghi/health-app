@@ -80,7 +80,7 @@ import { RecordDay } from "./ui/record-day";
 import { clearWorkoutDraft } from "./ui/workout-session";
 import { TodayView } from "./ui/today-view";
 import { formatTimestamp } from "./ui/format";
-import { FitnessTab, MindTab, Modal, SaveStatus, Theme, Toast, View, mobileNavOrder, navOrder, viewLabels } from "./ui/types";
+import { FitnessOpen, MindTab, Modal, SaveStatus, Theme, Toast, View, fitnessAllClosed, mobileNavOrder, navOrder, viewLabels } from "./ui/types";
 
 const THEME_KEY = "bardia-health-theme";
 const initialState = emptyHealthState();
@@ -118,7 +118,9 @@ export default function Home() {
   // navigation, so synthetic memory can never turn into a saveable real state.
   const [demoMode] = useState(requestedDemoMode);
   const [view, setView] = useState<View>("today");
-  const [fitnessTab, setFitnessTab] = useState<FitnessTab>("workout");
+  // Which Fitness rows are open. Held here so returning from another
+  // section restores the layout he built rather than resetting it.
+  const [fitnessRows, setFitnessRows] = useState<FitnessOpen>(fitnessAllClosed);
   const [mindTab, setMindTab] = useState<MindTab>("thoughts");
   const [journalComposeRequest, setJournalComposeRequest] = useState(0);
   const [journalDraft, setJournalDraft] = useState<"entry" | "edit" | null>(null);
@@ -418,7 +420,6 @@ export default function Home() {
 
   const go = useCallback((next: View, mindTarget?: MindTab, focusJournal = false) => {
     if (next === "mind" && mindTarget) setMindTab(mindTarget);
-    if (next === "fitness") setFitnessTab("workout");
     setView(next);
     // A section change is a new screen. An animated carry-over can leave the
     // next heading above the viewport for several frames, especially on iOS.
@@ -806,8 +807,8 @@ export default function Home() {
         {view === "fitness" && (
           <FitnessView
             key={fitnessRevision}
-            tab={fitnessTab}
-            onTab={setFitnessTab}
+            rows={fitnessRows}
+            onRows={setFitnessRows}
             loadImage={demoMode ? loadDemoPhoto : undefined}
             state={visibleState}
             editableState={state}
@@ -957,7 +958,7 @@ export default function Home() {
             const next = applyImport(before, items);
             if (items.some(item => item.include && item.kind === "records" && item.records.replaceWorkoutHistory)) {
               setFitnessRevision(value => value + 1);
-              setFitnessTab("workout");
+              setFitnessRows(fitnessAllClosed);
               go("fitness");
             }
             const added = [

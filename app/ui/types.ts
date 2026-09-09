@@ -15,14 +15,18 @@ import type { SleepSource } from "../health-model";
 export type View = "today" | "sleep" | "fitness" | "mind" | "meds" | "labs" | "summary" | "data" | "more" | "compare" | "urges";
 
 /**
- * The tabs are the loop, in order, numbered.
+ * Fitness is four rows, and each row states its own answer while shut.
  *
- * Bring your Strong record in, read what to do, check nothing has been missed,
- * see whether it is working. Naming them after subjects — Plan, Muscles,
- * Strength, Body — told you what each page contained but never what to do with
- * the app. Numbering them says it without a paragraph.
+ * Tabs named after subjects — Import, Workout, Coverage, Progress — made you
+ * open one to find out what it said, so the state of your training was never
+ * on screen and four numbered tabs read as four things you had failed to do.
+ * Here the answers are the page and opening a row is only ever for the working
+ * behind a number already read. Rows open independently: the reason to look at
+ * coverage is usually a number just read on the workout above it.
  */
-export type FitnessTab = "import" | "workout" | "coverage" | "progress";
+export type FitnessRow = "next" | "coverage" | "strength" | "body";
+export type FitnessOpen = Record<FitnessRow, boolean>;
+export const fitnessAllClosed: FitnessOpen = { next: false, coverage: false, strength: false, body: false };
 
 export type Period = 14 | 30 | 90;
 export type SaveStatus = "loading" | "saved" | "saving" | "local" | "error" | "demo";
@@ -68,13 +72,6 @@ export const navOrder: View[] = ["today", "sleep", "fitness", "mind", "urges", "
 // section you log against several times a day through a "More" menu makes it
 // a sub-page of somewhere else, which is what it stopped being.
 export const mobileNavOrder: View[] = ["today", "sleep", "fitness", "mind", "urges", "meds", "more"];
-
-export const fitnessTabs: Array<{ tab: FitnessTab; step: number; label: string }> = [
-  { tab: "import", step: 1, label: "Import" },
-  { tab: "workout", step: 2, label: "Workout" },
-  { tab: "coverage", step: 3, label: "Coverage" },
-  { tab: "progress", step: 4, label: "Progress" },
-];
 
 export const bodyMetrics: Array<{ metric: BodyMetric; label: string; unit: string }> = [
   { metric: "weightLb", label: "Weight", unit: "lb" },

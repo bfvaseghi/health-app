@@ -449,7 +449,14 @@ export function combineRecords(items: ImportItem[]): ParsedRecords {
   return combined;
 }
 
-export function applyImport(state: HealthState, items: ImportItem[]): HealthState {
+/**
+ * Only a workout import stamps `importedAt`. Bringing in sleep or nutrition
+ * says nothing about how current the Strong record is, and letting it move the
+ * stamp would make the training screen claim a freshness it does not have.
+ */
+export function applyImport(state: HealthState, items: ImportItem[], at?: string): HealthState {
   const records = combineRecords(items);
-  return mergeRecords(state, records);
+  const merged = mergeRecords(state, records);
+  if (!records.workoutSets.length) return merged;
+  return { ...merged, importedAt: at ?? new Date().toISOString() };
 }

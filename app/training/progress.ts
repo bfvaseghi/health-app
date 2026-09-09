@@ -64,11 +64,24 @@ export type LiftTrend = {
   sessionsSincePeak: number;
 };
 
+/**
+ * A movement that was trained in the window but could not be measured, and why.
+ *
+ * Without this the count "12 up · 2 down" silently excludes lifts, so the
+ * fraction on screen does not add up to the training that was actually done.
+ */
+export type LiftExclusion = {
+  exercise: string;
+  reason: "sessions" | "reps" | "assistance";
+};
+
 export type Progress = {
   weeks: number;
   start: string;
   end: string;
   lifts: LiftTrend[];
+  /** Trained in the window, but no trend can honestly be drawn. */
+  excluded: LiftExclusion[];
   /** How many of them are going which way. */
   rising: number;
   falling: number;
@@ -163,7 +176,7 @@ function bestEffort(sets: WorkoutSet[], bodyweight: boolean): number | null {
 }
 
 /** Every movement in the window, with its session-by-session trajectory. */
-function liftTrends(sets: WorkoutSet[], start: string, end: string): LiftTrend[] {
+function liftTrends(sets: WorkoutSet[], start: string, end: string, excluded: LiftExclusion[] = []): LiftTrend[] {
   const byExercise = new Map<string, WorkoutSet[]>();
   for (const entry of sets) {
     if (entry.date < start || entry.date > end) continue;
@@ -177,7 +190,10 @@ function liftTrends(sets: WorkoutSet[], start: string, end: string): LiftTrend[]
     const assisted = entries.some(entry => entry.loadMode === "assisted");
     // Unlike weights lifted, assistance improves as it falls. Compare the
     // same rep count without inventing historical bodyweight measurements.
-    if (assisted && entries.some(entry => entry.loadMode !== "assisted")) continue;
+    if (assisted && entries.some(entry => entry.loadMode !== "assisted")) {
+      excluded.push({ exercise, reason: "assistance" });
+      continue;
+    }
     const bodyweight = !assisted && entries.every((entry) => entry.weightLb === null || entry.weightLb === 0);
 
     // One point a session, not one a set: a session is the unit a lift is
@@ -190,7 +206,10 @@ function liftTrends(sets: WorkoutSet[], start: string, end: string): LiftTrend[]
         counts.set(entry.reps!, (counts.get(entry.reps!) ?? 0) + 1);
       }
       comparisonReps = [...counts].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0]?.[0] ?? null;
-      if (comparisonReps === null) continue;
+      if (comparisonReps === null) {
+        excluded.push({ exercise, reason: "reps" });
+        continue;
+      }
     }
     const points: LiftPoint[] = [];
     for (const startedAt of sessions) {
@@ -200,7 +219,13 @@ function liftTrends(sets: WorkoutSet[], start: string, end: string): LiftTrend[]
       if (value === null || value < 0 || (!assisted && value === 0)) continue;
       points.push({ date: group[0].date, value: round(value) as number });
     }
-    if (points.length < MIN_SESSIONS) continue;
+    if (points.length < MIN_SESSIONS) {
+      // Two different reasons wear the same shape here. Too few visits is one
+      // thing; three visits whose every set was too high-rep to estimate a max
+      // from is another, and telling him to train it more would be wrong.
+      excluded.push({ exercise, reason: sessions.length >= MIN_SESSIONS ? "reps" : "sessions" });
+      continue;
+    }
 
     const values = points.map((point) => point.value);
     const meanY = values.reduce((total, value) => total + value, 0) / values.length;
@@ -250,13 +275,15 @@ export function buildProgress(state: HealthState, asOf = todayLocal(), weeks = 1
   const end = lastRecorded(state, asOf);
   const start = addDays(end, -(span * 7 - 1));
 
-  const lifts = liftTrends(state.workoutSets, start, end);
+  const excluded: LiftExclusion[] = [];
+  const lifts = liftTrends(state.workoutSets, start, end, excluded);
 
   return {
     weeks: span,
     start,
     end,
     lifts,
+    excluded: excluded.sort((a, b) => a.exercise.localeCompare(b.exercise)),
     rising: lifts.filter((lift) => lift.direction === "up").length,
     falling: lifts.filter((lift) => lift.direction === "down").length,
     trendPercent: round(median(lifts.filter(lift => !lift.assisted).map((lift) => lift.percent))),

@@ -40,16 +40,30 @@ export function BodyTab({
   onNotice: (message: string) => void;
 }) {
   const [visible, setVisible] = useState(PAGE);
+  const [pending, setPending] = useState<"maintain" | "lose" | "gain" | null>(null);
   const days = state.dailyEntries.slice(0, visible);
   const phase = phaseProgress(state, today);
+  const directions = [["maintain", "Maintain", "Hold weight"], ["lose", "Cut", "Lose weight"], ["gain", "Bulk", "Gain weight"]] as const;
 
   return (
     <>
       <PhotoCompare state={state} today={today} onAddPhoto={onAddPhoto} onUpdatePhoto={onUpdatePhoto} onDeletePhoto={onDeletePhoto} onNotice={onNotice} loadImage={loadImage} />
       <h2 className="body-goal-heading">Body goal</h2>
       <div className="body-goals" role="group" aria-label="Body goal">
-        {([["maintain", "Maintain", "Hold weight"], ["lose", "Cut", "Lose weight"], ["gain", "Bulk", "Gain weight"]] as const).map(([value, label, detail]) => <button key={value} type="button" aria-pressed={state.goals.weightDirection === value} className={state.goals.weightDirection === value ? "active" : ""} onClick={() => onGoals(current => current.weightDirection === value ? current : ({ ...current, weightDirection: value, phaseStart: value === "maintain" ? "" : today, weightGoalLb: null, weeklyRateLb: null }))}><b>{label}</b><small>{detail}</small></button>)}
+        {directions.map(([value, label, detail]) => <button key={value} type="button" aria-pressed={state.goals.weightDirection === value} className={state.goals.weightDirection === value ? "active" : ""} onClick={() => setPending(current => current === value ? null : state.goals.weightDirection === value ? null : value)}><b>{label}</b><small>{detail}</small></button>)}
       </div>
+      {/* Switching phase clears the weight target, the weekly rate and the
+          phase clock. That used to happen on one tap with nothing on screen
+          predicting it and nothing reporting it afterwards. */}
+      {pending ? <div className="phase-confirm">
+        <p>Change to {directions.find(([value]) => value === pending)?.[1]}? This clears your weight target and rate, and restarts the phase from today.</p>
+        <button type="button" className="button primary small" onClick={() => {
+          onGoals(current => ({ ...current, weightDirection: pending, phaseStart: pending === "maintain" ? "" : today, weightGoalLb: null, weeklyRateLb: null }));
+          setPending(null);
+          onNotice("Body goal changed.");
+        }}>Change</button>
+        <button type="button" className="text-button" onClick={() => setPending(null)}>Keep</button>
+      </div> : null}
       <details className="body-targets"><summary>Edit body targets</summary>
         <form key={`${state.goals.weightDirection}:${state.goals.phaseStart}`} onSubmit={event => {
           event.preventDefault();
@@ -65,7 +79,10 @@ export function BodyTab({
           <button type="submit" className="button primary">Save targets</button>
         </form>
       </details>
-      {phase ? <div className="phase-brief"><div><strong>{phase.changeLb !== null ? `${Math.abs(phase.changeLb).toFixed(1)} lb ${phase.changeLb < 0 ? "down" : phase.changeLb > 0 ? "up" : "change"}` : "Building your baseline"}</strong><span>over {phase.weeks} {phase.weeks === 1 ? "week" : "weeks"}</span></div><p>{phase.ratePerWeek !== null ? `Average ${Math.abs(phase.ratePerWeek).toFixed(2)} lb/week` : ""}{phase.targetRateLb !== null ? `${phase.ratePerWeek !== null ? " · " : ""}Target ${phase.targetRateLb} lb/week` : ""}</p></div> : null}
+      {/* The total and the rate are computed differently — the first is
+          end-to-end, the second a fitted trend — so dividing one by the other
+          does not reconcile. Both now say which they are. */}
+      {phase ? <div className="phase-brief"><div><strong>{phase.changeLb !== null ? `${Math.abs(phase.changeLb).toFixed(1)} lb ${phase.changeLb < 0 ? "down" : phase.changeLb > 0 ? "up" : "change"}` : "Building your baseline"}</strong><span>first to latest reading, over {phase.weeks} {phase.weeks === 1 ? "week" : "weeks"}</span></div><p>{phase.ratePerWeek !== null ? `Trend ${Math.abs(phase.ratePerWeek).toFixed(2)} lb/week` : ""}{phase.targetRateLb !== null ? `${phase.ratePerWeek !== null ? " · " : ""}Target ${phase.targetRateLb} lb/week` : ""}</p></div> : null}
       <MetricPanel state={state} today={today} metrics={bodyMetrics} emptyHint="No records in this period." />
 
       <details className="tl-section"><summary>Day records · {state.dailyEntries.length}</summary>

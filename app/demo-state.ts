@@ -252,6 +252,10 @@ export function demoHealthState(today: string, asOfTime = "12:00"): HealthState 
   return normalizeHealthState({
     version: 1,
     updatedAt: `${today}T12:00:00.000Z`,
+    // The sample record has been imported, so the stamp on Fitness shows the
+    // resting state rather than the honest-but-bleak "imported: not recorded"
+    // that a record predating the stamp reports.
+    importedAt: `${today}T11:00:00.000Z`,
     medications: [
       { id: "demo-daily", name: "Demo daily tablet", schedule: "daily", dueDay: null, archived: false },
       { id: "demo-weekly", name: "Demo weekly dose", schedule: "weekly", dueDay, archived: false },

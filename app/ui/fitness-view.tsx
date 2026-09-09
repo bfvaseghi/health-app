@@ -1,25 +1,42 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { GoalSettings, HealthState, ProgressPhoto } from "../health-model";
+import { dateLabel, phaseProgress } from "../health-model";
+import { currentTrainingWeek, weekOutlook, weekStart } from "../training/coach";
+import type { Muscle } from "../training/muscles";
 import { BodyTab } from "./body-tab";
-import { CoachTab } from "./coach-tab";
-import { ImportStep } from "./import-step";
-import { ProgressTab } from "./progress-tab";
+import { CoverageBody, MiniCoverage, coverageFacts } from "./coverage-row";
+import { AnswerRow } from "./answer-row";
+import { CopyForStrong, NextUpBody, WeekPips, nextUpFacts } from "./next-up-row";
+import { RecordStamp } from "./record-stamp";
+import { StrengthBody, StrengthSpark, strengthFacts } from "./strength-row";
+import { Icon } from "./icons";
 import { RecordHeading } from "./primitives";
-import { fitnessTabs, type FitnessTab, type Modal } from "./types";
+import { type FitnessOpen, type FitnessRow, type Modal } from "./types";
 
 /**
- * Four numbered steps, which are the loop this app actually runs on.
+ * Fitness: four questions, each already answered on its own shut row.
  *
- * Import your Strong record, read what to do, check nothing has been missed,
- * see whether it is working. Tabs named after subjects said what each page
- * held; numbering them says what to do with the app, which is the thing that
- * was never clear.
+ * The section used to be four numbered tabs named after its own internals.
+ * Every one of them made you open it to find out what it said, so the state of
+ * the training was never on screen, and the numbers read as four things you had
+ * failed to do rather than as a loop. Worse, three of the four answered the
+ * same question — "am I covered?" — with three different arithmetics in the same
+ * words, so one tab could say nothing was behind while the next said nine of
+ * eleven muscles were short.
+ *
+ * Now: a stamp saying where all of it came from, then Next up, Coverage,
+ * Strength and Body, each stating its answer with the window it measured. One
+ * question is answered in exactly one place. Opening a row is only ever for the
+ * working behind a number already read, and rows open independently, because
+ * the reason to look at coverage is usually a number just read on the workout.
  */
 export function FitnessView({
   state,
-  tab, onTab, loadImage,
+  rows,
+  onRows,
+  loadImage,
   editableState,
   today,
   open,
@@ -31,71 +48,116 @@ export function FitnessView({
   onNotice,
 }: {
   state: HealthState;
-  tab: FitnessTab;
-  onTab: (tab: FitnessTab) => void;
+  /** Which rows are open. Held above this component so it survives a view change. */
+  rows: FitnessOpen;
+  onRows: (next: FitnessOpen) => void;
   loadImage?: (id: string) => Promise<Blob | null>;
   editableState: HealthState;
   today: string;
-  open: (modal: Modal) => void;
   onAddPhoto: (photo: ProgressPhoto, blob: Blob) => Promise<void>;
   onUpdatePhoto: (photo: ProgressPhoto) => void;
   onDeletePhoto: (id: string) => void;
   onDeleteDay: (date: string) => void;
   onGoals: (goals: GoalSettings | ((current: GoalSettings) => GoalSettings)) => void;
   onNotice: (message: string) => void;
+  open: (modal: Modal) => void;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
-  const navigate = (next: FitnessTab) => {
-    onTab(next);
-    window.scrollTo({ top: 0, behavior: "auto" });
-    window.requestAnimationFrame(() => document.getElementById(`fitness-tab-${next}`)?.focus({ preventScroll: true }));
-  };
+  const [focus, setFocus] = useState<Muscle | null>(null);
+  const [weeks, setWeeks] = useState(12);
+
+  const { plan } = useMemo(() => currentTrainingWeek(state, today), [state, today]);
+  const outlook = useMemo(() => weekOutlook(plan, state, today), [plan, state, today]);
+  const logged = state.workoutSets.filter(set => set.date <= today);
+  const hasHistory = logged.length >= 10;
+
+  const next = useMemo(() => nextUpFacts(plan, state, today), [plan, state, today]);
+  const coverage = useMemo(() => coverageFacts(outlook, state, today), [outlook, state, today]);
+  const strength = useMemo(() => strengthFacts(state, today, weeks), [state, today, weeks]);
+  const body = bodyFacts(state, today);
+
+  const toggle = (row: FitnessRow) => onRows({ ...rows, [row]: !rows[row] });
+  const week = `${dateLabel(weekStart(today), { month: "short", day: "numeric" })}–${dateLabel(endOfWeek(today), { month: "short", day: "numeric" })}`;
 
   return (
     <div className="page fitness-page">
       <RecordHeading title="Fitness" />
-        <div className="record-tabs" role="tablist" aria-label="Workouts">
-          {fitnessTabs.map((entry) => (
-            <button
-              key={entry.tab}
-              type="button"
-              role="tab"
-              id={`fitness-tab-${entry.tab}`}
-              aria-controls={`fitness-panel-${entry.tab}`}
-              aria-selected={tab === entry.tab}
-              tabIndex={tab === entry.tab ? 0 : -1}
-              className={tab === entry.tab ? "active" : ""}
-              onClick={() => navigate(entry.tab)}
-              onKeyDown={event => {
-                const index = fitnessTabs.findIndex(item => item.tab === entry.tab);
-                const next = event.key === "ArrowRight" ? (index + 1) % fitnessTabs.length : event.key === "ArrowLeft" ? (index + fitnessTabs.length - 1) % fitnessTabs.length : event.key === "Home" ? 0 : event.key === "End" ? fitnessTabs.length - 1 : null;
-                if (next === null) return;
-                event.preventDefault();
-                navigate(fitnessTabs[next].tab);
-              }}
-            >
-              <span className="step-n">{entry.step}</span>
-              {entry.label}
-            </button>
-          ))}
-        </div>
-      <div id="fitness-panel-import" role="tabpanel" aria-labelledby="fitness-tab-import" hidden={tab !== "import"}>
-      {tab === "import" && <ImportStep state={state} today={today} open={open} />}
-      </div>
-      <div id="fitness-panel-workout" role="tabpanel" aria-labelledby="fitness-tab-workout" hidden={tab !== "workout"}>
-      {tab === "workout" && (
-        <CoachTab selected={selected} onSelect={setSelected} state={state} today={today} open={open} onGoals={onGoals} onNotice={onNotice} />
-      )}
-      </div>
-      <div id="fitness-panel-coverage" role="tabpanel" aria-labelledby="fitness-tab-coverage" hidden={tab !== "coverage"}>
-      {tab === "coverage" && (
-        <CoachTab selected={selected} onSelect={setSelected} state={state} today={today} open={open} onGoals={onGoals} onNotice={onNotice} mode="muscles" />
-      )}
-      </div>
-      <div id="fitness-panel-progress" role="tabpanel" aria-labelledby="fitness-tab-progress" hidden={tab !== "progress"}>
-      {tab === "progress" && (
-        <>
-          <ProgressTab state={state} today={today} />
+      <RecordStamp state={state} today={today} open={open} />
+
+      <div className="answer-stack">
+        <AnswerRow
+          id="fitness-next"
+          eyebrow={next.deload ? "NEXT UP · EASIER WEEK" : "NEXT UP"}
+          window={hasHistory ? `${next.daysLeft} ${next.daysLeft === 1 ? "day" : "days"} left` : undefined}
+          headline={hasHistory ? next.headline : "No workout yet"}
+          subline={hasHistory ? next.subline : "Needs your Strong export"}
+          tone={hasHistory ? "primary" : "empty"}
+          graphic={hasHistory ? <WeekPips facts={next} /> : null}
+          action={hasHistory
+            ? <CopyForStrong facts={next} onGoals={onGoals} onNotice={onNotice} />
+            : <button type="button" className="button primary" onClick={() => open({ kind: "import", source: "strong" })}><Icon name="upload" />Import from Strong</button>}
+          open={rows.next}
+          onToggle={() => toggle("next")}
+        >
+          {hasHistory ? <NextUpBody
+            plan={plan}
+            state={state}
+            today={today}
+            facts={next}
+            selected={selected}
+            onSelect={setSelected}
+            onGoals={onGoals}
+            onMuscle={muscle => { setFocus(muscle as Muscle); onRows({ ...rows, coverage: true }); }}
+          /> : null}
+        </AnswerRow>
+
+        <AnswerRow
+          id="fitness-coverage"
+          eyebrow="COVERAGE"
+          window={week}
+          headline={coverage.headline}
+          subline={coverage.subline}
+          tone={coverage.tone}
+          graphic={<MiniCoverage outlook={outlook} />}
+          open={rows.coverage}
+          onToggle={() => toggle("coverage")}
+        >
+          {coverage.tone === "empty" ? null : <CoverageBody
+            plan={plan}
+            state={state}
+            today={today}
+            outlook={outlook}
+            onGoals={onGoals}
+            onNotice={onNotice}
+            focus={focus}
+            onFocus={setFocus}
+          />}
+        </AnswerRow>
+
+        <AnswerRow
+          id="fitness-strength"
+          eyebrow="STRENGTH"
+          window={strength.window}
+          headline={strength.headline}
+          subline={strength.subline}
+          tone={strength.tone}
+          graphic={strength.tone === "empty" ? null : <StrengthSpark state={state} today={today} weeks={weeks} />}
+          open={rows.strength}
+          onToggle={() => toggle("strength")}
+        >
+          {strength.tone === "empty" ? null : <StrengthBody state={state} today={today} weeks={weeks} onWeeks={setWeeks} facts={strength} />}
+        </AnswerRow>
+
+        <AnswerRow
+          id="fitness-body"
+          eyebrow="BODY"
+          window={body.phase}
+          headline={body.headline}
+          subline={body.subline}
+          tone={body.tone}
+          open={rows.body}
+          onToggle={() => toggle("body")}
+        >
           <BodyTab
             state={state}
             editableState={editableState}
@@ -109,9 +171,37 @@ export function FitnessView({
             onGoals={onGoals}
             loadImage={loadImage}
           />
-        </>
-      )}
+        </AnswerRow>
       </div>
     </div>
   );
+}
+
+function endOfWeek(today: string): string {
+  const monday = weekStart(today);
+  const date = new Date(`${monday}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 6);
+  return date.toISOString().slice(0, 10);
+}
+
+/** Weight and body fat, and how the cut or bulk is going, in two lines. */
+function bodyFacts(state: HealthState, today: string): {
+  headline: string;
+  subline: string | null;
+  tone: "neutral" | "empty";
+  phase: string | undefined;
+} {
+  const latest = state.dailyEntries.filter(entry => entry.date <= today && entry.weightLb !== null)[0];
+  const fat = state.dailyEntries.filter(entry => entry.date <= today && entry.bodyFatPercent !== null)[0];
+  const phase = phaseProgress(state, today);
+  const label = state.goals.weightDirection === "lose" ? "Cut" : state.goals.weightDirection === "gain" ? "Bulk" : undefined;
+  if (!latest) return { headline: "No weight logged", subline: "Add a photo or a weight", tone: "empty", phase: label };
+  return {
+    headline: [`${(latest.weightLb as number).toFixed(1)} lb`, fat ? `${fat.bodyFatPercent}% fat` : null].filter(Boolean).join(" · "),
+    subline: phase && phase.changeLb !== null
+      ? `${Math.abs(phase.changeLb).toFixed(1)} lb ${phase.changeLb < 0 ? "down" : "up"} in ${phase.weeks} ${phase.weeks === 1 ? "week" : "weeks"}`
+      : `${state.progressPhotos.length} ${state.progressPhotos.length === 1 ? "photo" : "photos"}`,
+    tone: "neutral",
+    phase: label,
+  };
 }
