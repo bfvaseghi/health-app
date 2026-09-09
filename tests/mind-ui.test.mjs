@@ -67,9 +67,9 @@ test("medications show today's completion and honest scheduled-dose counts above
 
 test("Today puts daily actions before its workout and sleep summaries", async () => {
   const { TodayView } = await import("../app/ui/today-view.tsx");
-  const html = render(TodayView, { state: demoHealthState(today), today, go: noop, open: noop, demo: true, updateDaily: noop, onDose: noop, onWriteJournal: noop, journalDraft: null });
+  const html = render(TodayView, { state: demoHealthState(today), today, go: noop, open: noop, updateDaily: noop, onDose: noop, onWriteJournal: noop, journalDraft: null });
   assert.ok(html.indexOf("Daily check-in") < html.indexOf("today-workout-title"));
-  for (const label of ["Water", "Protein", "Meditation", "Journal", "Taken today", "Bedtime", "Woke up", "Plan my workout"]) assert.ok(html.includes(label), label);
+  for (const label of ["Water", "Protein", "Meditation", "Journal", "Taken today", "Bedtime", "Woke up", "Open workout"]) assert.ok(html.includes(label), label);
   assert.doesNotMatch(html, /Copy workout|class="lift-summary"|Sleep trend/);
 });
 

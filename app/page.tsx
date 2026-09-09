@@ -794,7 +794,6 @@ export default function Home() {
             today={today}
             go={go}
             open={openModal}
-            demo={demoMode}
             updateDaily={updateDaily}
             onDose={toggleDose}
             journalDraft={journalDraft}

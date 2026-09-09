@@ -11,12 +11,11 @@ import { workoutLabel } from "./workout-labels";
 import { formatTime, hoursLabel } from "./format";
 import type { MindTab, Modal, View } from "./types";
 
-export function TodayView({ state, today, go, open, demo, updateDaily, onDose, onWriteJournal, journalDraft }: {
+export function TodayView({ state, today, go, open, updateDaily, onDose, onWriteJournal, journalDraft }: {
   state: HealthState;
   today: string;
   go: (view: View, mindTab?: MindTab) => void;
   open: (modal: Modal) => void;
-  demo: boolean;
   updateDaily: (date: string, update: (current: DailyEntry) => DailyEntry) => void;
   onDose: (medicationId: string, date: string, taken: boolean) => void;
   onWriteJournal: () => void;
@@ -58,8 +57,8 @@ export function TodayView({ state, today, go, open, demo, updateDaily, onDose, o
           <span className="section-eyebrow"><Icon name="fitness" /> Training</span>
           <h2 id="today-workout-title">{hasPlan ? next.session ? workoutLabel(next.session) : "Your week is logged" : "Your workout plan"}</h2>
           <p>{hasPlan && next.session ? `${next.session.exercises.length} exercises · ${sessionMinutes(next.session)} min${next.session.tier === "extra" ? " · optional" : ""}` : hasPlan ? `${logged} workouts logged this week` : "Start with your Strong record"}</p>
-          <button type="button" className="button primary small" onClick={() => go("fitness")}>{hasPlan ? "Plan my workout" : "Set up workouts"}<Icon name="arrow" /></button>
-          <div className="daily-training-foot"><span>{logged} logged this week</span>{streak.weeks ? <span>{streak.weeks} weeks in a row</span> : null}</div>
+          <button type="button" className="button primary small" onClick={() => go("fitness")}>{hasPlan ? "Open workout" : "Set up workouts"}<Icon name="arrow" /></button>
+          <div className="daily-training-foot">{next.session ? <span>{logged} logged this week</span> : null}{streak.weeks ? <span>{streak.weeks} weeks in a row</span> : null}</div>
         </section>
         <section className="daily-night" aria-label="Latest sleep">
           <div className="surface-heading"><h2>{lastNight?.date === today ? "Last night" : lastNight ? dateLabel(lastNight.date, { month: "short", day: "numeric" }) : "Last night"}</h2><button type="button" className="text-button" onClick={() => lastNight?.date === today ? go("sleep") : open({ kind: "sleep", date: today })}>{lastNight?.date === today ? "View" : "Add"}</button></div>
