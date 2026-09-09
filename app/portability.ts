@@ -223,7 +223,6 @@ export async function createBaselineArchive(
     textFile("csv/thought-journal.csv", thoughtJournalCsv(state.thoughtJournal)),
     textFile("csv/thought-loops.csv", thoughtLoopsCsv(state.thoughtLoops, state.loopEvents)),
     textFile("csv/cutting-back.csv", habitsCsv(state.habits, state.habitEvents)),
-    textFile("csv/progress-photos.csv", progressPhotosCsv(state.progressPhotos)),
     textFile("csv/goals.csv", goalsCsv(state.goals)),
   ];
 
@@ -235,6 +234,12 @@ export async function createBaselineArchive(
     photoMap.push({ id: photo.id, file, mimeType: blob.type || "image/jpeg" });
     files.push({ name: file, data: new Uint8Array(await blob.arrayBuffer()) });
   }
+  // Written after the loop, because only the loop knows what each photo was
+  // actually called in the zip — and which ones did not make it in at all.
+  files.push(textFile(
+    "csv/progress-photos.csv",
+    progressPhotosCsv(state.progressPhotos, new Map(photoMap.map((entry) => [entry.id, entry.file]))),
+  ));
   files.push(textFile("photos/map.json", JSON.stringify(photoMap, null, 2)));
   return storedZip(files);
 }

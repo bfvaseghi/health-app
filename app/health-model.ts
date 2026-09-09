@@ -2095,21 +2095,29 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
     value: mind.meditationDays ? `${mind.meditationDays} of ${safeDays} days` : "No data",
     detail: mind.meditationMinutes ? `${mind.meditationMinutes} min` : "Not recorded",
   });
-  for (const loop of state.thoughtLoops.filter((entry) => !entry.archived)) {
-    const events = state.loopEvents.filter((event) => event.loopId === loop.id && event.date >= start && event.date <= asOf);
+  // Rumination reports how often thoughts came back and whether they could be
+  // let go — never what any of them was about. A row per named thought put the
+  // content of the thought in a document meant to be printed and handed over,
+  // so there is one row, keyed on nothing but the dates.
+  {
+    const live = new Set(state.thoughtLoops.filter((entry) => !entry.archived).map((entry) => entry.id));
+    const inWindow = state.loopEvents.filter((event) => live.has(event.loopId) && event.date >= start && event.date <= asOf);
     const before = state.loopEvents.filter(
-      (event) => event.loopId === loop.id && event.date >= addDays(start, -safeDays) && event.date < start,
+      (event) => live.has(event.loopId) && event.date >= addDays(start, -safeDays) && event.date < start,
     );
-    const answered = events.filter((event) => event.move !== "noticed");
+    const answered = inWindow.filter((event) => event.move !== "noticed");
     const letGo = answered.filter((event) => event.move !== "hooked").length;
+    const days = new Set(inWindow.map((event) => event.date)).size;
     rows.push({
-      id: `loop-${loop.id}`,
+      id: "rumination",
       group: "Mind",
-      label: `Thought loop: ${loop.name}`,
-      value: events.length ? `${events.length} ${events.length === 1 ? "time" : "times"} in ${safeDays} days` : "No data",
-      detail: events.length
+      label: "Rumination",
+      value: inWindow.length
+        ? `${inWindow.length} ${inWindow.length === 1 ? "log" : "logs"} on ${days} of ${safeDays} days`
+        : "No data",
+      detail: inWindow.length
         ? `${before.length} the ${safeDays} days before${
-            answered.length >= 3 ? ` · passed ${Math.round((letGo / answered.length) * 100)}%` : ""
+            answered.length >= 3 ? ` · moved on ${Math.round((letGo / answered.length) * 100)}%` : ""
           }`
         : "Not recorded",
     });
@@ -2164,7 +2172,9 @@ export function reportOptionsFor(audience: ReportAudience): ReportOptions {
 }
 
 export function reportRows(report: HealthReport, includeTherapy = true, groups?: ReportRow["group"][]): ReportRow[] {
-  return report.rows.filter((row) => (!groups || groups.includes(row.group)) && (includeTherapy || !row.id.startsWith("loop-")));
+  return report.rows.filter(
+    (row) => (!groups || groups.includes(row.group)) && (includeTherapy || row.id !== "rumination"),
+  );
 }
 
 export function reportToText(
@@ -2317,13 +2327,21 @@ export function therapyNotesCsv(entries: TherapyNote[]): string {
   );
 }
 
+/**
+ * Rumination as a table: when it came back, what was done, whether it passed.
+ * Not what it was about — the thought's own words stay in the editable JSON
+ * backup and out of the sheet somebody might open in front of you.
+ */
 export function thoughtLoopsCsv(loops: ThoughtLoop[], events: LoopEvent[]): string {
-  const names = new Map(loops.map((loop) => [loop.id, loop.name]));
+  const live = new Set(loops.map((loop) => loop.id));
   return toCsv(
-    ["id", "loop_id", "loop", "at", "date", "outcome", "response", "recurrence"],
-    [...events].sort((a, b) => a.at.localeCompare(b.at)).map((event) => [
-      event.id, event.loopId, names.get(event.loopId) ?? "", event.at, event.date, event.move, event.response ?? "", event.recurrence ?? "",
-    ]),
+    ["id", "loop_id", "at", "date", "outcome", "response", "recurrence"],
+    [...events]
+      .filter((event) => live.has(event.loopId))
+      .sort((a, b) => a.at.localeCompare(b.at))
+      .map((event) => [
+        event.id, event.loopId, event.at, event.date, event.move, event.response ?? "", event.recurrence ?? "",
+      ]),
   );
 }
 
@@ -2346,11 +2364,17 @@ export function thoughtJournalCsv(entries: ThoughtJournalEntry[]): string {
   );
 }
 
-export function progressPhotosCsv(entries: ProgressPhoto[]): string {
+/**
+ * The photo table. `files` maps a photo id to the name the archive actually
+ * wrote for it; without it the column guessed a name and pointed every row at
+ * a file that was never in the zip. A photo whose bytes could not be read is
+ * in the table with an empty file, because the record of it is still true.
+ */
+export function progressPhotosCsv(entries: ProgressPhoto[], files?: Map<string, string>): string {
   return toCsv(
     ["id", "date", "weight_lb", "body_fat_percent", "note", "image_file"],
     [...entries].sort((a, b) => a.date.localeCompare(b.date)).map((entry) => [
-      entry.id, entry.date, entry.weightLb, entry.bodyFatPercent, entry.note, `photos/${entry.id}.jpg`,
+      entry.id, entry.date, entry.weightLb, entry.bodyFatPercent, entry.note, files?.get(entry.id) ?? "",
     ]),
   );
 }

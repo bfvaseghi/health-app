@@ -1124,8 +1124,8 @@ test("excluding therapy removes thought details from displayed and copied report
   const { reportRows } = await import("../app/health-model.ts");
   const { demoHealthState } = await import("../app/demo-state.ts");
   const report = buildHealthReport(demoHealthState("2030-01-15"), "2030-01-15", 30);
-  assert.ok(reportRows(report).some((row) => row.id.startsWith("loop-")));
-  assert.ok(reportRows(report, false).every((row) => !row.id.startsWith("loop-")));
+  assert.ok(reportRows(report).some((row) => row.id === "rumination"));
+  assert.ok(reportRows(report, false).every((row) => row.id !== "rumination"));
   assert.match(reportToText(report), /Rumination/);
   const text = reportToText(report, { includeTherapy: false, includeNotes: false });
   assert.doesNotMatch(text, /Rumination|Needing to be certain|A decision I keep postponing/);

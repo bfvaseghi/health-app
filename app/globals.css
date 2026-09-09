@@ -2650,3 +2650,7 @@ kbd {
 
 .urge-type-field { display: grid; gap: 6px; font-size: .875rem; }
 .urge-type-field select { width: 100%; min-height: 44px; font-size: 1rem; }
+
+/* The response under a rumination row: a note inside a row's own text, so it
+   is a span rather than a paragraph nested in one. */
+.record-note-inline { display: block; margin: 4px 0 0; color: var(--muted); font-size: 14px; }

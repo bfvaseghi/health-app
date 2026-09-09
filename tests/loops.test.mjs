@@ -90,17 +90,29 @@ test("the weekly tide is one real count per week, zeros included", () => {
   assert.equal(weekly.at(-1).date, AS_OF);
 });
 
-test("the doctor summary carries each loop as a row, in the text too", () => {
-  const report = buildHealthReport(withLoop(), AS_OF, 7);
-  const row = report.rows.find((entry) => entry.id === "loop-loop");
+test("the doctor summary reports recurrence and response, never the thought", () => {
+  const state = withLoop();
+  const report = buildHealthReport(state, AS_OF, 7);
+  const row = report.rows.find((entry) => entry.id === "rumination");
   assert.equal(row.group, "Mind");
-  assert.equal(row.label, "Thought loop: Replaying the call");
-  assert.equal(row.value, "5 times in 7 days");
-  assert.match(row.detail, /^7 the 7 days before · passed 75%$/);
-  assert.match(reportToText(report), /Thought loop: Replaying the call: 5 times in 7 days/);
-  const csv = thoughtLoopsCsv(withLoop().thoughtLoops, withLoop().loopEvents);
-  assert.match(csv.split("\n")[0], /^id,loop_id,loop,at,date,outcome/);
+  assert.equal(row.label, "Rumination");
+  assert.match(row.value, /^5 logs on \d+ of 7 days$/);
+  assert.match(row.detail, /^7 the 7 days before · moved on 75%$/);
+
+  // The report is printed and handed over, so the thought's own words must not
+  // reach it — not in a label, a value, a detail, or the copied text.
+  const text = reportToText(report);
+  assert.match(text, /Rumination: 5 logs on/);
+  for (const loop of state.thoughtLoops) {
+    assert.doesNotMatch(text, new RegExp(loop.name), `the report names "${loop.name}"`);
+    assert.ok(report.rows.every((entry) => !entry.id.includes(loop.id)), "a row is still keyed on a loop");
+  }
+
+  // Same for the exported table: recurrence and response, no name column.
+  const csv = thoughtLoopsCsv(state.thoughtLoops, state.loopEvents);
+  assert.equal(csv.split("\n")[0], "id,loop_id,at,date,outcome,response,recurrence");
   assert.equal(csv.trim().split("\n").length, 13);
+  for (const loop of state.thoughtLoops) assert.doesNotMatch(csv, new RegExp(loop.name));
 });
 
 test("the demo record shows a loop that is clearly fading and one just named", () => {

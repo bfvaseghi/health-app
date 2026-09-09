@@ -11,7 +11,7 @@ import { formatTime } from "./format";
 
 export type LoopDraft = { id?: string; name: string; reply: string };
 const outcomes: Record<LoopMove, string> = { noticed: "Not recorded", passed: "I moved on", later: "I set it aside", hooked: "I stayed caught up in it" };
-const recurrenceLabels: Record<LoopRecurrence, string> = { once: "Just once", few: "A few times", often: "Kept returning" };
+export const recurrenceLabels: Record<LoopRecurrence, string> = { once: "Just once", few: "A few times", often: "Kept returning" };
 
 export function ThoughtLoops({ state, today, onSave, onDelete, onEvent, onDeleteEvent, onNotice }: {
   state: HealthState;

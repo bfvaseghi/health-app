@@ -7,6 +7,7 @@ import { recordDates, recordDay } from "../record-history";
 import { formatTime, hoursLabel } from "./format";
 import { Icon } from "./icons";
 import { ModalFrame } from "./primitives";
+import { recurrenceLabels } from "./thought-loops";
 import type { Modal } from "./types";
 
 export function RecordDay({ state, editableState, initialDate, today, open, onClose }: {
@@ -66,7 +67,7 @@ export function RecordDay({ state, editableState, initialDate, today, open, onCl
       {day.daily?.note || day.daily?.meditationNote ? <section className="tl-section" aria-label="Daily notes"><h3 className="tl-caps">Notes</h3>{day.daily.note ? <p className="record-note">{day.daily.note}</p> : null}{day.daily.meditationNote ? <p className="record-note">{day.daily.meditationNote}</p> : null}</section> : null}
       {day.journal.length || day.daily?.journaled ? <section className="tl-section" aria-label="Journal entries"><h3 className="tl-caps">Journal</h3>{day.journal.length ? day.journal.map((entry) => <article key={entry.id} className="record-entry">{entry.title ? <b>{entry.title}</b> : null}<p className="record-note">{entry.text}</p></article>) : <span className="tl-line">Marked as written</span>}</section> : null}
       {day.therapy.length ? <section className="tl-section" aria-label="Therapy topics"><h3 className="tl-caps">Therapy topics</h3>{day.therapy.map((note) => <p key={note.id} className="record-note">{note.text}</p>)}</section> : null}
-      {day.thoughts.length ? <section className="tl-section" aria-label="Recurring thoughts"><h3 className="tl-caps">Recurring thoughts</h3><ul className="record-list">{day.thoughts.map((event) => <li key={event.id}><span>{event.name}{event.response ? <p className="record-note">{event.response}</p> : null}</span><b>{event.at.slice(11, 16)} · {event.move === "passed" ? "Passed" : event.move === "hooked" ? "Stuck" : event.move === "later" ? "Later" : "Recorded"}</b></li>)}</ul></section> : null}
+      {day.thoughts.length ? <section className="tl-section" aria-label="Recurring thoughts"><h3 className="tl-caps">Recurring thoughts</h3><ul className="record-list">{day.thoughts.map((event) => <li key={event.id}><span>{event.recurrence ? recurrenceLabels[event.recurrence] : "Came up"}{event.response ? <span className="record-note record-note-inline">{event.response}</span> : null}</span><b>{event.at.slice(11, 16)} · {event.move === "passed" ? "Passed" : event.move === "hooked" ? "Stuck" : event.move === "later" ? "Later" : "Recorded"}</b></li>)}</ul></section> : null}
       {day.habits.length ? <section className="tl-section" aria-label="Habit records"><h3 className="tl-caps">Habits</h3><ul className="record-list">{day.habits.map((event) => <li key={event.id}><span>{event.name}</span><b>{event.at.slice(11, 16)} · {event.kind === "urge" ? "Urge passed" : event.kind === "intake" ? `${event.amountMg ?? 0} mg` : "Occurred"}</b></li>)}</ul></section> : null}
       {day.photos.length ? <section className="tl-section" aria-label="Photo records"><h3 className="tl-caps">Photos · {day.photos.length}</h3>{day.photos.map((photo) => <p key={photo.id} className="record-note">{photo.note || "Photo recorded"}</p>)}</section> : null}
     </ModalFrame>
