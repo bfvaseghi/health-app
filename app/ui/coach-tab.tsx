@@ -16,19 +16,18 @@ import { Icon } from "./icons";
 import { copyText, downloadBlob, listWords } from "./format";
 import { ConfirmButton } from "./primitives";
 import { PrescriptionColumns, WorkoutPrescription as Lift } from "./workout-prescription";
-import { workoutLabel, workoutPurpose, workoutRequired } from "./workout-labels";
+import { sessionAreas, workoutLabel, workoutRequired } from "./workout-labels";
 import type { Modal } from "./types";
 
 /** The plan and muscle graph use the same post-import calculation. */
 export function CoachTab({
-  state, today, open, onGoals, onNotice, onWorkout, mode = "workout", selected = null, onSelect,
+  state, today, open, onGoals, onNotice, mode = "workout", selected = null, onSelect,
 }: {
   state: HealthState;
   today: string;
   open: (modal: Modal) => void;
   onGoals: (goals: GoalSettings | ((current: GoalSettings) => GoalSettings)) => void;
   onNotice: (message: string) => void;
-  onWorkout?: () => void;
   mode?: "workout" | "muscles";
   selected?: string | null;
   onSelect?: (name: string | null) => void;
@@ -73,7 +72,7 @@ export function CoachTab({
   // supposed to add up to — so the empty state announces the missing import
   // rather than standing in for the graph.
   if (mode === "muscles") return <div className="training-workspace muscle-workspace">
-    <div className="training-section-heading"><div><h2>Muscle groups</h2><p>Week of {dateLabel(weekStart(today), { month: "short", day: "numeric" })}</p></div>{hasHistory ? <button type="button" className="text-button" onClick={onWorkout}>Open workout <Icon name="arrow" /></button> : null}</div>
+    <div className="training-section-heading"><div><h2>Muscle groups</h2><p>Week of {dateLabel(weekStart(today), { month: "short", day: "numeric" })}</p></div></div>
     {hasHistory ? frequency : <div className="workout-finish"><Icon name="upload" /><div><b>Nothing imported yet</b><p>These are the weekly targets. Import your Strong export to see what you have logged against them.</p></div><button type="button" className="button secondary small" onClick={importWorkout}>Import Strong export</button></div>}
     <Balance outlook={outlook} plan={plan} state={state} today={today} onGoals={onGoals} />
     {/* Shown for every plan structure. The two-visit promise is the reason
@@ -115,15 +114,15 @@ export function CoachTab({
   const others = remaining.filter(session => session.name !== hero?.name);
 
   return <div className="training-workspace workout-desk workout-detail">
-    <div className="week-line">
-      <span>{importedCount === 0 ? "You have not trained yet this week" : importedCount === 1 ? "You have done 1 workout this week" : `You have done ${importedCount} workouts this week`}{plan.deload ? " · this is a lighter week on purpose" : ""}</span>
-    </div>
     <section className="workout-sheet" aria-label="Next workout plan">
       <header className="workout-sheet-cover next-workout-cover">
-        <div className="workout-sheet-label"><Icon name="fitness" /><span>{hero ? isNext ? "Do this next" : "Later this week" : "Nothing left to do"}</span></div>
-        <div className="workout-sheet-title"><h2 id="fitness-step-heading" tabIndex={-1}>{hero ? workoutLabel(hero) : "Your week is done"}</h2>{hero ? <span><Icon name="clock" /> {sessionMinutes(hero)} min</span> : null}</div>
-        {/* What it is for and whether it matters, in words, above the list. */}
-        <p>{hero ? `${workoutPurpose(hero)}. ${hero.exercises.length} exercises, about ${sessionMinutes(hero)} minutes.` : "Your whole body is covered. Rest, or add one from below."}</p>
+        {/* The answer, in the order you need it: what today is, how long, and
+            whether it is the one that matters. Nothing about weeks or slots. */}
+        <div className="workout-sheet-label"><Icon name="fitness" /><span>{hero ? isNext ? "Today" : "Another day this week" : "Nothing left to do"}</span></div>
+        <div className="workout-sheet-title"><h2 id="fitness-step-heading" tabIndex={-1}>{hero ? workoutLabel(hero) : "You are covered"}</h2>{hero ? <span><Icon name="clock" /> {sessionMinutes(hero)} min</span> : null}</div>
+        <p>{hero
+          ? `${hero.exercises.length} exercises. ${workoutRequired(hero) ? "This one you need." : "Only if you want it — your week is already covered."}`
+          : "Everything is trained this week. Rest, or take one of the extras below."}</p>
         {/* What the button does, at the button. It copies text; it does not
             build a Strong routine, and saying so here beats saying it in a
             fold nobody opens. */}
@@ -135,10 +134,18 @@ export function CoachTab({
           {hero.exercises.map(exercise => <Lift key={`${hero.name}:${exercise.exercise}`} exercise={exercise} targetLabel={isNext ? "Next workout" : "This workout"} onDrop={exercise.byHand ? () => drop(hero, exercise.exercise) : undefined} />)}
         </div>
       </> : null}
+      {hero ? <details className="why-this">
+        <summary>Why this workout</summary>
+        <p>{`It trains ${sessionAreas(hero).slice(0, -1).join(", ")} and ${sessionAreas(hero).slice(-1)[0]}.`}</p>
+        <p>{workoutRequired(hero)
+          ? "Two workouts cover your whole body. This is one of them, so if you only get to the gym twice this week you have still done everything."
+          : "Your whole body is already covered by the two you need. This adds more work on top; skipping it leaves no gap."}</p>
+        <p>{`Weights come from what you lifted last time in Strong${plan.deload ? ", and this week is deliberately lighter to let you recover" : ""}. Open any exercise to see the set it was based on.`}</p>
+      </details> : null}
     </section>
     {others.length ? <nav className="later-list" aria-label="The rest of this week">
       {others.map(session => <button type="button" key={session.name} onClick={() => onSelect?.(session.name === selected ? null : session.name)}>
-        <span><b>{workoutLabel(session)}</b><small>{workoutRequired(session)} · {session.exercises.length} exercises · {sessionMinutes(session)} min</small></span>
+        <span><b>{workoutLabel(session)}</b><small>{workoutRequired(session) ? "You need this one" : "Only if you want it"} · starts with {session.exercises[0]?.exercise.replace(/\s*\([^)]+\)$/, "") ?? "nothing"} · {sessionMinutes(session)} min</small></span>
         <Icon name="chevron" />
       </button>)}
       {selected ? <button type="button" className="text-button" onClick={() => onSelect?.(null)}>Back to the next workout</button> : null}

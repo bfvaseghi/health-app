@@ -118,7 +118,7 @@ export default function Home() {
   // navigation, so synthetic memory can never turn into a saveable real state.
   const [demoMode] = useState(requestedDemoMode);
   const [view, setView] = useState<View>("today");
-  const [fitnessTab, setFitnessTab] = useState<FitnessTab>("coach");
+  const [fitnessTab, setFitnessTab] = useState<FitnessTab>("workout");
   const [mindTab, setMindTab] = useState<MindTab>("thoughts");
   const [journalComposeRequest, setJournalComposeRequest] = useState(0);
   const [journalDraft, setJournalDraft] = useState<"entry" | "edit" | null>(null);
@@ -418,7 +418,7 @@ export default function Home() {
 
   const go = useCallback((next: View, mindTarget?: MindTab, focusJournal = false) => {
     if (next === "mind" && mindTarget) setMindTab(mindTarget);
-    if (next === "fitness") setFitnessTab("coach");
+    if (next === "fitness") setFitnessTab("workout");
     setView(next);
     // A section change is a new screen. An animated carry-over can leave the
     // next heading above the viewport for several frames, especially on iOS.
@@ -957,7 +957,7 @@ export default function Home() {
             const next = applyImport(before, items);
             if (items.some(item => item.include && item.kind === "records" && item.records.replaceWorkoutHistory)) {
               setFitnessRevision(value => value + 1);
-              setFitnessTab("coach");
+              setFitnessTab("workout");
               go("fitness");
             }
             const added = [

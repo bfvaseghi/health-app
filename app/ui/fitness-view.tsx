@@ -9,9 +9,13 @@ import { RecordHeading } from "./primitives";
 import { fitnessTabs, type FitnessTab, type Modal } from "./types";
 
 /**
- * Training and body composition are one subject, so they are one section with
- * four views: the next workout, weekly muscle coverage, strength trends, and
- * body composition. Strong remains the workout log.
+ * Two tabs, because there are two questions.
+ *
+ * Workout answers the one you came for: what am I doing today. Progress
+ * answers the other one, occasionally: is this working. Muscle coverage used
+ * to be a third tab of equal weight, which put the planner's own diagnostic
+ * beside the thing you actually wanted; it now sits under progress, where you
+ * go when you want to check the week adds up.
  */
 export function FitnessView({
   state,
@@ -74,22 +78,19 @@ export function FitnessView({
             </button>
           ))}
         </div>
-      <div id="fitness-panel-coach" role="tabpanel" aria-labelledby="fitness-tab-coach" hidden={tab !== "coach"}>
-      {tab === "coach" && (
+      <div id="fitness-panel-workout" role="tabpanel" aria-labelledby="fitness-tab-workout" hidden={tab !== "workout"}>
+      {tab === "workout" && (
         <CoachTab selected={selected} onSelect={setSelected} state={state} today={today} open={open} onGoals={onGoals} onNotice={onNotice} />
       )}
       </div>
       <div id="fitness-panel-progress" role="tabpanel" aria-labelledby="fitness-tab-progress" hidden={tab !== "progress"}>
-      {tab === "progress" && <ProgressTab state={state} today={today} />}
-      </div>
-      <div id="fitness-panel-muscles" role="tabpanel" aria-labelledby="fitness-tab-muscles" hidden={tab !== "muscles"}>
-      {tab === "muscles" && (
-        <CoachTab selected={selected} onSelect={setSelected} state={state} today={today} open={open} onGoals={onGoals} onNotice={onNotice} mode="muscles" onWorkout={() => navigate("coach")} />
-      )}
-      </div>
-      <div id="fitness-panel-body" role="tabpanel" aria-labelledby="fitness-tab-body" hidden={tab !== "body"}>
-      {tab === "body" && (
-        <BodyTab
+      {tab === "progress" && (
+        <>
+          <ProgressTab state={state} today={today} />
+          {/* The week's coverage, where you come to check whether it adds up
+              rather than while you are reading today's lifts. */}
+          <CoachTab selected={selected} onSelect={setSelected} state={state} today={today} open={open} onGoals={onGoals} onNotice={onNotice} mode="muscles" />
+          <BodyTab
           state={state}
           editableState={editableState}
           today={today}
@@ -102,6 +103,7 @@ export function FitnessView({
           onGoals={onGoals}
           loadImage={loadImage}
         />
+        </>
       )}
       </div>
     </div>

@@ -14,8 +14,13 @@ import type { SleepSource } from "../health-model";
  */
 export type View = "today" | "sleep" | "fitness" | "mind" | "meds" | "labs" | "summary" | "data" | "more" | "compare" | "urges";
 
-/** Fitness is one section with three faces rather than three sections. */
-export type FitnessTab = "coach" | "muscles" | "progress" | "body";
+/**
+ * Two things, not four. The workout is why you opened the app; everything else
+ * is how it is going. Muscle coverage was never a peer of your workout — it is
+ * the reason the workout looks the way it does, so it sits under the workout
+ * and under progress rather than owning a tab.
+ */
+export type FitnessTab = "workout" | "progress";
 
 export type Period = 14 | 30 | 90;
 export type SaveStatus = "loading" | "saved" | "saving" | "local" | "error" | "demo";
@@ -63,10 +68,8 @@ export const navOrder: View[] = ["today", "sleep", "fitness", "mind", "urges", "
 export const mobileNavOrder: View[] = ["today", "sleep", "fitness", "mind", "urges", "meds", "more"];
 
 export const fitnessTabs: Array<{ tab: FitnessTab; label: string }> = [
-  { tab: "coach", label: "Plan" },
-  { tab: "muscles", label: "Muscles" },
-  { tab: "progress", label: "Strength" },
-  { tab: "body", label: "Body" },
+  { tab: "workout", label: "Workout" },
+  { tab: "progress", label: "Progress" },
 ];
 
 export const bodyMetrics: Array<{ metric: BodyMetric; label: string; unit: string }> = [

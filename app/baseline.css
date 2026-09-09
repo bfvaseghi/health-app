@@ -230,3 +230,10 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
 /* The one line about what happens after the workout. */
 .after-line { margin: 22px 0 0; font-size: .875rem; line-height: 1.6; color: var(--muted); }
 .after-line .text-button { display: inline; min-height: 0; padding: 0; font-size: inherit; font-weight: 600; color: var(--ink); text-decoration: underline; }
+
+/* The reasoning behind today's workout, available without being a destination. */
+.why-this { margin: 0; padding: 16px 24px 20px; border-top: 1px solid var(--line); }
+.why-this > summary { min-height: 44px; display: flex; align-items: center; cursor: pointer; font-size: .875rem; font-weight: 600; color: var(--muted); }
+.why-this > summary::marker { color: var(--faint); }
+.why-this p { margin: 0 0 10px; font-size: .9375rem; line-height: 1.6; color: var(--muted); max-width: 62ch; }
+.why-this p:last-child { margin-bottom: 0; }
