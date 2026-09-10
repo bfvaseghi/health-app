@@ -8,13 +8,12 @@ import type { Muscle } from "../training/muscles";
 import { BodyTab } from "./body-tab";
 import { CoverageBody, MiniCoverage, coverageFacts } from "./coverage-row";
 import { AnswerRow } from "./answer-row";
-import { LoopSteps, NextUpBody, TakeItWithYou, WeekPips, nextUpFacts } from "./next-up-row";
+import { NextUpBody, TakeItWithYou, WeekPips, nextUpFacts } from "./next-up-row";
 import { GymView } from "./gym-view";
 import { readGymOpened, writeGymOpened } from "./gym-visit";
 import { loopState } from "./loop-state";
-import { RecordStamp } from "./record-stamp";
+import { RecordCard } from "./record-stamp";
 import { StrengthBody, StrengthSpark, strengthFacts } from "./strength-row";
-import { Icon } from "./icons";
 import { RecordHeading } from "./primitives";
 import { type FitnessOpen, type FitnessRow, type Modal } from "./types";
 
@@ -29,7 +28,8 @@ import { type FitnessOpen, type FitnessRow, type Modal } from "./types";
  * words, so one tab could say nothing was behind while the next said nine of
  * eleven muscles were short.
  *
- * Now: a stamp saying where all of it came from, then Next up, Coverage,
+ * Now: a record card carrying where all of it came from, the three steps of
+ * the week's round trip and the way to import — then Next up, Coverage,
  * Strength and Body, each stating its answer with the window it measured. One
  * question is answered in exactly one place. Opening a row is only ever for the
  * working behind a number already read, and rows open independently, because
@@ -101,7 +101,7 @@ export function FitnessView({
   return (
     <div className="page fitness-page">
       <RecordHeading title="Fitness" />
-      <RecordStamp state={state} today={today} open={open} />
+      <RecordCard state={state} today={today} loop={loop} open={open} />
 
       <div className="answer-stack">
         <AnswerRow
@@ -111,10 +111,10 @@ export function FitnessView({
           headline={hasHistory ? next.headline : "No workout yet"}
           subline={hasHistory ? next.subline : "Needs your Strong export"}
           tone={hasHistory ? "primary" : "empty"}
-          graphic={hasHistory ? <WeekPips facts={next} scope={loop.show} /> : null}
+          graphic={hasHistory ? <WeekPips facts={next} scope={loop.uncertain} /> : null}
           action={hasHistory
-            ? <><LoopSteps loop={loop} /><TakeItWithYou facts={next} onGym={openGym} onNotice={onNotice} /></>
-            : <button type="button" className="button primary" onClick={() => open({ kind: "import", source: "strong" })}><Icon name="upload" />Import from Strong</button>}
+            ? <TakeItWithYou facts={next} onGym={openGym} onNotice={onNotice} stepBack={loop.reason === "mid"} />
+            : null}
           open={rows.next}
           onToggle={() => toggle("next")}
         >

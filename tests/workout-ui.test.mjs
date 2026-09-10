@@ -36,7 +36,7 @@ test("the shut stack answers all four questions with no tabs and no step numbers
   assert.doesNotMatch(html, /class="step-n"/);
   assert.doesNotMatch(html, /class="answer-headline">Full body</);
   assert.equal((html.match(/class="answer-row/g) ?? []).length, 4);
-  assert.equal((html.match(/class="record-stamp/g) ?? []).length, 1);
+  assert.equal((html.match(/class="record-card[ "]/g) ?? []).length, 1);
   // Every question is answered while shut: the workout, the muscle picture and
   // the strength verdict are all on the resting screen.
   assert.match(plain(html), /NEXT UP/);
@@ -207,32 +207,32 @@ test("exercise directions distinguish weight, assistance, bodyweight, a stall re
 
 test("the stamp reports how old the record is, and nothing else", () => {
   const base = demoHealthState(TODAY);
-  assert.match(plain(view({ ...base, importedAt: `${TODAY}T09:00:00.000Z` })), /Imported today · \d+ workouts/);
+  assert.match(plain(view({ ...base, importedAt: `${TODAY}T09:00:00.000Z` })), /Imported today \d+ workouts in the record/);
   assert.doesNotMatch(plain(view(base)), /Up to date/);
 
   // A record saved before imports were stamped says so rather than borrowing a
   // date from the newest workout, which measures training, not the log.
   const legacy = plain(view({ ...base, importedAt: null }));
-  assert.match(legacy, /last import not recorded/);
+  assert.match(legacy, /Last import not recorded/);
   assert.doesNotMatch(legacy, /Imported today/);
 
   // Copying a workout out is not a fault, and used to turn the stamp amber.
   assert.doesNotMatch(plain(view(base)), /To Strong|From Strong/);
-  assert.doesNotMatch(view(base), /record-stamp is-waiting/);
+  assert.doesNotMatch(view(base), /record-card is-stale/);
 
   // Amber means the IMPORT is behind — the one thing importing would fix.
   const behind = { ...base, importedAt: `${addDays(TODAY, -12)}T09:00:00.000Z` };
-  assert.match(view(behind), /record-stamp is-stale/);
+  assert.match(view(behind), /record-card is-stale/);
   assert.match(plain(view(behind)), /Last import 12 days ago/);
-  assert.match(plain(view(behind)), /Update/);
+  assert.match(plain(view(behind)), /Update from Strong/);
 
   // A record with no import stamp has only the workout date to go on, so an old
   // one keeps the amber and the way out of it. The one state that cannot date
   // itself must not be the calmest line on the screen.
   const unstamped = { ...base, importedAt: null, workoutSets: base.workoutSets.filter(set => set.date <= addDays(TODAY, -9)) };
-  assert.match(view(unstamped), /record-stamp is-stale/);
-  assert.match(plain(view(unstamped)), /last import not recorded/);
-  assert.match(plain(view(unstamped)), /Import/);
+  assert.match(view(unstamped), /record-card is-stale/);
+  assert.match(plain(view(unstamped)), /Last import not recorded/);
+  assert.match(plain(view(unstamped)), /Update from Strong/);
 });
 
 test("a rest week is not a stale record", () => {
@@ -245,8 +245,8 @@ test("a rest week is not a stale record", () => {
     importedAt: `${TODAY}T09:00:00.000Z`,
     workoutSets: base.workoutSets.filter(set => set.date <= addDays(TODAY, -9)),
   };
-  assert.doesNotMatch(view(rested), /record-stamp is-stale/);
-  assert.match(plain(view(rested)), /Imported today · \d+ workouts/);
+  assert.doesNotMatch(view(rested), /record-card is-stale/);
+  assert.match(plain(view(rested)), /Imported today \d+ workouts in the record/);
 });
 
 test("rows open independently, so a number and its working can be read together", () => {
@@ -296,27 +296,29 @@ test("the loop strip appears exactly when the record could be behind", () => {
   // Closed: imported today, no gym card opened since. The pips cannot be
   // behind, so neither the strip nor the caveat under them is earned.
   const closed = loopState({ ...base, importedAt: imported }, TODAY, null);
-  assert.equal(closed.show, false);
+  assert.equal(closed.uncertain, false);
   assert.equal(closed.reason, "closed");
+  assert.deepEqual(closed.steps.map(step => step.state), ["now", "todo", "todo"],
+    "a closed loop points at the gym, not at an import you do not owe");
 
   // Mid-loop: he read the workout, so whatever he did is not in the record yet.
   const mid = loopState({ ...base, importedAt: imported }, TODAY, `${TODAY}T18:30:00.000Z`);
-  assert.equal(mid.show, true);
+  assert.equal(mid.uncertain, true);
   assert.equal(mid.reason, "mid");
-  assert.equal(mid.steps[0].done, true, "opening the gym should strike step one");
-  assert.deepEqual(mid.steps.map(step => step.done), [true, false, false]);
+  assert.deepEqual(mid.steps.map(step => step.state), ["done", "todo", "now"],
+    "mid-loop: the gym is behind you and the export is what is owed");
 
   // Opening the gym card before the last import is a closed loop, not an open
   // one — the import that followed is what settles it.
   const settled = loopState({ ...base, importedAt: imported }, TODAY, `${addDays(TODAY, -3)}T18:30:00.000Z`);
-  assert.equal(settled.show, false);
+  assert.equal(settled.uncertain, false);
 
   // A visit has to be recent to count as an open loop. Without the bound, a
   // phone that opened the card once and never imported strikes step one for
   // the rest of its life and describes a workout from March.
   const ancient = loopState({ ...base, importedAt: null }, TODAY, `${addDays(TODAY, -40)}T18:30:00.000Z`);
   assert.equal(ancient.reason, "first");
-  assert.equal(ancient.steps[0].done, false);
+  assert.equal(ancient.steps[0].state, "now");
 
   // Never imported, and an import old enough to doubt.
   assert.equal(loopState({ ...base, importedAt: null }, TODAY, null).reason, "first");
@@ -327,14 +329,19 @@ test("the loop strip appears exactly when the record could be behind", () => {
 test("the week pips say what they count, and only while it could be wrong", () => {
   const base = demoHealthState(TODAY);
 
-  // Closed loop: the count is trustworthy, so no caveat and no strip.
+  // Closed loop: the steps are still on screen — they are what the section
+  // does, not a warning — but the count is trustworthy, so it carries no
+  // caveat, and the lit step is the gym rather than an import you do not owe.
   const quiet = plain(view({ ...base, importedAt: `${TODAY}T09:00:00.000Z` }));
+  assert.match(quiet, /Import the export back here/);
   assert.doesNotMatch(quiet, /In the record up to/);
-  assert.doesNotMatch(quiet, /Import the export back here/);
+  assert.doesNotMatch(view({ ...base, importedAt: `${TODAY}T09:00:00.000Z` }), /record-card is-loud/);
 
   // Behind: the strip states the loop and the pips state their scope, because
   // a hollow pip and an unimported workout look identical on screen.
-  const behind = plain(view({ ...base, importedAt: `${addDays(TODAY, -12)}T09:00:00.000Z` }));
+  const behindState = { ...base, importedAt: `${addDays(TODAY, -12)}T09:00:00.000Z` };
+  const behind = plain(view(behindState));
+  assert.match(view(behindState), /record-card is-stale is-loud/);
   assert.match(behind, /Open in the gym/);
   assert.match(behind, /Log the sets in Strong/);
   assert.match(behind, /Import the export back here/);
@@ -363,4 +370,22 @@ test("the gym card ends by handing the workout back", () => {
   const readOnly = renderToStaticMarkup(createElement(GymView, { session, label: "Legs + back", onClose: noop }));
   assert.doesNotMatch(spoken(readOnly), /Import from Strong/);
   assert.match(spoken(readOnly), /That’s the workout/);
+});
+
+test("one loud button at a time, and it is the step you are on", () => {
+  const base = demoHealthState(TODAY);
+  const loud = /class="button primary"/g;
+
+  // Loop closed: the gym is next, so the gym button is the lit one and the
+  // import sits behind it as an outline.
+  const before = view({ ...base, importedAt: `${TODAY}T09:00:00.000Z` });
+  const beforeLoud = [...before.matchAll(loud)];
+  assert.equal(beforeLoud.length, 1, "a closed loop should light exactly one button");
+  assert.match(before.slice(before.search(loud)).slice(0, 200), /Open in the gym/);
+
+  // Nothing imported at all: there is no workout to open, so the only loud
+  // button on the screen is the import.
+  const empty = view(emptyHealthState(new Date(`${TODAY}T12:00:00Z`)));
+  assert.equal([...empty.matchAll(loud)].length, 1);
+  assert.match(empty.slice(empty.search(loud)).slice(0, 200), /Import from Strong/);
 });

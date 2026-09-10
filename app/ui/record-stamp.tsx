@@ -2,6 +2,8 @@
 
 import type { HealthState } from "../health-model";
 import { daysBetween } from "../health-model";
+import { LoopSteps } from "./next-up-row";
+import type { LoopState } from "./loop-state";
 import { recordAge, sinceLabel } from "../training/recommend";
 import { Icon } from "./icons";
 import type { Modal } from "./types";
@@ -15,7 +17,7 @@ import type { Modal } from "./types";
  *
  * It used to also announce which way the loop was pointing — "To Strong" once
  * you had copied a workout out — which turned the stamp amber for doing the
- * right thing and read as a fault. The stamp reports one fact now: how old the
+ * right thing and read as a fault. It reports one fact now: how old the
  * record is.
  *
  * And "old" means the IMPORT, not the last workout. The two are different
@@ -27,48 +29,79 @@ import type { Modal } from "./types";
  */
 export function recordStamp(state: HealthState, today: string): {
   tone: "neutral" | "accent" | "stale";
+  /** The age, as a headline. */
   text: string;
-  cta: string | null;
+  /** What is in the record, underneath it. */
+  detail: string;
+  cta: string;
 } {
   if (!state.workoutSets.length) {
-    return { tone: "accent", text: "No Strong export yet", cta: "Import" };
-  }
-  // No import was ever stamped. Saying so is the honest answer; reading it off
-  // the newest workout date would be a guess dressed as a record. The workout
-  // date is still the only age we have here, so an old one keeps the amber and
-  // the way out of it — dropping those would leave the one state that cannot
-  // date its own record as the calmest line on the screen.
-  if (!state.importedAt) {
-    const age = recordAge(state, today);
-    const text = `Last workout ${sinceLabel(age.days)} · last import not recorded`;
-    return age.days !== null && age.days >= 7
-      ? { tone: "stale", text, cta: "Import" }
-      : { tone: "neutral", text, cta: null };
-  }
-  const days = daysBetween(state.importedAt.slice(0, 10), today);
-  if (days >= 7) {
-    return { tone: "stale", text: `Last import ${sinceLabel(days)}`, cta: "Update" };
+    return { tone: "accent", text: "No Strong export yet", detail: "Nothing to plan from", cta: "Import from Strong" };
   }
   const count = new Set(state.workoutSets.filter(set => set.date <= today).map(set => set.startedAt)).size;
-  const workouts = `${count} ${count === 1 ? "workout" : "workouts"}`;
-  return { tone: "neutral", text: `Imported ${sinceLabel(days)} · ${workouts}`, cta: null };
+  const held = `${count} ${count === 1 ? "workout" : "workouts"} in the record`;
+
+  // No import was ever stamped. Saying so is the honest answer; reading it off
+  // the newest workout date would be a guess dressed as a record. The workout
+  // date is still the only age we have here, so an old one keeps the amber —
+  // the one state that cannot date its own record must not be the calmest
+  // thing on the screen.
+  if (!state.importedAt) {
+    const age = recordAge(state, today);
+    return {
+      tone: age.days !== null && age.days >= 7 ? "stale" : "neutral",
+      text: `Last workout ${sinceLabel(age.days)}`,
+      detail: "Last import not recorded",
+      cta: "Update from Strong",
+    };
+  }
+
+  const days = daysBetween(state.importedAt.slice(0, 10), today);
+  if (days >= 7) {
+    return { tone: "stale", text: `Last import ${sinceLabel(days)}`, detail: held, cta: "Update from Strong" };
+  }
+  return { tone: "neutral", text: `Imported ${sinceLabel(days)}`, detail: held, cta: "Update from Strong" };
 }
 
-export function RecordStamp({ state, today, open }: {
+/**
+ * The record, as the first card on the section rather than a line of small
+ * print above it.
+ *
+ * It was a 13px row you could read past without noticing, which put the only
+ * way into the app's one real input behind a piece of text that looked like a
+ * caption. Everything below it is derived from that import; it should be the
+ * first object on the page, not the smallest.
+ *
+ * The three steps live here, permanently, because "what do I do after the gym"
+ * is a question about the section and not about one workout — and because the
+ * card carries the button that answers it. Which step is lit, and how loud the
+ * button is, are the whole state of the loop said without a sentence: quiet
+ * while the record is current, loud the moment you owe it an export.
+ */
+export function RecordCard({ state, today, loop, open }: {
   state: HealthState;
   today: string;
+  loop: LoopState;
   open: (modal: Modal) => void;
 }) {
   const stamp = recordStamp(state, today);
+  const loud = stamp.tone !== "neutral" || loop.reason === "mid";
   return (
-    <button
-      type="button"
-      className={`record-stamp is-${stamp.tone}`}
-      onClick={() => open({ kind: "import", source: "strong" })}
-    >
-      <Icon name="upload" />
-      <span>{stamp.text}</span>
-      {stamp.cta ? <b>{stamp.cta}</b> : null}
-    </button>
+    <section className={`record-card is-${stamp.tone}${loud ? " is-loud" : ""}`} aria-label="Your record">
+      <div className="record-card-head">
+        <span className="tl-caps">Your record</span>
+        <b>{stamp.text}</b>
+        <small>{stamp.detail}</small>
+      </div>
+      <LoopSteps loop={loop} />
+      <button
+        type="button"
+        className={`button ${loud ? "primary" : "secondary"}`}
+        onClick={() => open({ kind: "import", source: "strong" })}
+      >
+        <Icon name="upload" />
+        {stamp.cta}
+      </button>
+    </section>
   );
 }

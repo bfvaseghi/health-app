@@ -213,20 +213,24 @@ export function WeekPips({ facts, scope = false }: { facts: NextUpFacts; scope?:
 }
 
 /**
- * The week's round trip, printed on the card you read before you leave.
+ * The week's round trip, three lines, always on screen.
  *
- * Three lines, no paragraph. Step one strikes through once you have opened the
- * workout, so the strip says where you are rather than only what to do — and
- * the whole thing disappears when the import lands.
+ * It sat inside the workout card and appeared only when the record could be
+ * behind, which made it a warning rather than an explanation — you had to
+ * already be lost to be told how it works. Up in the record card it is simply
+ * what this section does, and the filled numeral moves as you go round.
  */
 export function LoopSteps({ loop }: { loop: LoopState }) {
-  if (!loop.show) return null;
   return <ol className="session-steps" aria-label="The week's round trip">
     {loop.steps.map((step, index) => (
-      <li key={step.key} className={step.done ? "is-done" : ""}>
+      <li key={step.key} className={`is-${step.state}`}>
         <i aria-hidden="true">{index + 1}</i>
         <span>
-          <b>{step.label}{step.done ? <span className="visually-hidden"> — done</span> : null}</b>
+          <b>
+            {step.label}
+            {step.state === "done" ? <span className="visually-hidden"> — done</span> : null}
+            {step.state === "now" ? <span className="visually-hidden"> — do this next</span> : null}
+          </b>
           {step.note ? <small>{step.note}</small> : null}
         </span>
       </li>
@@ -234,15 +238,23 @@ export function LoopSteps({ loop }: { loop: LoopState }) {
   </ol>;
 }
 
-/** The two ways to take the workout with you: read it big, or copy the text. */
-export function TakeItWithYou({ facts, onGym, onNotice }: {
+/**
+ * The two ways to take the workout with you: read it big, or copy the text.
+ *
+ * `stepBack` hands the loud treatment to the record card. Once you have opened
+ * the workout, the thing you owe the app is the export, and two full-width
+ * green buttons on one screen asking for different things is not a hierarchy —
+ * the lit button should always be the step you are actually on.
+ */
+export function TakeItWithYou({ facts, onGym, onNotice, stepBack = false }: {
   facts: NextUpFacts;
   onGym: () => void;
   onNotice: (message: string) => void;
+  stepBack?: boolean;
 }) {
   if (!facts.hero) return null;
   return <div className="take-with-you">
-    <button type="button" className="button primary" onClick={onGym}>
+    <button type="button" className={`button ${stepBack ? "secondary" : "primary"}`} onClick={onGym}>
       <Icon name="fitness" />
       Open in the gym
     </button>

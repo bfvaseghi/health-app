@@ -17,19 +17,29 @@ import { daysBetween } from "../health-model";
 /** How far an import can fall behind before the loop is worth restating. */
 export const LOOP_STALE_DAYS = 7;
 
+/**
+ * done — struck through: we know it happened in this pass round the loop.
+ * now  — the step to take next, and the only one carrying a filled numeral.
+ * todo — ahead of you, drawn quiet.
+ */
+export type StepState = "done" | "now" | "todo";
+
 export type LoopStep = {
   key: "gym" | "log" | "import";
   label: string;
   note: string | null;
-  /** Struck through: already done in this pass round the loop. */
-  done: boolean;
+  state: StepState;
 };
 
 export type LoopState = {
-  show: boolean;
   /**
-   * Why it is showing. "mid" is the one that earns its place — you have opened
-   * the workout since your last import, so the record is knowingly behind.
+   * The record may be behind, so a count of imported workouts is not a count
+   * of workouts. Gates the caveat under the week pips.
+   */
+  uncertain: boolean;
+  /**
+   * "mid" is the one that earns the loud treatment — you have opened the
+   * workout since your last import, so the record is knowingly behind.
    */
   reason: "mid" | "first" | "stale" | "closed";
   steps: LoopStep[];
@@ -57,11 +67,15 @@ export function loopState(state: HealthState, today: string, gymOpenedAt: string
   const reason = midLoop ? "mid" : !imported ? "first" : behind ? "stale" : "closed";
 
   return {
-    show: reason !== "closed",
+    uncertain: reason !== "closed",
     reason,
+    // The steps are always on screen, so they have to say where you are and not
+    // only what the loop is. Mid-loop the workout has been read and the export
+    // is what is owed; otherwise the gym is what is next. Step two is the one
+    // the app can neither do nor observe, so it is never "now".
     steps: [
-      { key: "gym", label: "Open in the gym", note: null, done: midLoop },
-      { key: "log", label: "Log the sets in Strong", note: null, done: false },
+      { key: "gym", label: "Open in the gym", note: null, state: midLoop ? "done" : "now" },
+      { key: "log", label: "Log the sets in Strong", note: null, state: "todo" },
       {
         key: "import",
         label: "Import the export back here",
@@ -69,7 +83,7 @@ export function loopState(state: HealthState, today: string, gymOpenedAt: string
         // Monday and a set added by hand in Coverage moves the plan too. What
         // is true, and what matters in the gym, is the load on each lift.
         note: "Your weights only change when you import",
-        done: false,
+        state: midLoop ? "now" : "todo",
       },
     ],
   };
