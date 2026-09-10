@@ -29,6 +29,7 @@ export function AnswerRow({
   action,
   open,
   onToggle,
+  onJump,
   children,
 }: {
   id: string;
@@ -45,9 +46,16 @@ export function AnswerRow({
   action?: ReactNode;
   open: boolean;
   onToggle: () => void;
+  /**
+   * Given instead of children: the row is a summary of somewhere else, and
+   * tapping it goes there rather than unfolding. Used where the detail needs a
+   * page of its own — every lift with its own curve does not fit in a fold.
+   */
+  onJump?: () => void;
   children?: ReactNode;
 }) {
-  const inert = tone === "empty" || !children;
+  const inert = tone === "empty" || (!children && !onJump);
+  const jumps = !children && Boolean(onJump);
   const head = (
     <>
       <span className="answer-eyebrow">
@@ -75,16 +83,16 @@ export function AnswerRow({
           type="button"
           className="answer-head"
           id={`${id}-head`}
-          aria-expanded={open}
-          aria-controls={`${id}-body`}
-          onClick={onToggle}
+          aria-expanded={jumps ? undefined : open}
+          aria-controls={jumps ? undefined : `${id}-body`}
+          onClick={jumps ? onJump : onToggle}
         >
           {head}
         </button>
       )}
       {graphic ? <div className="answer-graphic">{graphic}</div> : null}
       {action ? <div className="answer-action">{action}</div> : null}
-      {inert ? null : (
+      {inert || jumps ? null : (
         <div className="answer-body" id={`${id}-body`} role="region" aria-labelledby={`${id}-head`} hidden={!open}>
           {open ? children : null}
         </div>

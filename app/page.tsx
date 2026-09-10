@@ -80,7 +80,7 @@ import { RecordDay } from "./ui/record-day";
 import { clearWorkoutDraft } from "./ui/workout-session";
 import { TodayView } from "./ui/today-view";
 import { formatTimestamp } from "./ui/format";
-import { FitnessOpen, MindTab, Modal, SaveStatus, Theme, Toast, View, fitnessAllClosed, mobileNavOrder, navOrder, viewLabels } from "./ui/types";
+import { FitnessOpen, FitnessTab, MindTab, Modal, SaveStatus, Theme, Toast, View, fitnessAllClosed, mobileNavOrder, navOrder, viewLabels } from "./ui/types";
 
 const THEME_KEY = "bardia-health-theme";
 const initialState = emptyHealthState();
@@ -122,6 +122,7 @@ export default function Home() {
   // section restores the layout he built rather than resetting it.
   const [fitnessRows, setFitnessRows] = useState<FitnessOpen>(fitnessAllClosed);
   const [mindTab, setMindTab] = useState<MindTab>("thoughts");
+  const [fitnessTab, setFitnessTab] = useState<FitnessTab>("training");
   const [journalComposeRequest, setJournalComposeRequest] = useState(0);
   const [journalDraft, setJournalDraft] = useState<"entry" | "edit" | null>(null);
   const [fitnessRevision, setFitnessRevision] = useState(0);
@@ -821,6 +822,8 @@ export default function Home() {
             onDeleteDay={deleteDaily}
             onGoals={saveGoals}
             onNotice={notice}
+            tab={fitnessTab}
+            onTab={setFitnessTab}
             demo={demoMode}
           />
         )}

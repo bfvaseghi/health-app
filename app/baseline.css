@@ -381,6 +381,34 @@ summary > svg { display: inline-block; vertical-align: -3px; }
 /* A twelve-week trajectory in a 30px box read as a flat wobble. */
 .trend-row .lift-spark { height: 56px; }
 
+/* ── The Strength tab: every lift, one card, one curve ─────────────────── */
+.strength-view { display: grid; gap: 18px; }
+.strength-window { margin: 0; font-size: .8125rem; color: var(--muted); }
+.strength-group { margin: 0 0 12px; font-size: .75rem; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); font-weight: 650; }
+.strength-view > section + section { margin-top: 4px; }
+.lift-cards { display: grid; gap: 14px; }
+@media (min-width: 760px) { .lift-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.lift-card { display: grid; gap: 12px; padding: 16px; background: var(--paper); border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: 12px; }
+.lift-card.is-up { border-left-color: var(--accent); }
+.lift-card.is-down { border-left-color: var(--warn); }
+.lift-card > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.lift-card-title { min-width: 0; }
+.lift-card-title h4 { margin: 0; font-size: 1.0625rem; font-weight: 650; letter-spacing: -.02em; line-height: 1.2; overflow-wrap: anywhere; }
+.lift-card-title small { display: block; margin-top: 2px; font-size: .75rem; color: var(--muted); }
+.lift-card-now { text-align: right; flex: none; }
+/* The load, at the size the load deserves. A percent is a thing you have to
+   convert back into plates before it means anything. */
+.lift-card-now > b { display: block; font-size: 1.75rem; font-weight: 650; letter-spacing: -.035em; line-height: 1.05; font-variant-numeric: tabular-nums; }
+.lift-card-now > b span { margin-left: 3px; font-size: .875rem; font-weight: 550; color: var(--muted); letter-spacing: 0; }
+.lift-card-delta { display: block; margin-top: 2px; font-size: .8125rem; font-weight: 620; font-variant-numeric: tabular-nums; }
+.lift-card-delta.is-up { color: var(--accent); }
+.lift-card-delta.is-down { color: var(--warn); }
+.lift-card-delta.is-flat { color: var(--faint); }
+.lift-card > footer { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 2px 14px; font-size: .75rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lift-card-peak { color: var(--warn); }
+.lift-card .tide { margin: 0; }
+
 /* Is the cut working: the weight and the lifts, over the same weeks. */
 .phase-score { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; margin: 0; }
 .phase-score > div { display: grid; gap: 1px; min-width: 0; }

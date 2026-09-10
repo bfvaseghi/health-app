@@ -27,6 +27,12 @@ export type View = "today" | "sleep" | "fitness" | "mind" | "meds" | "labs" | "s
 export type FitnessRow = "next" | "coverage" | "strength" | "body";
 export type FitnessOpen = Record<FitnessRow, boolean>;
 export const fitnessAllClosed: FitnessOpen = { next: false, coverage: false, strength: false, body: false };
+/**
+ * Fitness has two halves and they want different room. Training is the week —
+ * short rows, read on the way out of the door. Strength is every lift you own,
+ * one card and one curve each, which needs a page rather than a row.
+ */
+export type FitnessTab = "training" | "strength";
 
 export type Period = 14 | 30 | 90;
 export type SaveStatus = "loading" | "saved" | "saving" | "local" | "error" | "demo";

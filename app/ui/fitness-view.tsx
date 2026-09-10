@@ -14,9 +14,10 @@ import { readGymOpened, writeGymOpened } from "./gym-visit";
 import { loopState } from "./loop-state";
 import { PhaseScore, phaseScore, type PhaseScore as PhaseScoreFacts } from "./phase-score";
 import { RecordCard } from "./record-stamp";
-import { StrengthBody, StrengthSpark, strengthFacts } from "./strength-row";
+import { StrengthSpark, strengthFacts } from "./strength-row";
+import { StrengthView } from "./strength-view";
 import { RecordHeading } from "./primitives";
-import { type FitnessOpen, type FitnessRow, type Modal } from "./types";
+import { type FitnessOpen, type FitnessRow, type FitnessTab, type Modal } from "./types";
 
 /**
  * Fitness: four questions, each already answered on its own shut row.
@@ -50,6 +51,8 @@ export function FitnessView({
   onDeleteDay,
   onGoals,
   onNotice,
+  tab,
+  onTab,
   demo = false,
 }: {
   state: HealthState;
@@ -66,6 +69,9 @@ export function FitnessView({
   onGoals: (goals: GoalSettings | ((current: GoalSettings) => GoalSettings)) => void;
   onNotice: (message: string) => void;
   open: (modal: Modal) => void;
+  /** Which half of Fitness is showing. Held above so it survives a view change. */
+  tab: FitnessTab;
+  onTab: (tab: FitnessTab) => void;
   /** A demo never writes this device's keys, and never offers a real import. */
   demo?: boolean;
 }) {
@@ -103,6 +109,41 @@ export function FitnessView({
   return (
     <div className="page fitness-page">
       <RecordHeading title="Fitness" />
+
+      {/* Two halves, two panels. The week is a handful of rows you read on the
+          way out; every lift you train with its own curve is a page. Squeezing
+          the second into a row of the first is what made it a tally. */}
+      <div className="fitness-tabs record-tabs" role="tablist" aria-label="Fitness">
+        {(["training", "strength"] as const).map((value, index, tabs) => (
+          <button
+            key={value}
+            type="button"
+            role="tab"
+            id={`fitness-tab-${value}`}
+            aria-controls={`fitness-panel-${value}`}
+            aria-selected={tab === value}
+            tabIndex={tab === value ? 0 : -1}
+            onClick={() => onTab(value)}
+            onKeyDown={event => {
+              const next = event.key === "ArrowRight" ? (index + 1) % tabs.length
+                : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length
+                : event.key === "Home" ? 0
+                : event.key === "End" ? tabs.length - 1
+                : null;
+              if (next === null) return;
+              event.preventDefault();
+              onTab(tabs[next]);
+              (event.currentTarget.parentElement?.children[next] as HTMLButtonElement)?.focus();
+            }}
+          >{value === "training" ? "Training" : "Strength"}</button>
+        ))}
+      </div>
+
+      <div id="fitness-panel-strength" role="tabpanel" aria-labelledby="fitness-tab-strength" hidden={tab !== "strength"}>
+        {tab === "strength" ? <StrengthView state={state} today={today} weeks={weeks} onWeeks={setWeeks} /> : null}
+      </div>
+
+      <div id="fitness-panel-training" role="tabpanel" aria-labelledby="fitness-tab-training" hidden={tab !== "training"}>
       <RecordCard state={state} today={today} loop={loop} open={open} />
 
       <div className="answer-stack">
@@ -155,6 +196,9 @@ export function FitnessView({
           />}
         </AnswerRow>
 
+        {/* A summary that goes somewhere rather than unfolding: every lift with
+            its own curve is a page, and squeezing it into a fold is what turned
+            it into a tally in the first place. */}
         <AnswerRow
           id="fitness-strength"
           eyebrow="STRENGTH"
@@ -165,9 +209,8 @@ export function FitnessView({
           graphic={strength.tone === "empty" ? null : <StrengthSpark state={state} today={today} weeks={weeks} />}
           open={rows.strength}
           onToggle={() => toggle("strength")}
-        >
-          {strength.tone === "empty" ? null : <StrengthBody state={state} today={today} weeks={weeks} onWeeks={setWeeks} facts={strength} />}
-        </AnswerRow>
+          onJump={strength.tone === "empty" ? undefined : () => onTab("strength")}
+        />
 
         <AnswerRow
           id="fitness-body"
@@ -195,6 +238,8 @@ export function FitnessView({
           />
         </AnswerRow>
       </div>
+      </div>
+
       {gym && next.hero ? <GymView
         session={next.hero}
         label={next.headline}

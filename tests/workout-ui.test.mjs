@@ -24,17 +24,21 @@ const plain = html => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
 const spoken = html => plain(html)
   .replaceAll("&#x27;", "'").replaceAll("&quot;", '"')
   .replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
-const view = (state, rows = fitnessAllClosed, today = TODAY) => renderToStaticMarkup(createElement(FitnessView, {
-  state, editableState: state, today, rows: { ...fitnessAllClosed, ...rows }, onRows: noop, open: noop,
+const view = (state, rows = fitnessAllClosed, today = TODAY, tab = "training") => renderToStaticMarkup(createElement(FitnessView, {
+  state, editableState: state, today, rows: { ...fitnessAllClosed, ...rows }, onRows: noop, open: noop, tab, onTab: noop,
   onAddPhoto: async () => {}, onUpdatePhoto: noop, onDeletePhoto: noop, onDeleteDay: noop, onGoals: noop, onNotice: noop,
 }));
+/** The Strength half of Fitness. */
+const strengthTab = (state, today = TODAY) => view(state, fitnessAllClosed, today, "strength");
 
-test("the shut stack answers all four questions with no tabs and no step numbers", () => {
+test("the shut stack answers every question without opening anything", () => {
   const state = demoHealthState(TODAY);
   const html = view(state);
-  // The rejected designs, gone: a tablist, circled step numbers, and a name
-  // shared by two different workouts in the same week.
-  assert.doesNotMatch(html, /role="tablist"/);
+  // Fitness has two halves — the week, and every lift with its own curve —
+  // and they want different room. What was rejected was four tabs named after
+  // the app's internals, each of which hid its own number until you opened it.
+  // Training still answers everything while shut; that is the invariant.
+  assert.equal((html.match(/role="tab"/g) ?? []).length, 2);
   assert.doesNotMatch(html, /class="step-n"/);
   assert.doesNotMatch(html, /class="answer-headline">Full body</);
   assert.equal((html.match(/class="answer-row/g) ?? []).length, 4);
@@ -281,7 +285,7 @@ test("no fold hides the key to a number above it", () => {
 
 test("strength names lifts and weights, not a tally of directions", () => {
   const state = demoHealthState(TODAY);
-  const html = view(state, { strength: true });
+  const html = view(state);
   const progress = buildProgress(state, TODAY, 12);
   const main = mainLifts(progress);
 
@@ -309,12 +313,16 @@ test("strength names lifts and weights, not a tally of directions", () => {
   const headlines = [...html.matchAll(headline)].map(m => m[1]);
   assert.ok(headlines.some(text => main.some(lift => text.startsWith(liftName(lift.exercise)))),
     `no headline names a main lift: ${headlines.join(" | ")}`);
-  // Lifts that cannot be measured are counted separately, because "not
-  // measurable" is not the same claim as "not moving".
-  if (progress.excluded.length) assert.match(plain(html), new RegExp(`Not measured \\(${progress.excluded.length}\\)`));
-  // An estimated max is labelled as one. It used to print bare "lb" beside a
-  // workout screen prescribing a different, real number for the same lift.
-  if (progress.lifts.some(lift => !lift.bodyweight && !lift.assisted)) assert.match(plain(html), /est\. max \d+ lb/);
+  // An estimated max is labelled as one wherever it is printed. It used to be a
+  // bare "lb" beside a workout screen prescribing a different, real number for
+  // the same lift.
+  assert.match(plain(html), /estimated max/);
+
+  // The lifts that cannot be measured, and why, live on the Strength tab where
+  // there is room for them — "not measurable" is not the same claim as "not
+  // moving", so it is never folded into the counts.
+  const tab = strengthTab(state);
+  if (progress.excluded.length) assert.match(plain(tab), new RegExp(`Not measured \\(${progress.excluded.length}\\)`));
 });
 
 test("the loop strip appears exactly when the record could be behind", () => {
@@ -416,4 +424,38 @@ test("one loud button at a time, and it is the step you are on", () => {
   const empty = view(emptyHealthState(new Date(`${TODAY}T12:00:00Z`)));
   assert.equal([...empty.matchAll(loud)].length, 1);
   assert.match(empty.slice(empty.search(loud)).slice(0, 200), /Import from Strong/);
+});
+
+test("the Strength tab gives every lift a card and a curve", () => {
+  const state = demoHealthState(TODAY);
+  const html = strengthTab(state);
+  const progress = buildProgress(state, TODAY, 12);
+
+  // Every measured lift, not a chosen four: the tab exists so that "how is
+  // each of my lifts going" has somewhere to be answered in full.
+  assert.equal((html.match(/class="lift-card /g) ?? []).length, progress.lifts.length);
+  // One tide each, the app's own curve, so the shape means the same thing here
+  // as it does on Sleep and Body.
+  assert.equal((html.match(/class="tide"/g) ?? []).length, progress.lifts.length);
+
+  const spoken_ = spoken(html);
+  for (const lift of progress.lifts) {
+    assert.match(spoken_, new RegExp(liftName(lift.exercise).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  // The load, in the unit you put on the bar — never a bare percent.
+  assert.doesNotMatch(spoken_, /Up \d+(\.\d+)?% *$/);
+  assert.match(spoken_, /\d+ → \d+ (lb|reps) over 12 weeks/);
+
+  // Every value reaches a screen reader as a real table, not only as a shape.
+  assert.equal((html.match(/<table class="visually-hidden">/g) ?? []).length, progress.lifts.length);
+
+  // The training half is not also rendered underneath it.
+  assert.match(html, /id="fitness-panel-training"[^>]*hidden/);
+});
+
+test("a record with nothing measurable says so instead of drawing an empty tab", () => {
+  const html = strengthTab(emptyHealthState(new Date(`${TODAY}T12:00:00Z`)));
+  assert.doesNotMatch(html, /class="lift-card /);
+  assert.match(plain(html), /Nothing measurable yet/);
+  assert.match(plain(html), /three sessions/);
 });
