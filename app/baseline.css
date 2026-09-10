@@ -406,7 +406,7 @@ summary > svg { display: inline-block; vertical-align: -3px; }
 @media (min-width: 720px) { .lift-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (min-width: 720px) { .lift-cards.is-quiet { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
-.lift-card { display: grid; gap: 12px; padding: 20px 20px 15px; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(24, 46, 64, .04), 0 8px 20px -16px rgba(24, 46, 64, .3); transition: box-shadow .18s ease, transform .18s ease; }
+.lift-card { display: grid; gap: 12px; padding: 20px 20px 15px; overflow: hidden; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(24, 46, 64, .04), 0 8px 20px -16px rgba(24, 46, 64, .3); transition: box-shadow .18s ease, transform .18s ease; }
 :root[data-theme="dark"] .lift-card { box-shadow: none; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lift-card { box-shadow: none; } }
 @media (hover: hover) { .lift-card:hover { transform: translateY(-1px); box-shadow: 0 1px 2px rgba(24, 46, 64, .05), 0 14px 28px -18px rgba(24, 46, 64, .38); } }
@@ -431,22 +431,39 @@ summary > svg { display: inline-block; vertical-align: -3px; }
 .lift-card > footer { display: flex; justify-content: space-between; gap: 14px; font-size: .6875rem; letter-spacing: .03em; color: var(--faint); font-variant-numeric: tabular-nums; }
 .lift-card-end { text-align: right; color: var(--muted); font-weight: 600; }
 .lift-card-peak { margin: 0; font-size: .75rem; color: var(--warn); }
-.lift-card .tide { margin: 0; max-width: none; }
+/* The curve runs to the card's own edges rather than sitting inside the text
+   margin. It is the subject of the card, not an illustration beside it, and a
+   fill that meets the border reads as a tide rather than as a clipping. The
+   card clips to its radius so the fill turns the corner with it. */
+.lift-card .tide { margin: 0 -20px; max-width: none; }
+.lift-card.is-compact .tide { margin: 0 -16px; }
+/* Running edge to edge, the plot's own baseline stops being a chart axis and
+   starts reading as a rule dividing the card in two. Softened to the faintest
+   line the palette has, so the fill has a floor without gaining a border. */
+.lift-card .tide-base { stroke: var(--line); }
+/* A wash with enough in it to read as water. The gradient is measured across
+   the filled shape, not the plot, so on a lift that runs flat and then jumps —
+   a band twenty pixels tall for most of its width — the default fade to
+   nothing left no fill at all. These two stops stay close together, so the
+   area under the curve is a body of colour whatever shape the lift made. */
+.lift-card { --tide-fill-0: rgba(40, 87, 137, .26); --tide-fill-1: rgba(40, 87, 137, .13); }
+:root[data-theme="dark"] .lift-card { --tide-fill-0: rgba(181, 201, 240, .22); --tide-fill-1: rgba(181, 201, 240, .10); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lift-card { --tide-fill-0: rgba(181, 201, 240, .22); --tide-fill-1: rgba(181, 201, 240, .10); } }
 
 /* The state lives in the curve, not in a rail beside it: mostly the house
    blue, amber where a lift is going backwards, grey where it is holding. On a
    page of fifteen that is the whole scan — one warm card is the one to read. */
-.lift-card.is-down { --tide-fill-0: rgba(135, 82, 20, .16); --tide-fill-1: rgba(135, 82, 20, .01); }
+.lift-card.is-down { --tide-fill-0: rgba(135, 82, 20, .22); --tide-fill-1: rgba(135, 82, 20, .10); }
 .lift-card.is-down .tide-line, .lift-card.is-down .tide-gap { stroke: var(--warn); }
 .lift-card.is-down .tide-now { fill: var(--warn); }
-.lift-card.is-flat { --tide-fill-0: rgba(89, 106, 118, .12); --tide-fill-1: rgba(89, 106, 118, .01); }
+.lift-card.is-flat { --tide-fill-0: rgba(89, 106, 118, .16); --tide-fill-1: rgba(89, 106, 118, .08); }
 .lift-card.is-flat .tide-line, .lift-card.is-flat .tide-gap { stroke: var(--line-strong); }
 .lift-card.is-flat .tide-now { fill: var(--line-strong); }
-:root[data-theme="dark"] .lift-card.is-down { --tide-fill-0: rgba(239, 202, 145, .18); --tide-fill-1: rgba(239, 202, 145, .01); }
-:root[data-theme="dark"] .lift-card.is-flat { --tide-fill-0: rgba(176, 192, 202, .14); --tide-fill-1: rgba(176, 192, 202, .01); }
+:root[data-theme="dark"] .lift-card.is-down { --tide-fill-0: rgba(239, 202, 145, .18); --tide-fill-1: rgba(239, 202, 145, .08); }
+:root[data-theme="dark"] .lift-card.is-flat { --tide-fill-0: rgba(176, 192, 202, .15); --tide-fill-1: rgba(176, 192, 202, .07); }
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .lift-card.is-down { --tide-fill-0: rgba(239, 202, 145, .18); --tide-fill-1: rgba(239, 202, 145, .01); }
-  :root:not([data-theme="light"]) .lift-card.is-flat { --tide-fill-0: rgba(176, 192, 202, .14); --tide-fill-1: rgba(176, 192, 202, .01); }
+  :root:not([data-theme="light"]) .lift-card.is-down { --tide-fill-0: rgba(239, 202, 145, .18); --tide-fill-1: rgba(239, 202, 145, .08); }
+  :root:not([data-theme="light"]) .lift-card.is-flat { --tide-fill-0: rgba(176, 192, 202, .15); --tide-fill-1: rgba(176, 192, 202, .07); }
 }
 
 /* Everything else: the same card, quieter, so the page has a rhythm rather
