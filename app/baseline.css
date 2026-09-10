@@ -131,7 +131,11 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
 .rumination-overview strong { font-size: 1.75rem; }
 .rumination-overview strong span { font-size: 1rem; }
 .rumination-overview > span { font-size: .875rem; }
-.rumination-home .response-intro { margin-top: 0; font-size: .9375rem; }
+/* Not margin-top: 0. The heading shares its row with a 44px button, and the
+   row is as tall as the button — so zeroing the gap to sit the line under the
+   heading actually sat it flush against the bottom of "Log rumination", with
+   nothing between them at all. */
+.rumination-home .response-intro { margin-top: 14px; font-size: .9375rem; }
 /* The two facts that separate a bad week from a busy one at the same count.
    Side by side and quiet: they qualify the headline, they do not compete
    with it. Each is a fraction of the logs that recorded the answer, not of
