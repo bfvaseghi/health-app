@@ -120,11 +120,20 @@ function LiftCard({ lift, compact = false }: { lift: LiftTrend; compact?: boolea
   const kind = pattern.toLowerCase() === name.toLowerCase() ? null : pattern;
   const first = lift.points[0];
   const last = lift.points[lift.points.length - 1];
-  // A lift that never moved would otherwise be drawn pinned to the top of an
-  // empty box; a band around the value puts the line where a flat line belongs.
+  // The drawn range. Tide's default pads a quarter of the spread at both ends,
+  // which on a lift that sat flat and then jumped left the low run sitting on
+  // the baseline as though it were zero. More room underneath than above lifts
+  // the whole curve off the floor and gives the fill something to be, while
+  // still keeping the peak clear of the top edge. A lift that never moved gets
+  // a band around its own value instead, or it would be pinned there too.
   const values = lift.points.map(point => point.value);
-  const flat = Math.max(...values) - Math.min(...values) < 0.5;
-  const band = flat ? Math.max(2, Math.abs(last.value) * 0.04) : undefined;
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const flat = high - low < 0.5;
+  const spread = high - low;
+  const range = flat
+    ? { min: last.value - Math.max(2, Math.abs(last.value) * 0.04), max: last.value + Math.max(2, Math.abs(last.value) * 0.04) }
+    : { min: low - spread * 0.34, max: high + spread * 0.20 };
 
   return (
     <article className={`lift-card is-${delta.direction}${compact ? " is-compact" : ""}`}>
@@ -147,12 +156,12 @@ function LiftCard({ lift, compact = false }: { lift: LiftTrend; compact?: boolea
         dateFormat={{ month: "short", day: "numeric" }}
         readout={false}
         showValue={false}
-        min={band === undefined ? undefined : last.value - band}
-        max={band === undefined ? undefined : last.value + band}
+        min={range.min}
+        max={range.max}
         // A straight line does not need 104px of room, and a compact card is
         // meant to be quieter. Set here rather than in CSS: the plot is an SVG
         // with a viewBox, so a pixel height in a stylesheet letterboxes it.
-        height={compact ? 74 : flat ? 84 : undefined}
+        height={compact ? 78 : flat ? 84 : 96}
       />
 
       {/* The two ends of the curve, under the ends of the curve. Where it began

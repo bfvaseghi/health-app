@@ -382,7 +382,18 @@ summary > svg { display: inline-block; vertical-align: -3px; }
 .trend-row .lift-spark { height: 56px; }
 
 /* ── The Strength tab: every lift, one card, one curve ─────────────────── */
-.strength-view { display: grid; gap: 22px; }
+.strength-view { display: grid; gap: 24px; }
+/* The window control belongs to the line above it, not to the cards below. */
+.strength-view > .strength-window { margin-bottom: -14px; }
+.strength-view > .lens-tabs { margin-bottom: 2px; }
+/* Chips, not tabs. The section's own tabs sit directly above this row with a
+   lime underline under the live one; a second underlined row beneath it reads
+   as a second level of navigation rather than as a filter on the cards. A
+   pill that fills in when chosen says "this narrows what is below" instead. */
+.strength-view > .lens-tabs { gap: 8px; }
+.strength-view > .lens-tabs button { padding: 0 14px; border-bottom: 0; border-radius: 999px; background: var(--soft); color: var(--muted); letter-spacing: .01em; transition: background .16s ease, color .16s ease; }
+.strength-view > .lens-tabs button.active { background: var(--ink); color: var(--paper); }
+@media (prefers-reduced-motion: reduce) { .strength-view > .lens-tabs button { transition: none; } }
 .strength-window { margin: 0; font-size: .8125rem; color: var(--muted); }
 /* The label, then a hairline running out to the edge — a section break the eye
    registers without a heavier block of type. */
@@ -391,25 +402,33 @@ summary > svg { display: inline-block; vertical-align: -3px; }
 .strength-group > small { flex: none; order: 3; font-weight: 550; letter-spacing: .04em; text-transform: none; color: var(--faint); }
 .strength-group::after { content: ""; order: 2; flex: 1; height: 1px; background: var(--line); }
 .strength-view > section + section { margin-top: 6px; }
-.lift-cards { display: grid; gap: 14px; }
+.lift-cards { display: grid; gap: 16px; }
 @media (min-width: 720px) { .lift-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (min-width: 720px) { .lift-cards.is-quiet { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
-.lift-card { display: grid; gap: 10px; padding: 18px 18px 14px; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; }
+.lift-card { display: grid; gap: 12px; padding: 20px 20px 15px; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(24, 46, 64, .04), 0 8px 20px -16px rgba(24, 46, 64, .3); transition: box-shadow .18s ease, transform .18s ease; }
+:root[data-theme="dark"] .lift-card { box-shadow: none; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lift-card { box-shadow: none; } }
+@media (hover: hover) { .lift-card:hover { transform: translateY(-1px); box-shadow: 0 1px 2px rgba(24, 46, 64, .05), 0 14px 28px -18px rgba(24, 46, 64, .38); } }
+@media (prefers-reduced-motion: reduce) { .lift-card { transition: none; } .lift-card:hover { transform: none; } }
 .lift-card > header { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
 .lift-card-title { min-width: 0; }
 .lift-card-title h4 { margin: 0; font-size: 1.0625rem; font-weight: 650; letter-spacing: -.02em; line-height: 1.2; overflow-wrap: anywhere; }
-.lift-card-title small { display: block; margin-top: 3px; font-size: .75rem; color: var(--faint); }
-.lift-card-now { text-align: right; flex: none; }
-/* The load, at the size the load deserves. A percent is a thing you have to
-   convert back into plates before it means anything. */
-.lift-card-now > b { display: block; font-size: 2rem; font-weight: 650; letter-spacing: -.04em; line-height: 1; font-variant-numeric: tabular-nums; }
-.lift-card-now > b span { margin-left: 4px; font-size: .8125rem; font-weight: 550; color: var(--muted); letter-spacing: 0; }
-.lift-card-delta { display: block; margin-top: 5px; font-size: .8125rem; font-weight: 620; font-variant-numeric: tabular-nums; }
-.lift-card-delta.is-up { color: var(--accent); }
-.lift-card-delta.is-down { color: var(--warn); }
-.lift-card-delta.is-flat { color: var(--faint); }
-.lift-card > footer { display: flex; justify-content: space-between; gap: 14px; font-size: .6875rem; letter-spacing: .02em; color: var(--faint); font-variant-numeric: tabular-nums; }
+.lift-card-title small { display: block; margin-top: 4px; font-size: .75rem; letter-spacing: .01em; color: var(--faint); }
+.lift-card-now { text-align: right; flex: none; display: grid; justify-items: end; gap: 6px; }
+/* The load, at the size the load deserves, in the serif the app keeps for
+   things meant to be read rather than scanned. A percent is a number you have
+   to convert back into plates before it means anything; this one is the plate. */
+.lift-card-now > b { display: block; font-family: var(--font-reading); font-size: 2.5rem; font-weight: 400; letter-spacing: -.01em; line-height: .9; }
+.lift-card-now > b span { margin-left: 5px; font-family: var(--font-ui); font-size: .75rem; font-weight: 600; letter-spacing: .02em; color: var(--muted); }
+/* The change as a small tinted mark rather than loose text: it is a verdict,
+   and a verdict reads better with an edge around it. */
+.lift-card-delta { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: .75rem; font-weight: 650; letter-spacing: .01em; font-variant-numeric: tabular-nums; background: var(--soft); color: var(--faint); }
+.lift-card-delta.is-up { background: var(--accent-pale); color: var(--accent-pale-ink); }
+.lift-card-delta.is-down { background: var(--warn-pale); color: var(--warn); }
+:root[data-theme="dark"] .lift-card-delta.is-up { background: rgba(181, 201, 240, .16); color: var(--accent); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lift-card-delta.is-up { background: rgba(181, 201, 240, .16); color: var(--accent); } }
+.lift-card > footer { display: flex; justify-content: space-between; gap: 14px; font-size: .6875rem; letter-spacing: .03em; color: var(--faint); font-variant-numeric: tabular-nums; }
 .lift-card-end { text-align: right; color: var(--muted); font-weight: 600; }
 .lift-card-peak { margin: 0; font-size: .75rem; color: var(--warn); }
 .lift-card .tide { margin: 0; max-width: none; }
@@ -432,11 +451,12 @@ summary > svg { display: inline-block; vertical-align: -3px; }
 
 /* Everything else: the same card, quieter, so the page has a rhythm rather
    than fifteen blocks of equal weight. */
-.lift-card.is-compact { padding: 14px 14px 11px; gap: 8px; border-radius: 12px; }
+.lift-card.is-compact { padding: 16px 16px 12px; gap: 9px; border-radius: 14px; }
 .lift-card.is-compact .lift-card-title h4 { font-size: .9375rem; }
-.lift-card.is-compact .lift-card-now > b { font-size: 1.375rem; letter-spacing: -.03em; }
-.lift-card.is-compact .lift-card-now > b span { font-size: .75rem; }
-.lift-card.is-compact .lift-card-delta { margin-top: 3px; font-size: .75rem; }
+.lift-card.is-compact .lift-card-now { gap: 5px; }
+.lift-card.is-compact .lift-card-now > b { font-size: 1.75rem; }
+.lift-card.is-compact .lift-card-now > b span { font-size: .6875rem; }
+.lift-card.is-compact .lift-card-delta { padding: 1px 7px; font-size: .6875rem; }
 
 /* Is the cut working: the weight and the lifts, over the same weeks. */
 .phase-score { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 16px; margin: 0; }
@@ -463,6 +483,10 @@ summary > svg { display: inline-block; vertical-align: -3px; }
 .counted-fold { border-top: 1px solid var(--line); margin-top: 18px; }
 .counted-fold > summary { min-height: 44px; display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: .875rem; font-weight: 600; color: var(--muted); }
 .counted-fold > summary svg { width: 16px; height: 16px; }
+/* display:flex on a summary suppresses the browser's own marker, so the fold
+   read as a heading with nothing to tap. The +/− is the app's own idiom. */
+.counted-fold:not(.plan-settings) > summary::after { content: "+"; margin-left: auto; font-size: 1.125rem; color: var(--accent); }
+.counted-fold:not(.plan-settings)[open] > summary::after { content: "−"; }
 .excluded-list { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 8px; }
 .excluded-list li { display: grid; gap: 1px; font-size: .875rem; }
 .excluded-list small { font-size: .75rem; color: var(--muted); }
