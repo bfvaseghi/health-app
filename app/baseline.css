@@ -133,6 +133,10 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
 .rumination-overview > span { font-size: .875rem; }
 .rumination-home .response-intro { margin-top: 0; font-size: .9375rem; }
 .response-history li { padding-block: 12px; }
+/* The date and Edit are one row, but Edit is a 44px touch target and the row
+   aligned to flex-start — so the date sat a dozen pixels above the word next
+   to it and the two read as separate lines with a hole between them. */
+.response-history li > div { align-items: center; }
 .practice-overview { background: var(--raised); color: var(--ink); border: 1px solid var(--line); border-radius: 9px; padding: 20px; margin-block: 16px; }
 .practice-today strong { font-size: 1.125rem; font-weight: 600; }
 .practice-overview .consistency-number > span { opacity: 1; color: var(--muted); }
@@ -166,6 +170,17 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
 .more-row b { font-size: 1rem; }
 .page > .simple-history { margin-top: 18px; }
 .simple-history > summary { min-height: 44px; font-size: .875rem; }
+/* Tailwind's reset makes every svg display:block, so an icon inside a
+   <summary> takes a line of its own — which stacked the disclosure triangle,
+   the icon and the label three deep on "Earlier logs & frequency" and left an
+   orphaned ▸ floating above them. Icons in a summary are inline, which is what
+   the rules that position them have always assumed. */
+summary > svg { display: inline-block; vertical-align: -3px; }
+/* The fold sat 50px below the log it belongs to: the entry's own bottom
+   padding, then the disclosure's margin, then the summary's padding again. */
+.rumination-home .response-history, .rumination-home .response-patterns { margin-top: 6px; }
+.rumination-recent { margin-top: 18px; }
+.rumination-recent + .simple-history > summary { padding-top: 6px; }
 .modal-panel { border-radius: var(--radius-modal); }
 .modal-head h2 { font-size: 1.5rem; }
 @media (max-width: 1120px) { .daily-layout { grid-template-columns: minmax(0, 1fr); } .daily-side { grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; } }
@@ -217,15 +232,20 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
 /* The record is the first object on the section, not a caption above it —
    everything below is derived from the last import, and the only way to make
    one used to be a 13px line you could read straight past. */
-.record-card { display: grid; gap: 14px; padding: 18px; margin-bottom: 20px; background: var(--paper); border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: 12px; }
+.record-card { display: grid; gap: 6px; padding: 14px 16px 4px; margin-bottom: 20px; background: var(--paper); border: 1px solid var(--line); border-left: 3px solid var(--line-strong); border-radius: 12px; }
 .record-card.is-loud { border-left-color: var(--accent); }
 .record-card.is-stale { border-left-color: var(--warn); background: var(--warn-pale); }
-.record-card-head { display: grid; gap: 3px; }
-.record-card-head b { font-size: 1.375rem; font-weight: 650; letter-spacing: -.03em; line-height: 1.15; }
-.record-card-head small { font-size: .8125rem; color: var(--muted); }
-.record-card.is-stale .record-card-head b { color: var(--warn); }
-.record-card.is-stale .record-card-head small, .record-card.is-stale .session-steps small { color: var(--warn); opacity: .85; }
 .record-card .button { width: 100%; }
+/* Shut, the card is the button and one line saying whether to press it. */
+.record-fold > summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; min-height: 44px; padding: 10px 0; cursor: pointer; }
+.record-fold > summary b { font-size: .875rem; font-weight: 600; }
+.record-fold > summary small { font-size: .8125rem; color: var(--muted); }
+.record-fold > summary::-webkit-details-marker { display: none; }
+.record-fold > summary::after { content: "+"; margin-left: auto; color: var(--muted); font-weight: 600; }
+.record-fold[open] > summary::after { content: "−"; }
+.record-fold[open] > summary { margin-bottom: 4px; }
+.record-fold .session-steps { margin-bottom: 10px; }
+.record-card.is-stale .record-fold > summary b, .record-card.is-stale .record-fold > summary small { color: var(--warn); }
 
 .answer-stack { border-top: 1px solid var(--line); }
 .answer-row { position: relative; border-bottom: 1px solid var(--line); padding-left: 14px; }

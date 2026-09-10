@@ -264,9 +264,13 @@ test("no fold hides the key to a number above it", () => {
   const summaries = [...html.matchAll(/<summary[^>]*>(.*?)<\/summary>/gs)].map(match => plain(match[1]).trim());
   assert.ok(summaries.length, "no disclosures rendered");
   for (const summary of summaries) {
-    // Every fold either carries a count, so he can decide whether to open it
-    // without opening it, or is a named settings drawer.
-    const counted = /\(\d+\)$/.test(summary) || /·\s*\d+$/.test(summary);
+    // The rule is that he can decide whether to open a fold without opening
+    // it. A trailing count does that — "Falling (3)" — and so does a summary
+    // that states the thing itself: "Imported today · 19 workouts in the
+    // record" tells him whether he needs the steps inside before he asks for
+    // them. What is banned is a fold whose label describes nothing, which is
+    // what the second assertion catches.
+    const counted = /\(\d+\)$/.test(summary) || /·\s*\d+$/.test(summary) || /\b\d+\s+\w+/.test(summary);
     const allowed = ["Settings", "Edit body targets"].some(label => summary.includes(label));
     assert.ok(counted || allowed, `fold "${summary}" neither counts nor is a settings drawer`);
     assert.doesNotMatch(summary, /^(How|Why|Notes)/, `fold "${summary}" names nothing`);

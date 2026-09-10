@@ -72,11 +72,14 @@ export function recordStamp(state: HealthState, today: string): {
  * caption. Everything below it is derived from that import; it should be the
  * first object on the page, not the smallest.
  *
- * The three steps live here, permanently, because "what do I do after the gym"
- * is a question about the section and not about one workout — and because the
- * card carries the button that answers it. Which step is lit, and how loud the
- * button is, are the whole state of the loop said without a sentence: quiet
- * while the record is current, loud the moment you owe it an export.
+ * The button is the whole card at rest. The three steps are a reference — you
+ * need them the first few weeks and then you know them — so they fold away
+ * behind the one line that says whether to press the button at all. A permanent
+ * three-line explainer at the top of the section is the bulk this app keeps
+ * being asked to stop carrying.
+ *
+ * How loud the button is stays the state of the loop, said without a sentence:
+ * quiet while the record is current, loud the moment you owe it an export.
  */
 export function RecordCard({ state, today, loop, open }: {
   state: HealthState;
@@ -88,12 +91,6 @@ export function RecordCard({ state, today, loop, open }: {
   const loud = stamp.tone !== "neutral" || loop.reason === "mid";
   return (
     <section className={`record-card is-${stamp.tone}${loud ? " is-loud" : ""}`} aria-label="Your record">
-      <div className="record-card-head">
-        <span className="tl-caps">Your record</span>
-        <b>{stamp.text}</b>
-        <small>{stamp.detail}</small>
-      </div>
-      <LoopSteps loop={loop} />
       <button
         type="button"
         className={`button ${loud ? "primary" : "secondary"}`}
@@ -102,6 +99,15 @@ export function RecordCard({ state, today, loop, open }: {
         <Icon name="upload" />
         {stamp.cta}
       </button>
+      {/* Uncontrolled on purpose: it is a reference, not a row you were
+          reading, so coming back to it shut is the right resting state. */}
+      <details className="record-fold">
+        <summary>
+          <b>{stamp.text}</b>
+          <small>{stamp.detail}</small>
+        </summary>
+        <LoopSteps loop={loop} />
+      </details>
     </section>
   );
 }
