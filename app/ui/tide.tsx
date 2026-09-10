@@ -33,6 +33,8 @@ export function Tide({
   dateFormat = { weekday: "short", month: "short", day: "numeric" },
   readout = true,
   labelWidth = 52,
+  showValue = true,
+  height: heightOverride,
 }: {
   data: DataPoint[];
   /** What the series is, for the hidden table and the accessible name. */
@@ -50,6 +52,20 @@ export function Tide({
   /** The date line above the curve; small tides in a list can do without it. */
   readout?: boolean;
   labelWidth?: number;
+  /**
+   * The number beside the lit point. Off where the value is already the
+   * headline beside the curve — printing it twice is not emphasis, it is
+   * clutter, and the gutter it reserves is width the shape could have used.
+   * It comes back the moment the reader scrubs, which is when they are asking
+   * for a number rather than a shape.
+   */
+  showValue?: boolean;
+  /**
+   * Overrides the height derived from the width. A pixel height in CSS cannot
+   * do this: the plot is an SVG with a viewBox, so styling it shorter letterboxes
+   * the drawing instead of shortening it.
+   */
+  height?: number;
 }) {
   const gradientId = useId().replace(/:/g, "");
   const figureRef = useRef<HTMLElement>(null);
@@ -62,8 +78,12 @@ export function Tide({
     return <p className="tide-empty">{empty}</p>;
   }
 
-  const height = Math.round(Math.min(150, Math.max(104, width * 0.28)));
-  const pad = { l: 2, r: labelWidth, t: 16, b: 14 };
+  const height = heightOverride ?? Math.round(Math.min(150, Math.max(104, width * 0.28)));
+  // The lit point is the last one until the reader moves it; that decides both
+  // whether a value is drawn and how much gutter it needs.
+  const scrubbed = picked !== null && points.some((point) => point.date === picked);
+  const labelled = showValue || scrubbed;
+  const pad = { l: 2, r: labelled ? labelWidth : 10, t: 16, b: 14 };
   const values = points.map((point) => point.value);
   const spread = Math.max(...values) - Math.min(...values) || 1;
   const lo = min ?? Math.min(...values, goal ?? Infinity) - spread * 0.25;
@@ -166,10 +186,12 @@ export function Tide({
         {!isNow ? <circle className="tide-now is-past" cx={xy.at(-1)![0]} cy={xy.at(-1)![1]} r={3} /> : null}
         <line className="tide-cursor" x1={at[0]} y1={at[1] + 8} x2={at[0]} y2={baseline} />
         <circle className="tide-now" cx={at[0]} cy={at[1]} r={4.5} />
-        <text className="tide-value" x={labelRight ? at[0] + 10 : at[0] - 10} y={at[1] + 4} textAnchor={labelRight ? "start" : "end"}>
-          {format(current.value)}
-          <tspan className="tide-unit">{unit}</tspan>
-        </text>
+        {labelled ? (
+          <text className="tide-value" x={labelRight ? at[0] + 10 : at[0] - 10} y={at[1] + 4} textAnchor={labelRight ? "start" : "end"}>
+            {format(current.value)}
+            <tspan className="tide-unit">{unit}</tspan>
+          </text>
+        ) : null}
       </svg>
       <table className="visually-hidden">
         <caption>{label}</caption>

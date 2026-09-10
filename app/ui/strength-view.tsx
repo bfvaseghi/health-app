@@ -60,13 +60,16 @@ export function StrengthView({ state, today, weeks, onWeeks }: {
     <WindowPicker weeks={weeks} onWeeks={onWeeks} />
 
     {main.length ? <section aria-label="Main lifts">
-      <h3 className="strength-group">The four</h3>
-      <div className="lift-cards">{main.map(lift => <LiftCard key={lift.exercise} lift={lift} weeks={progress.weeks} />)}</div>
+      <h3 className="strength-group"><span>Main lifts</span><small>squat · hinge · press · pull</small></h3>
+      <div className="lift-cards">{main.map(lift => <LiftCard key={lift.exercise} lift={lift} />)}</div>
     </section> : null}
 
     {rest.length ? <section aria-label="Everything else">
-      <h3 className="strength-group">Everything else</h3>
-      <div className="lift-cards">{rest.map(lift => <LiftCard key={lift.exercise} lift={lift} weeks={progress.weeks} />)}</div>
+      <h3 className="strength-group"><span>Everything else</span><small>{rest.length}</small></h3>
+      {/* Smaller cards, same anatomy. The page needs a rhythm or fifteen
+          identical blocks read as a wall; the four you build a week around
+          earn the larger type. */}
+      <div className="lift-cards is-quiet">{rest.map(lift => <LiftCard key={lift.exercise} lift={lift} compact />)}</div>
     </section> : null}
 
     {records.length ? <details className="counted-fold"><summary>Records ({records.length})</summary>
@@ -104,7 +107,7 @@ function WindowPicker({ weeks, onWeeks }: { weeks: number; onWeeks: (weeks: numb
  * only when it is behind you, because that is the one case where the last
  * point does not tell the whole story.
  */
-function LiftCard({ lift, weeks }: { lift: LiftTrend; weeks: number }) {
+function LiftCard({ lift, compact = false }: { lift: LiftTrend; compact?: boolean }) {
   const delta = liftDelta(lift);
   const unit = lift.bodyweight ? "reps" : "lb";
   const name = liftName(lift.exercise);
@@ -115,9 +118,16 @@ function LiftCard({ lift, weeks }: { lift: LiftTrend; weeks: number }) {
   // its place on the accessories, where the name does not say what it is.
   const pattern = patternLabels[movementPattern(lift.exercise)];
   const kind = pattern.toLowerCase() === name.toLowerCase() ? null : pattern;
+  const first = lift.points[0];
+  const last = lift.points[lift.points.length - 1];
+  // A lift that never moved would otherwise be drawn pinned to the top of an
+  // empty box; a band around the value puts the line where a flat line belongs.
+  const values = lift.points.map(point => point.value);
+  const flat = Math.max(...values) - Math.min(...values) < 0.5;
+  const band = flat ? Math.max(2, Math.abs(last.value) * 0.04) : undefined;
 
   return (
-    <article className={`lift-card is-${delta.direction}`}>
+    <article className={`lift-card is-${delta.direction}${compact ? " is-compact" : ""}`}>
       <header>
         <div className="lift-card-title">
           <h4>{name}</h4>
@@ -135,12 +145,25 @@ function LiftCard({ lift, weeks }: { lift: LiftTrend; weeks: number }) {
         unit={` ${unit}`}
         format={value => String(Math.round(value))}
         dateFormat={{ month: "short", day: "numeric" }}
+        readout={false}
+        showValue={false}
+        min={band === undefined ? undefined : last.value - band}
+        max={band === undefined ? undefined : last.value + band}
+        // A straight line does not need 104px of room, and a compact card is
+        // meant to be quieter. Set here rather than in CSS: the plot is an SVG
+        // with a viewBox, so a pixel height in a stylesheet letterboxes it.
+        height={compact ? 74 : flat ? 84 : undefined}
       />
 
+      {/* The two ends of the curve, under the ends of the curve. Where it began
+          and where it is now, in the order the eye already read them — which
+          the old "285 → 300 lb over 12 weeks" said in the middle of nowhere
+          while repeating a number already twice the size above it. */}
       <footer>
-        <span>{Math.round(lift.first)} → {Math.round(lift.last)} {unit} over {weeks} weeks</span>
-        {stalled ? <span className="lift-card-peak">Best was {Math.round(lift.best)} {unit}, {lift.sessionsSincePeak} {lift.sessionsSincePeak === 1 ? "session" : "sessions"} ago</span> : null}
+        <span>{Math.round(first.value)} {unit} · {dateLabel(first.date, { month: "short", day: "numeric" })}</span>
+        <span className="lift-card-end">{Math.round(last.value)} {unit} · {dateLabel(last.date, { month: "short", day: "numeric" })}</span>
       </footer>
+      {stalled ? <p className="lift-card-peak">Best was {Math.round(lift.best)} {unit}, {lift.sessionsSincePeak} {lift.sessionsSincePeak === 1 ? "session" : "sessions"} ago</p> : null}
     </article>
   );
 }

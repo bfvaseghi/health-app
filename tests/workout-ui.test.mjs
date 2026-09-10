@@ -444,7 +444,9 @@ test("the Strength tab gives every lift a card and a curve", () => {
   }
   // The load, in the unit you put on the bar — never a bare percent.
   assert.doesNotMatch(spoken_, /Up \d+(\.\d+)?% *$/);
-  assert.match(spoken_, /\d+ → \d+ (lb|reps) over 12 weeks/);
+  // The two ends of the curve, under the ends of the curve — not a sentence in
+  // the middle repeating a number twice its size above.
+  assert.match(spoken_, /\d+ (lb|reps) · \w+ \d+/);
 
   // Every value reaches a screen reader as a real table, not only as a shape.
   assert.equal((html.match(/<table class="visually-hidden">/g) ?? []).length, progress.lifts.length);
