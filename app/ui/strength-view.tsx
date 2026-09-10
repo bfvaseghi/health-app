@@ -158,10 +158,13 @@ function LiftCard({ lift, compact = false }: { lift: LiftTrend; compact?: boolea
         showValue={false}
         min={range.min}
         max={range.max}
-        // A straight line does not need 104px of room, and a compact card is
-        // meant to be quieter. Set here rather than in CSS: the plot is an SVG
+        // A compact card is meant to be quieter, and a lift that never moved
+        // needs least of all: at the full height its level line floated in an
+        // empty white field, which reads as a chart that failed to draw rather
+        // than as a lift that held. Shrunk to a slim band, the same line reads
+        // as a deliberate flat. Set here rather than in CSS: the plot is an SVG
         // with a viewBox, so a pixel height in a stylesheet letterboxes it.
-        height={compact ? 78 : flat ? 84 : 96}
+        height={flat ? 54 : compact ? 78 : 96}
       />
 
       {/* The two ends of the curve, under the ends of the curve. Where it began

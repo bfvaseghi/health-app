@@ -406,7 +406,7 @@ summary > svg { display: inline-block; vertical-align: -3px; }
 @media (min-width: 720px) { .lift-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (min-width: 720px) { .lift-cards.is-quiet { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 
-.lift-card { display: grid; gap: 12px; padding: 20px 20px 15px; overflow: hidden; background: var(--paper); border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 1px 2px rgba(24, 46, 64, .04), 0 8px 20px -16px rgba(24, 46, 64, .3); transition: box-shadow .18s ease, transform .18s ease; }
+.lift-card { display: grid; gap: 13px; padding: 22px 22px 16px; overflow: hidden; background: var(--paper); border: 1px solid var(--line); border-radius: 18px; box-shadow: 0 1px 2px rgba(24, 46, 64, .04), 0 8px 20px -16px rgba(24, 46, 64, .3); transition: box-shadow .18s ease, transform .18s ease; }
 :root[data-theme="dark"] .lift-card { box-shadow: none; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .lift-card { box-shadow: none; } }
 @media (hover: hover) { .lift-card:hover { transform: translateY(-1px); box-shadow: 0 1px 2px rgba(24, 46, 64, .05), 0 14px 28px -18px rgba(24, 46, 64, .38); } }
@@ -435,7 +435,7 @@ summary > svg { display: inline-block; vertical-align: -3px; }
    margin. It is the subject of the card, not an illustration beside it, and a
    fill that meets the border reads as a tide rather than as a clipping. The
    card clips to its radius so the fill turns the corner with it. */
-.lift-card .tide { margin: 0 -20px; max-width: none; }
+.lift-card .tide { margin: 0 -22px; max-width: none; }
 .lift-card.is-compact .tide { margin: 0 -16px; }
 /* Running edge to edge, the plot's own baseline stops being a chart axis and
    starts reading as a rule dividing the card in two. Softened to the faintest
@@ -467,8 +467,12 @@ summary > svg { display: inline-block; vertical-align: -3px; }
 }
 
 /* Everything else: the same card, quieter, so the page has a rhythm rather
-   than fifteen blocks of equal weight. */
-.lift-card.is-compact { padding: 16px 16px 12px; gap: 9px; border-radius: 14px; }
+   than fifteen blocks of equal weight. Smaller type was not enough on its own
+   — eleven cards carrying the same lift and shadow as the four still read as
+   one undifferentiated wall. These sit flat on the page and stay put under a
+   cursor; the four you build a week around are the ones that rise. */
+.lift-card.is-compact { padding: 16px 16px 12px; gap: 9px; border-radius: 14px; box-shadow: none; }
+@media (hover: hover) { .lift-card.is-compact:hover { transform: none; box-shadow: none; } }
 .lift-card.is-compact .lift-card-title h4 { font-size: .9375rem; }
 .lift-card.is-compact .lift-card-now { gap: 5px; }
 .lift-card.is-compact .lift-card-now > b { font-size: 1.75rem; }
