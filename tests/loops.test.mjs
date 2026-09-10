@@ -23,11 +23,13 @@ const at = (daysBack, hour) => `${addDays(AS_OF, -daysBack)}T${String(hour).padS
 function withLoop() {
   let state = upsertThoughtLoop(emptyHealthState(), { id: "loop", name: "Replaying the call", reply: "A thought, not a verdict." });
   const taps = [
-    [0, 21, "passed"], [0, 22, "noticed"], [1, 20, "passed"], [3, 19, "hooked"], [5, 8, "later"],
-    [7, 21, "noticed"], [8, 20, "passed"], [9, 22, "passed"], [10, 21, "hooked"], [11, 20, "passed"], [12, 19, "passed"], [13, 21, "passed"],
+    [0, 21, "passed", "minutes", "solving"], [0, 22, "noticed", "hour", "circling"], [1, 20, "passed", "minutes", "solving"],
+    [3, 19, "hooked", "day", "circling"], [5, 8, "later", "hour", "circling"],
+    [7, 21, "noticed", "day", "circling"], [8, 20, "passed", "minutes", "solving"], [9, 22, "passed", "hour", "circling"],
+    [10, 21, "hooked", "day", "circling"], [11, 20, "passed", "minutes", "solving"], [12, 19, "passed", "hour", "solving"], [13, 21, "passed", "minutes", "solving"],
   ];
-  taps.forEach(([back, hour, move], index) => {
-    state = upsertLoopEvent(state, { id: `e${index}`, loopId: "loop", at: at(back, hour), move });
+  taps.forEach(([back, hour, move, grip, mode], index) => {
+    state = upsertLoopEvent(state, { id: `e${index}`, loopId: "loop", at: at(back, hour), move, grip, mode });
   });
   return state;
 }
@@ -90,14 +92,17 @@ test("the weekly tide is one real count per week, zeros included", () => {
   assert.equal(weekly.at(-1).date, AS_OF);
 });
 
-test("the doctor summary reports recurrence and response, never the thought", () => {
+test("the doctor summary reports how long it held and which kind, never the thought", () => {
   const state = withLoop();
   const report = buildHealthReport(state, AS_OF, 7);
   const row = report.rows.find((entry) => entry.id === "rumination");
   assert.equal(row.group, "Mind");
   assert.equal(row.label, "Rumination");
   assert.match(row.value, /^5 logs on \d+ of 7 days$/);
-  assert.match(row.detail, /^7 the 7 days before · moved on 75%$/);
+  // Not a share of thoughts successfully dismissed: how long they held, and how
+  // many were circling. Both counted only over the logs that answered.
+  assert.match(row.detail, /^7 the 7 days before · held an hour or more 3 of 5 · circling 3 of 5$/);
+  assert.doesNotMatch(row.detail, /moved on/);
 
   // The report is printed and handed over, so the thought's own words must not
   // reach it — not in a label, a value, a detail, or the copied text.
@@ -108,9 +113,9 @@ test("the doctor summary reports recurrence and response, never the thought", ()
     assert.ok(report.rows.every((entry) => !entry.id.includes(loop.id)), "a row is still keyed on a loop");
   }
 
-  // Same for the exported table: recurrence and response, no name column.
+  // Same for the exported table: what was recorded, no name column.
   const csv = thoughtLoopsCsv(state.thoughtLoops, state.loopEvents);
-  assert.equal(csv.split("\n")[0], "id,loop_id,at,date,outcome,response,recurrence");
+  assert.equal(csv.split("\n")[0], "id,loop_id,at,date,outcome,response,recurrence,grip,mode");
   assert.equal(csv.trim().split("\n").length, 13);
   for (const loop of state.thoughtLoops) assert.doesNotMatch(csv, new RegExp(loop.name));
 });
@@ -138,7 +143,7 @@ test("responses belong to each occurrence and survive edits to a saved reminder"
   assert.equal(state.loopEvents.length, 12);
   assert.equal(state.loopEvents.find(event => event.id === "e0").move, "passed");
   const csv = thoughtLoopsCsv(state.thoughtLoops, state.loopEvents);
-  assert.match(csv.split("\n")[0], /,outcome,response,recurrence$/);
+  assert.match(csv.split("\n")[0], /,outcome,response,recurrence,grip,mode$/);
   assert.ok(csv.includes('"I wrote, ""one step is enough"", then went outside.\nThe worry was still there."'));
   state = upsertLoopEvent(state, { ...state.loopEvents.find(event => event.id === "e0"), response: "" });
   assert.equal(state.loopEvents.find(event => event.id === "e0").response, undefined);

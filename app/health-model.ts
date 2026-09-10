@@ -66,11 +66,30 @@ export type ThoughtLoop = {
   archived: boolean;
 };
 
-/** Optional outcome of an occurrence. "noticed" has no recorded outcome. */
+/**
+ * Legacy outcome of an occurrence. "noticed" has no recorded outcome.
+ *
+ * Kept so records already written still read back, but no longer asked for.
+ * Scoring yourself on whether the thought went away measures how hard you
+ * pushed it away, and pushing a thought away is the one response that reliably
+ * brings it back — so the panel stopped asking.
+ */
 export type LoopMove = "noticed" | "passed" | "later" | "hooked";
+/** Legacy: how often it returned within one occasion. Superseded by grip. */
 export type LoopRecurrence = "once" | "few" | "often";
+/**
+ * Roughly how long it held you. This is the severity measure: what tracks how
+ * a day goes is the time the thought takes, not whether it resolved.
+ */
+export type LoopGrip = "minutes" | "hour" | "day";
+/**
+ * Which kind of thinking it was. Turning something over without getting
+ * anywhere and working a problem through look identical from outside and are
+ * not the same thing; only the first is worth having less of.
+ */
+export type LoopMode = "circling" | "solving";
 
-/** One time a loop came up: when, and what happened. */
+/** One time a loop came up: when, how long it held, and what kind it was. */
 export type LoopEvent = {
   id: string;
   loopId: string;
@@ -80,6 +99,10 @@ export type LoopEvent = {
   move: LoopMove;
   /** How often it returned during this occasion; absent on older records. */
   recurrence?: LoopRecurrence;
+  /** How long it held you; absent on records written before it was asked. */
+  grip?: LoopGrip;
+  /** Circling or working it out; absent on records written before it was asked. */
+  mode?: LoopMode;
   /** What the person did in response on this occasion. */
   response?: string;
 };
@@ -675,8 +698,37 @@ export function normalizeLoopEvent(value: unknown, knownLoops: Set<string>): Loo
     date,
     move,
     ...(["once", "few", "often"].includes(String(event.recurrence)) ? { recurrence: event.recurrence as LoopRecurrence } : {}),
+    ...(["minutes", "hour", "day"].includes(String(event.grip)) ? { grip: event.grip as LoopGrip } : {}),
+    ...(["circling", "solving"].includes(String(event.mode)) ? { mode: event.mode as LoopMode } : {}),
     ...(safeText(event.response, 800) ? { response: safeText(event.response, 800) } : {}),
   };
+}
+
+/**
+ * Did this one hold on, as far as the record says?
+ *
+ * True where the grip was an hour or more. On a record written before grip was
+ * asked, "kept returning through the occasion" is the same fact in the older
+ * vocabulary, so it counts; a record that answered neither returns null rather
+ * than being quietly filed as a short one.
+ */
+export function loopGripHeld(event: LoopEvent): boolean | null {
+  if (event.grip) return event.grip !== "minutes";
+  if (event.recurrence) return event.recurrence === "often";
+  return null;
+}
+
+/**
+ * Was this circling rather than working something out?
+ *
+ * Older records only say so in one direction: "I stayed caught up in it" is
+ * circling, but "I moved on" is silent about which kind of thinking it was —
+ * you can move on from either — so it returns null rather than guessing.
+ */
+export function loopCircling(event: LoopEvent): boolean | null {
+  if (event.mode) return event.mode === "circling";
+  if (event.move === "hooked") return true;
+  return null;
 }
 
 export function normalizeHabit(value: unknown): Habit | null {
@@ -2130,8 +2182,13 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
     const before = state.loopEvents.filter(
       (event) => live.has(event.loopId) && event.date >= addDays(start, -safeDays) && event.date < start,
     );
-    const answered = inWindow.filter((event) => event.move !== "noticed");
-    const letGo = answered.filter((event) => event.move !== "hooked").length;
+    // How long it held and which kind of thinking it was, rather than how often
+    // it was seen off. A ratio of thoughts successfully dismissed says how hard
+    // they were pushed away, which is not the thing anyone wants more of.
+    const gripped = inWindow.map(loopGripHeld).filter((held): held is boolean => held !== null);
+    const held = gripped.filter(Boolean).length;
+    const modes = inWindow.map(loopCircling).filter((circling): circling is boolean => circling !== null);
+    const circling = modes.filter(Boolean).length;
     const days = new Set(inWindow.map((event) => event.date)).size;
     rows.push({
       id: "rumination",
@@ -2141,9 +2198,11 @@ export function buildHealthReport(state: HealthState, asOf = todayLocal(), days 
         ? `${inWindow.length} ${inWindow.length === 1 ? "log" : "logs"} on ${days} of ${safeDays} days`
         : "No data",
       detail: inWindow.length
-        ? `${before.length} the ${safeDays} days before${
-            answered.length >= 3 ? ` · moved on ${Math.round((letGo / answered.length) * 100)}%` : ""
-          }`
+        ? [
+            `${before.length} the ${safeDays} days before`,
+            gripped.length >= 3 ? `held an hour or more ${held} of ${gripped.length}` : "",
+            modes.length >= 3 ? `circling ${circling} of ${modes.length}` : "",
+          ].filter(Boolean).join(" · ")
         : "Not recorded",
     });
   }
@@ -2360,12 +2419,13 @@ export function therapyNotesCsv(entries: TherapyNote[]): string {
 export function thoughtLoopsCsv(loops: ThoughtLoop[], events: LoopEvent[]): string {
   const live = new Set(loops.map((loop) => loop.id));
   return toCsv(
-    ["id", "loop_id", "at", "date", "outcome", "response", "recurrence"],
+    ["id", "loop_id", "at", "date", "outcome", "response", "recurrence", "grip", "mode"],
     [...events]
       .filter((event) => live.has(event.loopId))
       .sort((a, b) => a.at.localeCompare(b.at))
       .map((event) => [
-        event.id, event.loopId, event.at, event.date, event.move, event.response ?? "", event.recurrence ?? "",
+        event.id, event.loopId, event.at, event.date, event.move, event.response ?? "",
+        event.recurrence ?? "", event.grip ?? "", event.mode ?? "",
       ]),
   );
 }

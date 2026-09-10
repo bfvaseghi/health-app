@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { demoHealthState } from "../app/demo-state.ts";
 import { addDays, emptyHealthState, medicationStatuses, mindSummary, normalizeHealthState, thoughtLoopsCsv, upsertLoopEvent } from "../app/health-model.ts";
 import { TodayPractices } from "../app/ui/mind-view.tsx";
-import { ThoughtLoops, ResponseForm } from "../app/ui/thought-loops.tsx";
+import { ThoughtLoops, ResponseForm, ruminationLoad } from "../app/ui/thought-loops.tsx";
 import { MedsView } from "../app/ui/meds-view.tsx";
 
 const today = "2026-09-08";
@@ -29,17 +29,52 @@ test("meditation leads with calendar-day consistency and exposes saved insights"
   assert.match(render(TodayPractices, { state: onlyNotes, today, updateDaily: noop }), /An insight without minutes/);
 });
 
-test("rumination uses recurrence and responses without requiring or displaying worry titles", () => {
+test("rumination counts what happened instead of scoring you, and never names the worry", () => {
   const state = demoHealthState(today);
   const html = render(ThoughtLoops, { state, today, onSave: noop, onDelete: noop, onEvent: noop, onDeleteEvent: noop, onNotice: noop });
   assert.match(html, /Log rumination/);
-  assert.match(html, /times you moved on/);
+  // The headline is a count of what happened. A share of thoughts successfully
+  // seen off is a grade you award yourself once the episode is already over —
+  // it sat near the ceiling and could not fall, so it is gone from the panel.
+  assert.match(html, /times this week|time this week/);
+  assert.doesNotMatch(html, /moved on/);
+  // The two facts that qualify the count, and the words that worked, promoted
+  // out of the fold they used to sit in.
+  assert.match(html, /Held an hour or more/);
+  assert.match(html, /Going in circles/);
+  assert.match(html, /What helps/);
   assert.doesNotMatch(html, /Needing to be certain|Choose the recurring worry|Recurring worry/);
   const form = render(ResponseForm, { onSave: noop, onCancel: noop });
-  assert.match(form, /Just once/);
-  assert.match(form, /A few times/);
-  assert.match(form, /Kept returning/);
+  assert.match(form, /How long did it hold you/);
+  assert.match(form, /A few minutes/);
+  assert.match(form, /Most of the day/);
+  assert.match(form, /Working it out/);
+  // Still no free-text field for the thought itself, and no self-grading.
   assert.doesNotMatch(form, /<input|name="thought"|Recurring worry/);
+  assert.doesNotMatch(form, /I moved on|Afterward/);
+});
+
+test("the rumination count leaves unanswered questions out rather than filing them as good news", () => {
+  const day = (back, extra) => ({ id: `r${back}${JSON.stringify(extra)}`, loopId: "l", move: "noticed", at: `${addDays(today, -back)}T20:00`, date: addDays(today, -back), ...extra });
+  // Three logs this week: one short, one long, one that answered neither.
+  const events = [
+    day(0, { grip: "minutes", mode: "solving" }),
+    day(1, { grip: "day", mode: "circling" }),
+    day(2, {}),
+    // A record from before grip was asked. "Kept returning" is the same fact
+    // in the older vocabulary, so it counts as held; "I stayed caught up in
+    // it" is circling. A plain "I moved on" says nothing about which kind of
+    // thinking it was, so it is left out of the split entirely.
+    day(3, { recurrence: "often", move: "hooked" }),
+    day(4, { recurrence: "once", move: "passed" }),
+  ];
+  const load = ruminationLoad(events, today);
+  assert.equal(load.week, 5, "all five fall inside the last seven days");
+  assert.equal(load.weekly.length, 8);
+  assert.equal(load.weekly.at(-1).date, today);
+  assert.deepEqual(load.held, { yes: 2, of: 4 }, "the log that answered nothing is not counted as short");
+  assert.deepEqual(load.circling, { yes: 2, of: 3 }, "moving on is not evidence of working it out");
+  assert.equal(ruminationLoad([], today), null);
 });
 
 test("recurrence survives saved-state normalization and exports without inventing legacy frequency", () => {

@@ -399,13 +399,21 @@ export function demoHealthState(today: string, asOfTime = "12:00"): HealthState 
  * a newer loop that has only just been named. Deterministic, so the demo reads
  * the same every time.
  */
-function demoLoopEvents(today: string): Array<{ id: string; loopId: string; at: string; date: string; move: string; recurrence?: string; response?: string }> {
+type DemoLoopEvent = { id: string; loopId: string; at: string; date: string; move: string; recurrence?: string; grip?: string; mode?: string; response?: string };
+
+function demoLoopEvents(today: string): DemoLoopEvent[] {
   const perWeek = [12, 10, 9, 8, 6, 5, 4, 2];
   const hours = [21, 19, 22, 20, 8, 21, 18, 23, 20];
-  // Early weeks it pulled them in more often than not; lately it mostly passes.
+  // Early weeks it took the evening and went nowhere; lately it is shorter and
+  // more often actually about something. `move` stays on the sample so the
+  // panel still has records in the older shape to read back.
   const early = ["hooked", "hooked", "passed", "hooked", "passed", "hooked", "passed", "noticed", "hooked"];
   const late = ["passed", "passed", "passed", "passed", "hooked", "passed", "passed", "noticed", "passed"];
-  const events: Array<{ id: string; loopId: string; at: string; date: string; move: string; recurrence?: string; response?: string }> = [];
+  const earlyGrip = ["day", "hour", "hour", "day", "hour", "day", "minutes", "hour", "day"];
+  const lateGrip = ["minutes", "minutes", "hour", "minutes", "hour", "minutes", "minutes", "hour", "minutes"];
+  const earlyMode = ["circling", "circling", "circling", "circling", "solving", "circling", "circling", "circling", "circling"];
+  const lateMode = ["circling", "solving", "solving", "circling", "circling", "solving", "solving", "circling", "solving"];
+  const events: DemoLoopEvent[] = [];
   perWeek.forEach((count, weekIndex) => {
     const weekEnd = addDays(today, -(perWeek.length - 1 - weekIndex) * 7);
     for (let n = 0; n < count; n += 1) {
@@ -419,13 +427,15 @@ function demoLoopEvents(today: string): Array<{ id: string; loopId: string; at: 
         date,
         recurrence: weekIndex < 3 ? "often" : n % 2 ? "few" : "once",
         move: (weekIndex < 3 ? early : late)[n % early.length],
+        grip: (weekIndex < 3 ? earlyGrip : lateGrip)[n % earlyGrip.length],
+        mode: (weekIndex < 3 ? earlyMode : lateMode)[n % earlyMode.length],
         ...(weekIndex >= 6 ? { response: n % 2 ? "I noticed the worry, put my phone down, and went back to cooking." : "I picked one small task for tomorrow and went for a walk." } : {}),
       });
     }
   });
   for (let n = 0; n < 5; n += 1) {
     const date = addDays(today, -(n * 2));
-    events.push({ id: `demo-loop-2-${n}`, loopId: "demo-loop-2", at: date === today ? `${date}T00:00` : `${date}T${n % 2 ? "07" : "13"}:05`, date, recurrence: n % 2 ? "often" : "few", move: n === 0 ? "noticed" : "passed", response: n === 0 ? "I left the decision until Friday and carried on with my afternoon." : "I wrote down the next step and stopped comparing the options." });
+    events.push({ id: `demo-loop-2-${n}`, loopId: "demo-loop-2", at: date === today ? `${date}T00:00` : `${date}T${n % 2 ? "07" : "13"}:05`, date, recurrence: n % 2 ? "often" : "few", move: n === 0 ? "noticed" : "passed", grip: n % 2 ? "hour" : "minutes", mode: n % 2 ? "circling" : "solving", response: n === 0 ? "I left the decision until Friday and carried on with my afternoon." : "I wrote down the next step and stopped comparing the options." });
   }
   return events;
 }
