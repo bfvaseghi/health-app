@@ -17,10 +17,12 @@ import { changeChip, timerLabel } from "./workout-prescription";
  *
  * Nothing here is interactive except leaving. It is a card to look at.
  */
-export function GymView({ session, label, onClose }: {
+export function GymView({ session, label, onClose, onImport }: {
   session: PlannedSession;
   label: string;
   onClose: () => void;
+  /** Closes the card and opens the Strong importer. Without it, no button. */
+  onImport?: () => void;
 }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
@@ -39,6 +41,10 @@ export function GymView({ session, label, onClose }: {
           <Icon name="close" />
         </button>
       </header>
+      {/* The one instruction this card exists to give, and it belongs at the
+          start rather than at the end: nothing you do on this screen is
+          recorded, so the sets have to go into Strong as you do them. */}
+      <p className="gym-foot">Log the sets in Strong as you go — nothing here records them.</p>
       <ol>
         {session.exercises.map((exercise, index) => {
           const assisted = exercise.assistanceLb !== null;
@@ -67,7 +73,22 @@ export function GymView({ session, label, onClose }: {
           );
         })}
       </ol>
-      <p className="gym-foot">Log the sets in Strong as you go, then import the export back here.</p>
+      {/* The card used to end in a sentence, which quietly implied the workout
+          ended in nothing too. You are holding the phone, you have just
+          finished, and Strong is one app away: it is the best moment there is
+          to ask for the export, so the ask is here rather than in a help page. */}
+      <div className="gym-handoff">
+        <b>That’s the workout</b>
+        <ol className="session-steps">
+          <li><i aria-hidden="true">1</i><span><b>Strong → Settings → Export Strong Data</b></span></li>
+          <li><i aria-hidden="true">2</i><span><b>Share the CSV to yourself</b></span></li>
+          <li><i aria-hidden="true">3</i><span><b>Bring it back here</b><small>Every export is your whole history, so importing twice can’t duplicate anything</small></span></li>
+        </ol>
+        {onImport ? <button type="button" className="button primary" onClick={onImport}>
+          <Icon name="upload" />
+          Import from Strong
+        </button> : null}
+      </div>
     </div>
   );
 }

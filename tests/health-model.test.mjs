@@ -1215,3 +1215,19 @@ test("water survives saved records and partial imports while unknown stays unkno
   assert.equal(cleared.dailyEntries[0].waterMl, null);
   assert.equal(cleared.dailyEntries[0].steps, 8000);
 });
+
+test("a sync keeps the newer import stamp, not whichever copy the server held", () => {
+  // The workout sets merge as a union, so the stamp that dates them has to as
+  // well. Falling to the remote copy meant importing on this phone and then
+  // syncing could restore the other phone's older stamp — and the Fitness
+  // screen would go amber asking for an import it had just been given.
+  const base = normalizeHealthState({ ...emptyHealthState(fixedNow), importedAt: "2030-01-01T09:00:00.000Z" });
+  const local = normalizeHealthState({ ...base, importedAt: "2030-01-20T18:00:00.000Z" });
+  const remote = normalizeHealthState({ ...base, importedAt: "2030-01-05T09:00:00.000Z" });
+  assert.equal(mergeConcurrentHealthState(base, local, remote).state.importedAt, "2030-01-20T18:00:00.000Z");
+  // And the other way round, so it is a maximum rather than a preference.
+  assert.equal(mergeConcurrentHealthState(base, remote, local).state.importedAt, "2030-01-20T18:00:00.000Z");
+  // Neither side ever imported: still nothing to report.
+  const never = normalizeHealthState({ ...emptyHealthState(fixedNow), importedAt: null });
+  assert.equal(mergeConcurrentHealthState(never, never, never).state.importedAt, null);
+});

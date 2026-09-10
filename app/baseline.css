@@ -217,7 +217,9 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
 .record-stamp { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 0 2px 0 14px; margin-bottom: 4px; border-left: 2px solid var(--accent-pale); text-align: left; font-size: .8125rem; line-height: 1.4; color: var(--muted); }
 .record-stamp > svg { width: 15px; height: 15px; flex: none; }
 .record-stamp > span { flex: 1; min-width: 0; }
-.record-stamp > b { flex: none; font-weight: 650; color: var(--accent-strong); }
+/* The call to action, not a signal mark: --accent-strong is pale lime, which
+   on paper made "Import" all but invisible. --accent reads on both grounds. */
+.record-stamp > b { flex: none; font-weight: 650; color: var(--accent); }
 .record-stamp.is-accent { border-left-color: var(--accent); }
 .record-stamp.is-waiting, .record-stamp.is-stale { border-left-color: var(--warn); color: var(--warn); }
 .record-stamp.is-waiting > b, .record-stamp.is-stale > b { color: var(--warn); }
@@ -251,12 +253,27 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
 
 /* One pip a session; filled when the engine has matched it to a real imported
    workout. Importing fills one, which is the app showing it read the record. */
-.week-pips { display: flex; align-items: center; gap: 7px; font-size: .8125rem; color: var(--muted); }
+.week-pips { display: grid; gap: 5px; font-size: .8125rem; color: var(--muted); }
+.week-pips-row { display: flex; align-items: center; gap: 7px; }
 .week-pips i { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--line-strong); flex: none; }
 .week-pips i.is-done { background: var(--accent); border-color: var(--accent); }
 .week-pips i.is-now { border-color: var(--accent); border-style: solid; border-width: 3px; }
 .week-pips i.is-optional { border-style: dashed; }
-.week-pips span { margin-left: 5px; }
+.week-pips-row > span { margin-left: 5px; }
+/* What the pips count, said only while the count could be behind. */
+.pips-scope { font-size: .75rem; line-height: 1.45; color: var(--faint); }
+
+/* The week's round trip, three lines, on the card you read before you leave.
+   Not a .button anywhere: .answer-action .button forces full width, which
+   would turn a compact strip into three more full-width controls. */
+.session-steps { list-style: none; margin: 0 0 14px; padding: 0; display: grid; }
+.session-steps li { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: 2px 10px; align-items: baseline; padding: 8px 0; border-top: 1px solid var(--line); }
+.session-steps li:first-child { border-top: 0; padding-top: 0; }
+.session-steps i { font-style: normal; font-size: .75rem; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.session-steps b { display: block; font-size: .875rem; font-weight: 600; color: var(--ink); }
+.session-steps small { display: block; font-size: .75rem; line-height: 1.45; color: var(--muted); margin-top: 2px; }
+.session-steps li.is-done i { color: var(--faint); }
+.session-steps li.is-done b { color: var(--muted); font-weight: 500; text-decoration: line-through; text-decoration-thickness: 1px; }
 
 /* Eleven bars on one shared ceiling, so equal set counts draw equal heights.
    The target floor is a notch on top of the fill, not a band underneath it. */
@@ -316,7 +333,6 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
 .lift-row .movement-icon { width: 24px; height: 24px; flex: none; }
 .lift-row-values { display: grid; grid-template-columns: 4.75rem 5.25rem 3rem minmax(0, 1fr); gap: 8px; margin: 5px 0 0 32px; font-size: .875rem; font-variant-numeric: tabular-nums; }
 .lift-chip { color: var(--muted); font-size: .8125rem; }
-.lift-chip.increase { color: var(--accent-strong); }
 .lift-chip.reset, .lift-chip.reduce { color: var(--warn); }
 .lift-chip small { display: block; font-size: .625rem; opacity: .85; }
 .lift-row .prescription-detail { padding: 0 0 16px 32px; }
@@ -472,12 +488,29 @@ input:not([type="checkbox"]):not([type="radio"]), select { min-height: 44px; }
 .gym-numbers b { font-size: 1.5rem; font-weight: 650; letter-spacing: -.025em; font-variant-numeric: tabular-nums; line-height: 1.1; }
 .gym-numbers > span { font-size: 1rem; font-variant-numeric: tabular-nums; }
 .gym-numbers small { font-size: .75rem; color: var(--muted); }
-.gym-foot { margin: 20px 0 0; font-size: .875rem; color: var(--muted); }
+/* The card ends by handing off, not by trailing away. */
+.gym-handoff { margin-top: 26px; padding: 18px; display: grid; gap: 12px; background: var(--paper); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 12px; }
+.gym-handoff > b { font-size: 1.125rem; font-weight: 650; letter-spacing: -.02em; }
+.gym-handoff .session-steps { margin-bottom: 0; }
+/* `.gym-view li` sets a three-column lift row and a bottom hairline; the strip
+   is a list inside that dialog and would inherit both. */
+.gym-handoff .session-steps li { grid-template-columns: 20px minmax(0, 1fr); gap: 2px 10px; padding: 10px 0; border-bottom: 0; }
+.gym-handoff .session-steps li:first-child { padding-top: 0; }
+.gym-handoff .button { width: 100%; }
 .gym-change { font-weight: 600; }
-.gym-change.increase { color: var(--accent-strong); }
 .gym-change.reduce, .gym-change.reset { color: var(--warn); }
 .gym-change.keep, .gym-change.unavailable { color: var(--muted); font-weight: 500; }
-:root:not([data-theme="dark"]) .gym-change.increase { color: var(--accent); }
+/* "Went up" is lime on the dark ground and blue on paper, because pale lime on
+   paper is unreadable. The old override was `:root:not([data-theme="dark"])`,
+   which also matches the un-stamped "system" setting — so under system dark it
+   painted the light colour on the dark card. These three cover all three
+   states: attribute absent, data-theme="dark", data-theme="light". */
+.gym-change.increase, .lift-chip.increase { color: var(--accent); }
+:root[data-theme="dark"] .gym-change.increase, :root[data-theme="dark"] .lift-chip.increase { color: var(--accent-strong); }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .gym-change.increase,
+  :root:not([data-theme="light"]) .lift-chip.increase { color: var(--accent-strong); }
+}
 
 /* One mark a lift, so the count above it is something you can check. */
 .lift-marks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 4px; }

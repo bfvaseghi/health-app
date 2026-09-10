@@ -8,8 +8,10 @@ import type { Muscle } from "../training/muscles";
 import { BodyTab } from "./body-tab";
 import { CoverageBody, MiniCoverage, coverageFacts } from "./coverage-row";
 import { AnswerRow } from "./answer-row";
-import { NextUpBody, TakeItWithYou, WeekPips, nextUpFacts } from "./next-up-row";
+import { LoopSteps, NextUpBody, TakeItWithYou, WeekPips, nextUpFacts } from "./next-up-row";
 import { GymView } from "./gym-view";
+import { readGymOpened, writeGymOpened } from "./gym-visit";
+import { loopState } from "./loop-state";
 import { RecordStamp } from "./record-stamp";
 import { StrengthBody, StrengthSpark, strengthFacts } from "./strength-row";
 import { Icon } from "./icons";
@@ -47,6 +49,7 @@ export function FitnessView({
   onDeleteDay,
   onGoals,
   onNotice,
+  demo = false,
 }: {
   state: HealthState;
   /** Which rows are open. Held above this component so it survives a view change. */
@@ -62,11 +65,24 @@ export function FitnessView({
   onGoals: (goals: GoalSettings | ((current: GoalSettings) => GoalSettings)) => void;
   onNotice: (message: string) => void;
   open: (modal: Modal) => void;
+  /** A demo never writes this device's keys, and never offers a real import. */
+  demo?: boolean;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const [focus, setFocus] = useState<Muscle | null>(null);
   const [weeks, setWeeks] = useState(12);
   const [gym, setGym] = useState(false);
+  // Where he is in the week's round trip. Kept in component state as well as
+  // localStorage so the strip restrikes immediately on opening the card, and so
+  // the demo can demonstrate the whole loop without touching stored keys.
+  const [gymOpenedAt, setGymOpenedAt] = useState<string | null>(() => readGymOpened(demo));
+
+  const openGym = () => {
+    const at = new Date().toISOString();
+    setGymOpenedAt(at);
+    writeGymOpened(demo, at);
+    setGym(true);
+  };
 
   const { plan } = useMemo(() => currentTrainingWeek(state, today), [state, today]);
   const outlook = useMemo(() => weekOutlook(plan, state, today), [plan, state, today]);
@@ -77,6 +93,7 @@ export function FitnessView({
   const coverage = useMemo(() => coverageFacts(outlook, state, today), [outlook, state, today]);
   const strength = useMemo(() => strengthFacts(state, today, weeks), [state, today, weeks]);
   const body = bodyFacts(state, today);
+  const loop = useMemo(() => loopState(state, today, gymOpenedAt), [state, today, gymOpenedAt]);
 
   const toggle = (row: FitnessRow) => onRows({ ...rows, [row]: !rows[row] });
   const week = `${dateLabel(weekStart(today), { month: "short", day: "numeric" })}–${dateLabel(endOfWeek(today), { month: "short", day: "numeric" })}`;
@@ -94,9 +111,9 @@ export function FitnessView({
           headline={hasHistory ? next.headline : "No workout yet"}
           subline={hasHistory ? next.subline : "Needs your Strong export"}
           tone={hasHistory ? "primary" : "empty"}
-          graphic={hasHistory ? <WeekPips facts={next} /> : null}
+          graphic={hasHistory ? <WeekPips facts={next} scope={loop.show} /> : null}
           action={hasHistory
-            ? <TakeItWithYou facts={next} onGym={() => setGym(true)} onNotice={onNotice} />
+            ? <><LoopSteps loop={loop} /><TakeItWithYou facts={next} onGym={openGym} onNotice={onNotice} /></>
             : <button type="button" className="button primary" onClick={() => open({ kind: "import", source: "strong" })}><Icon name="upload" />Import from Strong</button>}
           open={rows.next}
           onToggle={() => toggle("next")}
@@ -175,7 +192,12 @@ export function FitnessView({
           />
         </AnswerRow>
       </div>
-      {gym && next.hero ? <GymView session={next.hero} label={next.headline} onClose={() => setGym(false)} /> : null}
+      {gym && next.hero ? <GymView
+        session={next.hero}
+        label={next.headline}
+        onClose={() => setGym(false)}
+        onImport={() => { setGym(false); open({ kind: "import", source: "strong" }); }}
+      /> : null}
     </div>
   );
 }

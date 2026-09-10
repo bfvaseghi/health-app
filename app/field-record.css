@@ -558,9 +558,6 @@ input:not([type="checkbox"]):not([type="radio"]), textarea, select, .tl-loop-for
 .simple-prescription.increase .lift-load-line > strong { color: var(--accent-pale-ink); }
 .lift-directions { display: flex; flex-wrap: wrap; column-gap: 18px; row-gap: 4px; margin: 3px 0 0; color: var(--muted); font-size: 14px; line-height: 1.5; }
 .simple-prescription .prescription-detail { margin-top: 12px; padding: 14px; }
-.strong-handoff { display: flex; flex-wrap: wrap; align-items: center; gap: 18px; justify-content: space-between; border-top: 1px solid var(--line); margin-top: 28px; padding: 24px 0; }
-.strong-handoff b { font-size: 16px; font-weight: 600; }
-.strong-handoff p { font-size: 14px; line-height: 1.5; color: var(--muted); margin: 6px 0 0; max-width: 340px; }
 .training-gap-note { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; font-size: 14px; line-height: 1.5; color: var(--muted); padding: 16px 0; border-top: 1px solid var(--line); }
 .training-gap-note svg { flex: none; width: 16px; }
 .training-week-view > h2, .standalone-settings > h2 { margin: 12px 0; font-size: 28px; letter-spacing: -.03em; }
@@ -922,9 +919,6 @@ input:not([type="checkbox"]):not([type="radio"]), textarea, select, .tl-loop-for
 .workout-source-line { display: flex; align-items: center; justify-content: space-between; gap: 8px 20px; flex-wrap: wrap; margin: 20px 0 8px; }
 .workout-source-line > span { display: flex; align-items: center; gap: 6px; font-size: .875rem; color: var(--muted); }
 .workout-source-line svg { width: 16px; height: 16px; }
-.workout-handoff { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 20px; padding: 24px 0; }
-.workout-handoff p { margin: 0; font-size: .875rem; line-height: 1.6; color: var(--muted); flex: 1 1 220px; }
-.workout-handoff .text-button { min-height: 44px; }
 @media (max-width: 600px) {
   .practice-overview, .dose-card-body { grid-template-columns: minmax(0, 1fr); gap: 18px; }
   .practice-overview { padding: 20px; }
@@ -934,7 +928,5 @@ input:not([type="checkbox"]):not([type="radio"]), textarea, select, .tl-loop-for
   .rumination-home > .tl-section-head { align-items: flex-start; flex-wrap: wrap; }
   .recurrence-choice > div { gap: 6px; }
   .recurrence-choice button { padding: 10px 6px; }
-  .workout-handoff { align-items: stretch; }
-  .workout-handoff > .button { width: 100%; }
   .workout-source-line .text-button { min-height: 44px; }
 }

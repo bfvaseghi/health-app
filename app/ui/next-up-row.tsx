@@ -10,6 +10,7 @@ import {
 } from "../training/coach";
 import { buildProgress } from "../training/progress";
 import { Icon } from "./icons";
+import type { LoopState } from "./loop-state";
 import { copyText, downloadBlob } from "./format";
 import { ConfirmButton } from "./primitives";
 import { PrescriptionColumns, WorkoutPrescription as Lift } from "./workout-prescription";
@@ -22,6 +23,13 @@ export type NextUpFacts = {
   daysLeft: number;
   done: number;
   pips: Array<{ name: string; state: "done" | "now" | "todo"; optional: boolean }>;
+  /**
+   * The last day this week that has an imported workout on it, or null when
+   * none has. The pips count imports, not training — a workout you did and did
+   * not export cannot reach the record by any route — so this is the date the
+   * count is good to, and the only honest scope for it.
+   */
+  countedThrough: string | null;
   copyText: string | null;
   deload: boolean;
 };
@@ -47,9 +55,16 @@ export function nextUpFacts(plan: Plan, state: HealthState, today: string): Next
   }));
   const daysLeft = daysLeftInWeek(today);
 
+  const monday = weekStart(today);
+  let countedThrough: string | null = null;
+  for (const set of state.workoutSets) {
+    if (set.date < monday || set.date > today) continue;
+    if (!countedThrough || set.date > countedThrough) countedThrough = set.date;
+  }
+
   if (!hero) {
     return {
-      hero: null, headline: "Week's workouts done", daysLeft, done: next.done, pips,
+      hero: null, headline: "Week's workouts done", daysLeft, done: next.done, pips, countedThrough,
       subline: `${next.done} of ${next.of} · ${daysLeft} ${daysLeft === 1 ? "day" : "days"} left`,
       copyText: null, deload: plan.deload,
     };
@@ -69,6 +84,7 @@ export function nextUpFacts(plan: Plan, state: HealthState, today: string): Next
     daysLeft,
     done: next.done,
     pips,
+    countedThrough,
     copyText: sessionToText(plan, { ...hero, name: label(hero) }, dateLabel(today, { weekday: "short", month: "short", day: "numeric" })),
     deload: plan.deload,
   };
@@ -166,17 +182,56 @@ export function NextUpBody({
   </>;
 }
 
-/** The pips and the copy button, both of which sit on the shut row. */
-export function WeekPips({ facts }: { facts: NextUpFacts }) {
+/**
+ * The pips, and — only while the record could be behind — what they count.
+ *
+ * "1 done · 1 to go" is a count of imported workouts, not of workouts. Do one
+ * and skip the export and the pip stays hollow, which is the single most
+ * confusing thing the screen can do. The scope line says which date the count
+ * is good to, so the number can be checked rather than doubted. It is hidden
+ * once the loop is closed, because a caveat on a count that cannot be wrong is
+ * just noise.
+ */
+export function WeekPips({ facts, scope = false }: { facts: NextUpFacts; scope?: boolean }) {
   const todo = facts.pips.filter(pip => pip.state !== "done").length;
   return <div className="week-pips">
-    {facts.pips.map(pip => <i
-      key={pip.name}
-      className={`${pip.state === "done" ? "is-done" : pip.state === "now" ? "is-now" : ""}${pip.optional ? " is-optional" : ""}`}
-      aria-hidden="true"
-    />)}
-    <span>{facts.done} done · {todo} to go</span>
+    <span className="week-pips-row">
+      {facts.pips.map(pip => <i
+        key={pip.name}
+        className={`${pip.state === "done" ? "is-done" : pip.state === "now" ? "is-now" : ""}${pip.optional ? " is-optional" : ""}`}
+        aria-hidden="true"
+      />)}
+      <span>{facts.done} done · {todo} to go</span>
+    </span>
+    {/* Says what the count is drawn from, not when the import happened —
+        countedThrough is the newest workout DATE in the record, and "imported
+        through Sep 7" would have been read as "you imported on Sep 7". */}
+    {scope ? <small className="pips-scope">{facts.countedThrough
+      ? `In the record up to ${dateLabel(facts.countedThrough, { month: "short", day: "numeric" })}`
+      : "Nothing from this week in the record yet"}</small> : null}
   </div>;
+}
+
+/**
+ * The week's round trip, printed on the card you read before you leave.
+ *
+ * Three lines, no paragraph. Step one strikes through once you have opened the
+ * workout, so the strip says where you are rather than only what to do — and
+ * the whole thing disappears when the import lands.
+ */
+export function LoopSteps({ loop }: { loop: LoopState }) {
+  if (!loop.show) return null;
+  return <ol className="session-steps" aria-label="The week's round trip">
+    {loop.steps.map((step, index) => (
+      <li key={step.key} className={step.done ? "is-done" : ""}>
+        <i aria-hidden="true">{index + 1}</i>
+        <span>
+          <b>{step.label}{step.done ? <span className="visually-hidden"> — done</span> : null}</b>
+          {step.note ? <small>{step.note}</small> : null}
+        </span>
+      </li>
+    ))}
+  </ol>;
 }
 
 /** The two ways to take the workout with you: read it big, or copy the text. */

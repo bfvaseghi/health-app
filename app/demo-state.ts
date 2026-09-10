@@ -197,9 +197,12 @@ function demoWorkoutSets(today: string): WorkoutSet[] {
     { exercise: "Hanging Leg Raise", sets: 5, weightLb: null, reps: 15, restSeconds: 75 },
   ]);
 
-  // Thursday, so the sample usually has one session logged and one waiting —
-  // a week in progress shows more of the app than a week already finished.
-  if (addDays(monday, 3) <= today) addSession(0, 3, "07:00", "Full body 2", 4_500, [
+  // Sunday, so six days in seven the sample has one session logged and one
+  // waiting. A week in progress shows more of the app than a finished one —
+  // the workout card, the loop strip and the pips all have something to say —
+  // and this used to land on Thursday, which meant the demo read as a closed
+  // week for more than half of it.
+  if (addDays(monday, 6) <= today) addSession(0, 6, "07:00", "Full body 2", 4_500, [
     { exercise: "Romanian Deadlift (Barbell)", sets: 4, weightLb: 205, reps: 8, restSeconds: 180 },
     { exercise: "Incline Bench Press (Dumbbell)", sets: 4, weightLb: 65, reps: 10, restSeconds: 150 },
     { exercise: "Lat Pulldown (Cable)", sets: 4, weightLb: 130, reps: 10, restSeconds: 150 },
@@ -253,6 +256,11 @@ export function demoHealthState(today: string, asOfTime = "12:00"): HealthState 
   // Today stays populated even when opened early, without future event times.
   const morningTime = asOfTime < "09:00" ? asOfTime : "09:00";
   const journalTime = asOfTime < "10:30" ? asOfTime : "10:30";
+  // The same clamp, for the same reason: a stamp at a fixed hour sits in the
+  // future whenever the sample is opened before it, so "Imported today" named
+  // an import that had not happened yet — and anything comparing a real clock
+  // against it, like the loop strip, read the sample as already up to date.
+  const importTime = asOfTime < "11:00" ? asOfTime : "11:00";
   const dailyEntries = demoDailyEntries(today);
   return normalizeHealthState({
     version: 1,
@@ -260,7 +268,9 @@ export function demoHealthState(today: string, asOfTime = "12:00"): HealthState 
     // The sample record has been imported, so the stamp on Fitness shows the
     // resting state rather than the honest-but-bleak "imported: not recorded"
     // that a record predating the stamp reports.
-    importedAt: `${today}T11:00:00.000Z`,
+    // Local, like the other sample timestamps — a Z here would still land in
+    // the future for anyone east of UTC.
+    importedAt: `${today}T${importTime}:00`,
     medications: [
       { id: "demo-daily", name: "Demo daily tablet", schedule: "daily", dueDay: null, archived: false },
       { id: "demo-weekly", name: "Demo weekly dose", schedule: "weekly", dueDay, archived: false },

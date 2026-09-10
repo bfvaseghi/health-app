@@ -9,6 +9,8 @@ import { currentTrainingWeek, matchedSessionsThisWeek, nextSession, sessionToTex
 import { buildProgress } from "../app/training/progress.ts";
 import { MUSCLES } from "../app/training/muscles.ts";
 import { FitnessView } from "../app/ui/fitness-view.tsx";
+import { GymView } from "../app/ui/gym-view.tsx";
+import { loopState } from "../app/ui/loop-state.ts";
 import { WorkoutPrescription } from "../app/ui/workout-prescription.tsx";
 import { labelSessions } from "../app/ui/workout-labels.ts";
 import { fitnessAllClosed } from "../app/ui/types.ts";
@@ -16,6 +18,10 @@ import { fitnessAllClosed } from "../app/ui/types.ts";
 const TODAY = "2026-09-08";
 const noop = () => {};
 const plain = html => html.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ");
+/** plain(), with the entities turned back into the characters a reader sees. */
+const spoken = html => plain(html)
+  .replaceAll("&#x27;", "'").replaceAll("&quot;", '"')
+  .replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
 const view = (state, rows = fitnessAllClosed, today = TODAY) => renderToStaticMarkup(createElement(FitnessView, {
   state, editableState: state, today, rows: { ...fitnessAllClosed, ...rows }, onRows: noop, open: noop,
   onAddPhoto: async () => {}, onUpdatePhoto: noop, onDeletePhoto: noop, onDeleteDay: noop, onGoals: noop, onNotice: noop,
@@ -214,9 +220,33 @@ test("the stamp reports how old the record is, and nothing else", () => {
   assert.doesNotMatch(plain(view(base)), /To Strong|From Strong/);
   assert.doesNotMatch(view(base), /record-stamp is-waiting/);
 
-  const stale = { ...base, workoutSets: base.workoutSets.filter(set => set.date <= addDays(TODAY, -9)) };
-  assert.match(view(stale), /record-stamp is-stale/);
-  assert.match(plain(view(stale)), /Last workout \d+ days ago/);
+  // Amber means the IMPORT is behind — the one thing importing would fix.
+  const behind = { ...base, importedAt: `${addDays(TODAY, -12)}T09:00:00.000Z` };
+  assert.match(view(behind), /record-stamp is-stale/);
+  assert.match(plain(view(behind)), /Last import 12 days ago/);
+  assert.match(plain(view(behind)), /Update/);
+
+  // A record with no import stamp has only the workout date to go on, so an old
+  // one keeps the amber and the way out of it. The one state that cannot date
+  // itself must not be the calmest line on the screen.
+  const unstamped = { ...base, importedAt: null, workoutSets: base.workoutSets.filter(set => set.date <= addDays(TODAY, -9)) };
+  assert.match(view(unstamped), /record-stamp is-stale/);
+  assert.match(plain(view(unstamped)), /last import not recorded/);
+  assert.match(plain(view(unstamped)), /Import/);
+});
+
+test("a rest week is not a stale record", () => {
+  // Importing today an export whose last session was nine days ago leaves the
+  // record perfectly current — he simply did not train. The stamp used to go
+  // amber and demand an import that would have changed nothing.
+  const base = demoHealthState(TODAY);
+  const rested = {
+    ...base,
+    importedAt: `${TODAY}T09:00:00.000Z`,
+    workoutSets: base.workoutSets.filter(set => set.date <= addDays(TODAY, -9)),
+  };
+  assert.doesNotMatch(view(rested), /record-stamp is-stale/);
+  assert.match(plain(view(rested)), /Imported today · \d+ workouts/);
 });
 
 test("rows open independently, so a number and its working can be read together", () => {
@@ -257,4 +287,80 @@ test("the strength counts sum to the lifts that were actually measured", () => {
   // An estimated max is labelled as one. It used to print bare "lb" beside a
   // workout screen prescribing a different, real number for the same lift.
   if (progress.lifts.some(lift => !lift.bodyweight && !lift.assisted)) assert.match(plain(html), /est\. max \d+ lb/);
+});
+
+test("the loop strip appears exactly when the record could be behind", () => {
+  const base = demoHealthState(TODAY);
+  const imported = `${TODAY}T09:00:00.000Z`;
+
+  // Closed: imported today, no gym card opened since. The pips cannot be
+  // behind, so neither the strip nor the caveat under them is earned.
+  const closed = loopState({ ...base, importedAt: imported }, TODAY, null);
+  assert.equal(closed.show, false);
+  assert.equal(closed.reason, "closed");
+
+  // Mid-loop: he read the workout, so whatever he did is not in the record yet.
+  const mid = loopState({ ...base, importedAt: imported }, TODAY, `${TODAY}T18:30:00.000Z`);
+  assert.equal(mid.show, true);
+  assert.equal(mid.reason, "mid");
+  assert.equal(mid.steps[0].done, true, "opening the gym should strike step one");
+  assert.deepEqual(mid.steps.map(step => step.done), [true, false, false]);
+
+  // Opening the gym card before the last import is a closed loop, not an open
+  // one — the import that followed is what settles it.
+  const settled = loopState({ ...base, importedAt: imported }, TODAY, `${addDays(TODAY, -3)}T18:30:00.000Z`);
+  assert.equal(settled.show, false);
+
+  // A visit has to be recent to count as an open loop. Without the bound, a
+  // phone that opened the card once and never imported strikes step one for
+  // the rest of its life and describes a workout from March.
+  const ancient = loopState({ ...base, importedAt: null }, TODAY, `${addDays(TODAY, -40)}T18:30:00.000Z`);
+  assert.equal(ancient.reason, "first");
+  assert.equal(ancient.steps[0].done, false);
+
+  // Never imported, and an import old enough to doubt.
+  assert.equal(loopState({ ...base, importedAt: null }, TODAY, null).reason, "first");
+  assert.equal(loopState({ ...base, importedAt: `${addDays(TODAY, -12)}T09:00:00.000Z` }, TODAY, null).reason, "stale");
+  assert.equal(loopState({ ...base, importedAt: `${addDays(TODAY, -3)}T09:00:00.000Z` }, TODAY, null).reason, "closed");
+});
+
+test("the week pips say what they count, and only while it could be wrong", () => {
+  const base = demoHealthState(TODAY);
+
+  // Closed loop: the count is trustworthy, so no caveat and no strip.
+  const quiet = plain(view({ ...base, importedAt: `${TODAY}T09:00:00.000Z` }));
+  assert.doesNotMatch(quiet, /In the record up to/);
+  assert.doesNotMatch(quiet, /Import the export back here/);
+
+  // Behind: the strip states the loop and the pips state their scope, because
+  // a hollow pip and an unimported workout look identical on screen.
+  const behind = plain(view({ ...base, importedAt: `${addDays(TODAY, -12)}T09:00:00.000Z` }));
+  assert.match(behind, /Open in the gym/);
+  assert.match(behind, /Log the sets in Strong/);
+  assert.match(behind, /Import the export back here/);
+  assert.match(behind, /In the record up to \w+ \d+/);
+
+  // A week with nothing brought across says so rather than implying no training.
+  const monday = weekStart(TODAY);
+  const empty = { ...base, importedAt: `${addDays(TODAY, -12)}T09:00:00.000Z`, workoutSets: base.workoutSets.filter(set => set.date < monday) };
+  assert.match(plain(view(empty)), /Nothing from this week in the record yet/);
+});
+
+test("the gym card ends by handing the workout back", () => {
+  const state = demoHealthState(TODAY);
+  const plan = currentTrainingWeek(state, TODAY).plan;
+  const session = nextSession(plan, state, TODAY).session;
+  assert.ok(session, "the demo week has no next session");
+  const html = renderToStaticMarkup(createElement(GymView, {
+    session, label: "Legs + back", onClose: noop, onImport: noop,
+  }));
+  assert.match(spoken(html), /That’s the workout/);
+  assert.match(spoken(html), /Export Strong Data/);
+  assert.match(spoken(html), /Import from Strong/);
+  // Importing twice is harmless, and saying so is what stops him hesitating.
+  assert.match(spoken(html), /importing twice can’t duplicate anything/);
+  // Without a way to import there is no button promising one.
+  const readOnly = renderToStaticMarkup(createElement(GymView, { session, label: "Legs + back", onClose: noop }));
+  assert.doesNotMatch(spoken(readOnly), /Import from Strong/);
+  assert.match(spoken(readOnly), /That’s the workout/);
 });

@@ -821,6 +821,7 @@ export default function Home() {
             onDeleteDay={deleteDaily}
             onGoals={saveGoals}
             onNotice={notice}
+            demo={demoMode}
           />
         )}
         <div hidden={view !== "mind"} key={`mind:${workoutReset}`}>

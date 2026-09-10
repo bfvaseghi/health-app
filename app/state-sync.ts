@@ -218,6 +218,12 @@ export function mergeConcurrentHealthState(
     state: normalizeHealthState({
       ...remote,
       updatedAt: new Date().toISOString(),
+      // The workout sets merge as a union, so the import stamp has to as well:
+      // falling to `...remote` meant importing on this phone and then syncing
+      // could keep the other phone's older stamp, and the Fitness screen would
+      // ask you to import a record it had just received. Both are UTC ISO
+      // strings, so the later one sorts last.
+      importedAt: [local.importedAt, remote.importedAt].filter(Boolean).sort().at(-1) ?? null,
       medications: medications.values,
       medicationDoses: doses.values,
       dailyEntries: daily.values,

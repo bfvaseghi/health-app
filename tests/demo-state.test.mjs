@@ -138,11 +138,26 @@ test("the demo includes each elapsed workout day across the whole week", () => {
     const date = addDays(monday, day);
     const state = demoHealthState(date);
     const sessions = buildWorkoutSessions(state.workoutSets);
-    // The current week is the two full-body sessions the app plans, so the
-    // sample shows the loop in its steady state rather than a shortfall.
-    assert.equal(sessions.length, 19 + (day >= 3 ? 1 : 0));
+    // The current week is the two full-body sessions the app plans, with the
+    // second landing on Sunday — so six days in seven the sample is a week in
+    // progress, which is the state that has something to show: a workout
+    // waiting, pips at one of two, and the loop strip with a reason to appear.
+    assert.equal(sessions.length, 19 + (day >= 6 ? 1 : 0));
     assert.ok(sessions.every((session) => session.date <= date));
     assert.ok(sessions.filter((session) => session.date >= monday).every((session) => session.sets >= 12));
+  }
+});
+
+test("the demo has a workout still to do on every day but Sunday", () => {
+  // The whole point of the sample is to demonstrate the loop, and a finished
+  // week demonstrates none of it: no card to open, no strip, nothing to bring
+  // back. This is the assertion that keeps that true as the demo changes.
+  const monday = "2026-08-31";
+  for (let day = 0; day < 6; day += 1) {
+    const date = addDays(monday, day);
+    const state = demoHealthState(date);
+    const thisWeek = buildWorkoutSessions(state.workoutSets).filter(session => session.date >= monday);
+    assert.equal(thisWeek.length, 1, `${date} should have exactly one session logged this week`);
   }
 });
 
