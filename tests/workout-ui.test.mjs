@@ -12,6 +12,8 @@ import { FitnessView } from "../app/ui/fitness-view.tsx";
 import { GymView } from "../app/ui/gym-view.tsx";
 import { loopState } from "../app/ui/loop-state.ts";
 import { WorkoutPrescription } from "../app/ui/workout-prescription.tsx";
+import { liftName, mainLifts } from "../app/ui/strength-row.tsx";
+import { movementPattern } from "../app/training/movement.ts";
 import { labelSessions } from "../app/ui/workout-labels.ts";
 import { fitnessAllClosed } from "../app/ui/types.ts";
 
@@ -52,9 +54,9 @@ test("the shut stack answers all four questions with no tabs and no step numbers
   // Both pictures decode without a key you cannot see: one mark a muscle, one
   // mark a lift, each with the words that say which state is which.
   assert.equal((html.match(/class="mini-mark/g) ?? []).length, MUSCLES.length);
-  assert.match(html, /class="lift-marks"/);
+  assert.match(html, /class="lift-table"/);
   assert.match(plain(html), /Filled = at or above its weekly sets/);
-  assert.match(plain(html), /One mark a lift/);
+  assert.match(plain(html), /Squat, hinge, press and pull/);
   // Every contradictory or unfinished string the old section carried.
   assert.doesNotMatch(plain(html), /Nothing is behind|Two-workout base|ALL CURRENT|last updated|Copies the text to paste in/);
 });
@@ -277,14 +279,36 @@ test("no fold hides the key to a number above it", () => {
   }
 });
 
-test("the strength counts sum to the lifts that were actually measured", () => {
+test("strength names lifts and weights, not a tally of directions", () => {
   const state = demoHealthState(TODAY);
   const html = view(state, { strength: true });
   const progress = buildProgress(state, TODAY, 12);
-  const match = /(\d+) up · (\d+) down · (\d+) holding/.exec(plain(html));
-  assert.ok(match, "the strength subline is missing");
-  const [, up, down, holding] = match.map(Number);
-  assert.equal(up + down + holding, progress.lifts.length, "the counts do not add up to the measured lifts");
+  const main = mainLifts(progress);
+
+  // A count of how many movements are rising is a way of scoring a
+  // spreadsheet. What a lifter wants is which lift, and what is on the bar.
+  assert.doesNotMatch(plain(html), /\d+ up · \d+ down · \d+ holding/);
+  assert.ok(main.length, "no main lifts picked");
+
+  // One lift per pattern, so an accessory that appears in every session cannot
+  // outrank the squat by being frequent.
+  const patterns = main.map(lift => movementPattern(lift.exercise));
+  assert.equal(new Set(patterns).size, patterns.length, `two lifts share a pattern: ${patterns.join(", ")}`);
+  for (const lift of main) {
+    assert.match(plain(html), new RegExp(liftName(lift.exercise).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+
+  // Every figure on the row is a whole number: an estimated max printed to the
+  // tenth of a pound claims a precision it does not have.
+  const spans = [...html.matchAll(/class="lift-table-span">([^<]*)</g)].map(m => m[1]);
+  assert.equal(spans.length, main.length);
+  for (const span of spans) assert.doesNotMatch(span, /\d\.\d/, `${span} is printed to a decimal`);
+
+  // The headline names one of them and says what it did.
+  const headline = /class="answer-headline">([^<]*)</g;
+  const headlines = [...html.matchAll(headline)].map(m => m[1]);
+  assert.ok(headlines.some(text => main.some(lift => text.startsWith(liftName(lift.exercise)))),
+    `no headline names a main lift: ${headlines.join(" | ")}`);
   // Lifts that cannot be measured are counted separately, because "not
   // measurable" is not the same claim as "not moving".
   if (progress.excluded.length) assert.match(plain(html), new RegExp(`Not measured \\(${progress.excluded.length}\\)`));

@@ -6,7 +6,6 @@ import { addDays, dateLabel, localDateTime } from "../health-model";
 import { recordId } from "../record-id";
 import { Icon } from "./icons";
 import { DayStrip } from "./spark";
-import { datedCells, streak } from "./strips";
 import { ConfirmButton } from "./primitives";
 import { Tide } from "./tide";
 import { formatTime } from "./format";
@@ -14,6 +13,47 @@ import { formatTime } from "./format";
 export type LoopDraft = { id?: string; name: string; reply: string };
 const outcomes: Record<LoopMove, string> = { noticed: "Not recorded", passed: "I moved on", later: "I set it aside", hooked: "I stayed caught up in it" };
 export const recurrenceLabels: Record<LoopRecurrence, string> = { once: "Just once", few: "A few times", often: "Kept returning" };
+
+/** How many recent logs to weigh. Enough to see a direction, few enough that a
+ *  bad fortnight two months ago is not still being counted against you. */
+const OUTCOME_WINDOW = 12;
+
+export type RuminationOutcome = {
+  total: number;
+  movedOn: number;
+  /** Logs where it kept coming back through the occasion. */
+  returning: number;
+  cells: Array<{ date: string; state: "on" | "miss" | "half"; label: string }>;
+};
+
+/**
+ * Whether the thought lets go, over the last dozen times it came up.
+ *
+ * Setting it aside counts as moving on: the point of the exercise is not to
+ * win the argument on the spot, it is to stop the day being spent on it. A log
+ * with no outcome recorded is drawn as a half mark rather than a failure —
+ * "not written down" and "it caught me" are different facts.
+ */
+export function ruminationOutcome(events: LoopEvent[]): RuminationOutcome | null {
+  if (!events.length) return null;
+  // `events` arrives newest first; the strip reads oldest on the left like
+  // every other strip in the app.
+  const recent = events.slice(0, OUTCOME_WINDOW).slice().reverse();
+  const cells = recent.map(event => {
+    const moved = event.move === "passed" || event.move === "later";
+    return {
+      date: `${event.id}`,
+      state: event.move === "noticed" ? "half" as const : moved ? "on" as const : "miss" as const,
+      label: `${dateLabel(event.date, { month: "short", day: "numeric" })}: ${outcomes[event.move]}`,
+    };
+  });
+  return {
+    total: recent.length,
+    movedOn: cells.filter(cell => cell.state === "on").length,
+    returning: recent.filter(event => event.recurrence === "often").length,
+    cells,
+  };
+}
 
 export function ThoughtLoops({ state, today, onSave, onDelete, onEvent, onDeleteEvent, onNotice }: {
   state: HealthState;
@@ -54,24 +94,26 @@ export function ThoughtLoops({ state, today, onSave, onDelete, onEvent, onDelete
     }} />
   </section>;
 
-  const ruminationCells = datedCells(events.map(item => item.date), today, 14, "log");
-  const loggedCells = streak(ruminationCells);
+  const outcome = ruminationOutcome(events);
   return <section className="thought-response-home rumination-home" aria-labelledby="loops-title">
     <div className="tl-section-head"><h2 className="mind-section-title" id="loops-title">Rumination</h2><button type="button" className="button primary small" onClick={() => setComposer({})}><Icon name="plus" /> Log rumination</button></div>
     <p className="response-intro">How often it returned, and what helped you move on.</p>
-    {/* The count, and the fortnight it was counted from. A number alone cannot
-        show whether this is a bad week or a normal one. */}
-    {/* The count and the picture come from the same fortnight — the number
-        said 7 days over a 14-cell strip, which is the kind of mismatch that
-        makes a chart read as noise. */}
-    <div className="record-block is-flat">
+    {/* This used to count the days you remembered to open the app, which is a
+        measure of the app and not of you — and one where more was somehow
+        better, so a bad fortnight and a diligent one drew the same picture.
+        What the panel is actually for is whether the thought lets go, so that
+        is the number: of the times it came up, how often you moved on. */}
+    {outcome ? <div className="record-block is-flat">
       <div className="record-block-value">
-        <strong>{loggedCells.hits}<span className="of">/14</span></strong>
-        <span>days with a rumination log</span>
+        <strong>{outcome.movedOn}<span className="of">/{outcome.total}</span></strong>
+        <span>times you moved on</span>
       </div>
-      <DayStrip cells={ruminationCells} label="Rumination logs, last 14 days" />
-      <div className="record-block-scale"><span>{dateLabel(addDays(today, -13), { month: "short", day: "numeric" })}</span><span>today</span></div>
-    </div>
+      <DayStrip cells={outcome.cells} label={`Rumination outcomes, last ${outcome.total} ${outcome.total === 1 ? "log" : "logs"}, oldest first`} />
+      <div className="record-block-scale">
+        <span>Filled = you moved on</span>
+        <span>{outcome.returning ? `${outcome.returning} kept returning` : "none kept returning"}</span>
+      </div>
+    </div> : null}
     {lastSaved && events.some(item => item.id === lastSaved) ? <div className="response-saved" role="status"><Icon name="check" /><span>Saved</span><button type="button" className="text-button" onClick={() => { onDeleteEvent(lastSaved); setLastSaved(null); }}>Undo</button></div> : null}
     {events.length ? <section className="response-history rumination-recent" aria-label="Recent rumination logs"><h3>Latest log</h3><ol>
       {events.slice(0, 1).map(item => <RuminationRow key={item.id} event={item} onEdit={() => setComposer({ eventId: item.id })} />)}

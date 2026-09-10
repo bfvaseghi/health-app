@@ -12,6 +12,7 @@ import { NextUpBody, TakeItWithYou, WeekPips, nextUpFacts } from "./next-up-row"
 import { GymView } from "./gym-view";
 import { readGymOpened, writeGymOpened } from "./gym-visit";
 import { loopState } from "./loop-state";
+import { PhaseScore, phaseScore, type PhaseScore as PhaseScoreFacts } from "./phase-score";
 import { RecordCard } from "./record-stamp";
 import { StrengthBody, StrengthSpark, strengthFacts } from "./strength-row";
 import { RecordHeading } from "./primitives";
@@ -92,7 +93,8 @@ export function FitnessView({
   const next = useMemo(() => nextUpFacts(plan, state, today), [plan, state, today]);
   const coverage = useMemo(() => coverageFacts(outlook, state, today), [outlook, state, today]);
   const strength = useMemo(() => strengthFacts(state, today, weeks), [state, today, weeks]);
-  const body = bodyFacts(state, today);
+  const score = useMemo(() => phaseScore(state, today), [state, today]);
+  const body = bodyFacts(state, today, score);
   const loop = useMemo(() => loopState(state, today, gymOpenedAt), [state, today, gymOpenedAt]);
 
   const toggle = (row: FitnessRow) => onRows({ ...rows, [row]: !rows[row] });
@@ -174,6 +176,7 @@ export function FitnessView({
           headline={body.headline}
           subline={body.subline}
           tone={body.tone}
+          graphic={score ? <PhaseScore score={score} /> : null}
           open={rows.body}
           onToggle={() => toggle("body")}
         >
@@ -209,24 +212,26 @@ function endOfWeek(today: string): string {
   return date.toISOString().slice(0, 10);
 }
 
-/** Weight and body fat, and how the cut or bulk is going, in two lines. */
-function bodyFacts(state: HealthState, today: string): {
+/** Weight and body fat, and whether the cut or bulk is working, in two lines. */
+function bodyFacts(state: HealthState, today: string, score: PhaseScoreFacts | null): {
   headline: string;
   subline: string | null;
-  tone: "neutral" | "empty";
+  tone: "neutral" | "warn" | "empty";
   phase: string | undefined;
 } {
   const latest = state.dailyEntries.filter(entry => entry.date <= today && entry.weightLb !== null)[0];
   const fat = state.dailyEntries.filter(entry => entry.date <= today && entry.bodyFatPercent !== null)[0];
   const phase = phaseProgress(state, today);
-  const label = state.goals.weightDirection === "lose" ? "Cut" : state.goals.weightDirection === "gain" ? "Bulk" : undefined;
+  const label = phase ? `${phase.phase === "cut" ? "Cut" : "Bulk"} · week ${phase.weeks}` : undefined;
   if (!latest) return { headline: "No weight logged", subline: "Add a photo or a weight", tone: "empty", phase: label };
   return {
     headline: [`${(latest.weightLb as number).toFixed(1)} lb`, fat ? `${fat.bodyFatPercent}% fat` : null].filter(Boolean).join(" · "),
-    subline: phase && phase.changeLb !== null
-      ? `${Math.abs(phase.changeLb).toFixed(1)} lb ${phase.changeLb < 0 ? "down" : "up"} in ${phase.weeks} ${phase.weeks === 1 ? "week" : "weeks"}`
+    // In a phase the subline is the verdict on it — down and holding, or up
+    // and gaining — because that is the only reason to be in one.
+    subline: score
+      ? score.verdict
       : `${state.progressPhotos.length} ${state.progressPhotos.length === 1 ? "photo" : "photos"}`,
-    tone: "neutral",
+    tone: score?.tone ?? "neutral",
     phase: label,
   };
 }

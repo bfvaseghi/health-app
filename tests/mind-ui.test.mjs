@@ -33,7 +33,7 @@ test("rumination uses recurrence and responses without requiring or displaying w
   const state = demoHealthState(today);
   const html = render(ThoughtLoops, { state, today, onSave: noop, onDelete: noop, onEvent: noop, onDeleteEvent: noop, onNotice: noop });
   assert.match(html, /Log rumination/);
-  assert.match(html, /with a rumination log/);
+  assert.match(html, /times you moved on/);
   assert.doesNotMatch(html, /Needing to be certain|Choose the recurring worry|Recurring worry/);
   const form = render(ResponseForm, { onSave: noop, onCancel: noop });
   assert.match(form, /Just once/);
