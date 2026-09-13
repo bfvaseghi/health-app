@@ -12,6 +12,7 @@ import {
   weightUnitFromHeader,
   toClock,
   toIsoDate,
+  toNumber,
 } from "../app/import/mapping.ts";
 import { parseAppleHealthXml, parseAppleStamp } from "../app/import/apple-health.ts";
 import { readZipDirectory, readZipEntryText } from "../app/import/zip.ts";
@@ -813,4 +814,65 @@ test("removing an Apple overlay preserves a day with only manual water left", ()
   assert.equal(result.dailyEntries.length, 1);
   assert.equal(result.dailyEntries[0].waterMl, 1750);
   assert.equal(result.dailyEntries[0].steps, null);
+});
+
+test("one unclosed quote does not swallow the rest of the file", () => {
+  // A newline cannot simply end a quoted field — wearable notes genuinely
+  // contain them — so the reader recovers by treating the quote that was never
+  // closed as ordinary text. The damage stops at the malformed row.
+  const rows = parseCsv('Date,Weight\n2026-01-01,180\n2026-01-02,"18\n2026-01-03,182\n2026-01-04,183\n');
+  assert.equal(rows.length, 5, "every following row still arrives");
+  assert.deepEqual(rows.at(-1), ["2026-01-04", "183"]);
+
+  // The legitimate case is untouched: a quoted note spanning lines stays one cell.
+  const noted = parseCsv('Date,Note\n2026-01-01,"line one\nline two"\n2026-01-02,ok\n');
+  assert.equal(noted.length, 3);
+  assert.equal(noted[1][1], "line one\nline two");
+  // As does an escaped quote inside a quoted cell.
+  assert.equal(parseCsv('Date,Note\n2026-01-01,"he said ""hi"""\n')[1][1], 'he said "hi"');
+});
+
+test("a decimal comma is a decimal point, and thousands grouping still is not", () => {
+  // "82,5" kg used to parse as 825 and clamp into the record as 1000 lb.
+  assert.equal(toNumber("82,5"), 82.5);
+  assert.equal(toNumber("82,50"), 82.5);
+  // Three digits after a single comma stays grouping: English grouping is
+  // always exactly three, so "1,234" is ambiguous and 1234 is the old reading.
+  assert.equal(toNumber("1,234"), 1234);
+  assert.equal(toNumber("1,234.5"), 1234.5);
+  assert.equal(toNumber("12,345,678"), 12345678);
+  assert.equal(toNumber("82.5"), 82.5);
+  assert.equal(toNumber(""), null);
+  assert.equal(toNumber("abc"), null);
+});
+
+test("energy burned is expenditure, not something eaten", () => {
+  const mapped = (headers) =>
+    autoMap({ headers, rows: [headers.map(() => "1")] }).filter((entry) => entry.field);
+  // Whoop and Apple both name a column that the "energy"/"calories" aliases
+  // matched on sight, filing a day's expenditure as a day's intake.
+  assert.ok(!mapped(["Cycle start time", "Energy burned (cal)"]).some((e) => e.field === "caloriesKcal"));
+  assert.ok(!mapped(["Date", "Active Energy Burned"]).some((e) => e.field === "caloriesKcal"));
+  // A genuine intake column still maps.
+  assert.ok(mapped(["Date", "Calories"]).some((e) => e.field === "caloriesKcal"));
+  assert.ok(mapped(["Date", "Energy (kcal)"]).some((e) => e.field === "caloriesKcal"));
+});
+
+test("a Strong superset keeps every set of a repeated exercise", () => {
+  // Set Order restarts in the second block, so two sets arrive numbered 1 and
+  // two numbered 2. They are renumbered rather than colliding on the way in.
+  const csv = [
+    "Date,Workout Name,Exercise Name,Set Order,Weight,Weight Unit,Reps",
+    "2026-01-05 10:00:00,Push,Bench Press (Barbell),1,135,lb,10",
+    "2026-01-05 10:00:00,Push,Bench Press (Barbell),2,185,lb,8",
+    "2026-01-05 10:00:00,Push,Lateral Raise (Dumbbell),1,20,lb,15",
+    "2026-01-05 10:00:00,Push,Bench Press (Barbell),1,225,lb,5",
+    "2026-01-05 10:00:00,Push,Bench Press (Barbell),2,245,lb,3",
+  ].join("\n");
+  const records = strongToRecords(toTable(csv));
+  assert.match(records.warnings.join(" "), /Renumbered 2 repeated Strong sets/);
+  const state = mergeRecords(emptyHealthState(), records);
+  const bench = state.workoutSets.filter((set) => set.exercise.includes("Bench"));
+  assert.equal(bench.length, 4, "no set is overwritten by a later block");
+  assert.deepEqual(bench.map((set) => set.weightLb).sort((a, b) => a - b), [135, 185, 225, 245]);
 });

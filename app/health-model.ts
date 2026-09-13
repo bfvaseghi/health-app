@@ -923,6 +923,14 @@ export function removeMedication(state: HealthState, id: string): HealthState {
     ...state,
     medications: state.medications.filter((entry) => entry.id !== id),
     medicationDoses: state.medicationDoses.filter((dose) => dose.medicationId !== id),
+    // The legacy daily tick is the same fact as this medication's doses, and
+    // normalizeHealthState migrates it again on every load. Left behind, it
+    // rebuilt both the medication and its doses the next time the record was
+    // opened — so "Delete for good" lasted until the next reload. The ticks go
+    // with the doses they became, and only for the migrated medication.
+    dailyEntries: id === LEGACY_MEDICATION.id
+      ? state.dailyEntries.map((entry) => (entry.medicationTaken === null ? entry : { ...entry, medicationTaken: null }))
+      : state.dailyEntries,
     updatedAt: new Date().toISOString(),
   };
 }
@@ -1365,22 +1373,31 @@ export function medicationStatus(
   asOf = todayLocal(),
   days = 30,
 ): MedicationStatus {
-  const answers = new Map(
-    state.medicationDoses
-      .filter((dose) => dose.medicationId === medication.id)
-      .map((dose) => [dose.date, dose.taken] as const),
-  );
+  const mine = state.medicationDoses.filter((dose) => dose.medicationId === medication.id);
+  const answers = new Map(mine.map((dose) => [dose.date, dose.taken] as const));
   const due = dueDates(medication, asOf, days);
   const recorded = due.filter((date) => answers.has(date));
   const taken = recorded.filter((date) => answers.get(date) === true).length;
 
-  // The streak runs back from the most recent due day that has an answer, so
-  // an unanswered today does not read as a broken run.
+  // The streak is a fact about the record, not about the window being read.
+  // Counting it over `due` capped it at the caller's window, so the same
+  // unbroken run showed "7 in a row" on the card that asks for a week and
+  // "60 in a row" on the one that asks for two months. It runs back over every
+  // due day down to the earliest dose actually recorded instead.
+  const earliest = mine.reduce<string | null>(
+    (found, dose) => (found === null || dose.date < found ? dose.date : found),
+    null,
+  );
+  const span = earliest === null ? days : Math.max(days, daysBetween(earliest, asOf) + 1);
+  // It ends at the last due day that HAS an answer, as the field promises.
+  // Skipping only `asOf` meant a weekly injection whose due day was three days
+  // ago and not yet answered read as a broken run: taken twenty weeks running,
+  // reported as none.
   let streak = 0;
-  for (const date of due) {
+  for (const date of dueDates(medication, asOf, span)) {
     const answer = answers.get(date);
     if (answer === undefined) {
-      if (streak === 0 && date === asOf) continue;
+      if (streak === 0) continue;
       break;
     }
     if (!answer) break;

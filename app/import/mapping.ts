@@ -36,6 +36,12 @@ type FieldDefinition = {
   aggregate?: "sum" | "last";
   /** Normalized header text seen in real Oura, Whoop, and Apple exports. */
   aliases: string[];
+  /**
+   * Normalized text that rules a header OUT even when an alias matches. The
+   * partial pass matches anywhere in the header, so "energy" claimed Whoop's
+   * "Energy burned (cal)" — expenditure filed as food eaten.
+   */
+  excludes?: string[];
 };
 
 export const importFields: FieldDefinition[] = [
@@ -150,6 +156,7 @@ export const importFields: FieldDefinition[] = [
     target: "daily",
     aggregate: "sum",
     aliases: ["calories", "energy", "kcal", "caloriesкcal", "caloriekcal"],
+    excludes: ["burn", "expenditure", "active"],
   },
   {
     field: "waterMl",
@@ -191,9 +198,23 @@ export function fieldDefinition(field: ImportField): FieldDefinition {
 
 /* ------------------------------------------------------------------ values */
 
+/**
+ * A number as an export is likely to have written it.
+ *
+ * Commas are thousands separators in an English export and the decimal point
+ * in a European one, and stripping them unconditionally turned a body weight
+ * of "82,5" kg into 825 — which, converted, clamped into the record as a
+ * plausible-looking 1000 lb. A single comma with one or two digits after it
+ * and no dot in sight is the European form; anything else is grouping. Three
+ * digits stays grouping on purpose: English grouping is always exactly three,
+ * so "1,234" is ambiguous, and 1234 is the reading that was already there.
+ */
 export function toNumber(value: string): number | null {
-  const trimmed = value.trim().replace(/,/g, "");
-  if (!trimmed) return null;
+  const text = value.trim();
+  if (!text) return null;
+  const commas = (text.match(/,/g) ?? []).length;
+  const decimalComma = commas === 1 && !text.includes(".") && /,\d{1,2}$/.test(text);
+  const trimmed = decimalComma ? text.replace(",", ".") : text.replace(/,/g, "");
   const parsed = Number(trimmed);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -318,6 +339,7 @@ export function autoMap(table: Table): ColumnMapping[] {
       if (!normalized) return;
       for (const definition of importFields) {
         if (claimed.has(definition.field)) continue;
+        if (definition.excludes?.some((word) => normalized.includes(word))) continue;
         const hit = exact
           ? definition.aliases.includes(normalized)
           : definition.aliases.some((alias) => alias.length > 3 && normalized.includes(alias));

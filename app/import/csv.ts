@@ -21,15 +21,24 @@ function delimiterOf(source: string): "," | ";" | "\t" {
   );
 }
 
-/** A small RFC-style reader. Wearable exports quote freely and embed newlines
- * in notes; Strong also emits semicolon variants, and .tsv is accepted by the UI. */
-export function parseCsv(text: string): string[][] {
-  const source = text.charCodeAt(0) === 0xfe_ff ? text.slice(1) : text;
-  const delimiter = delimiterOf(source);
+/**
+ * One pass of the reader.
+ *
+ * `literal` holds the indices of quote characters to read as ordinary text
+ * rather than as the start of a quoted field. `openedAt` comes back set when
+ * the pass ran to the end of the file still inside a quoted field, naming the
+ * quote that opened it.
+ */
+function readCsv(
+  source: string,
+  delimiter: "," | ";" | "\t",
+  literal: Set<number>,
+): { rows: string[][]; openedAt: number | null } {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";
   let quoted = false;
+  let openedAt: number | null = null;
 
   for (let index = 0; index < source.length; index += 1) {
     const char = source[index];
@@ -42,12 +51,14 @@ export function parseCsv(text: string): string[][] {
         index += 1;
       } else {
         quoted = false;
+        openedAt = null;
       }
       continue;
     }
 
-    if (char === '"' && cell === "") {
+    if (char === '"' && cell === "" && !literal.has(index)) {
       quoted = true;
+      openedAt = index;
     } else if (char === delimiter) {
       row.push(cell);
       cell = "";
@@ -67,7 +78,29 @@ export function parseCsv(text: string): string[][] {
     rows.push(row);
   }
 
-  return rows.filter((entry) => entry.some((value) => value.trim() !== ""));
+  return { rows: rows.filter((entry) => entry.some((value) => value.trim() !== "")), openedAt: quoted ? openedAt : null };
+}
+
+/** A small RFC-style reader. Wearable exports quote freely and embed newlines
+ * in notes; Strong also emits semicolon variants, and .tsv is accepted by the UI. */
+export function parseCsv(text: string): string[][] {
+  const source = text.charCodeAt(0) === 0xfe_ff ? text.slice(1) : text;
+  const delimiter = delimiterOf(source);
+  // A quote that is never closed used to swallow every remaining line into one
+  // cell: one stray quotation mark in one row silently dropped the whole rest
+  // of the file, and the dialog reported nothing skipped. A newline cannot
+  // simply end a quoted field — wearable notes genuinely contain them — so
+  // instead, when a pass runs off the end still inside a quoted field, the
+  // quote that opened it is marked as ordinary text and the file is read
+  // again. The damage stops at the row that is actually malformed. Each pass
+  // retires one stray quote, so this terminates; the cap is a backstop.
+  const literal = new Set<number>();
+  let result = readCsv(source, delimiter, literal);
+  for (let attempt = 0; result.openedAt !== null && attempt < 50; attempt += 1) {
+    literal.add(result.openedAt);
+    result = readCsv(source, delimiter, literal);
+  }
+  return result.rows;
 }
 
 /** Header text reduced to something two exports can agree on. */

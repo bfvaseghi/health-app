@@ -1231,3 +1231,78 @@ test("a sync keeps the newer import stamp, not whichever copy the server held", 
   const never = normalizeHealthState({ ...emptyHealthState(fixedNow), importedAt: null });
   assert.equal(mergeConcurrentHealthState(never, never, never).state.importedAt, null);
 });
+
+test("a streak is a fact about the record, not about the window it is read through", () => {
+  // Counting the streak over the queried days capped it at the caller's window,
+  // so one unbroken run read as "7 in a row" on the card that asks for a week
+  // and "60 in a row" on the one that asks for two months.
+  const doses = [];
+  for (let index = 0; index < 60; index += 1) {
+    doses.push({ medicationId: "m1", date: addDays("2026-09-13", -index), taken: true });
+  }
+  const state = normalizeHealthState({
+    medications: [{ id: "m1", name: "D", schedule: "daily", dueDay: null, archived: false }],
+    medicationDoses: doses,
+  });
+  for (const days of [7, 14, 30, 60]) {
+    assert.equal(medicationStatuses(state, "2026-09-13", days)[0].streak, 60, `window of ${days} days`);
+  }
+});
+
+test("a weekly medication's streak survives a due day that has not been answered yet", () => {
+  // The skip for an unanswered day only matched today, so a weekly injection
+  // whose due day was a few days ago and not yet ticked read as a broken run:
+  // taken twenty weeks running, reported as none. The streak ends at the last
+  // due day that HAS an answer, which is what the field has always promised.
+  const doses = [];
+  for (let week = 1; week <= 20; week += 1) {
+    doses.push({ medicationId: "w1", date: addDays("2026-09-07", -7 * week), taken: true });
+  }
+  const state = normalizeHealthState({
+    medications: [{ id: "w1", name: "W", schedule: "weekly", dueDay: 1, archived: false }],
+    medicationDoses: doses,
+  });
+  const status = medicationStatuses(state, "2026-09-13", 180)[0];
+  assert.equal(status.streak, 20);
+  assert.equal(status.taken, 20);
+  // A genuine miss still ends the run. It has to REPLACE that week's dose:
+  // doses are de-duplicated on medication and date, keeping the first, so an
+  // appended contradiction would simply be dropped.
+  const broken = normalizeHealthState({
+    medications: [{ id: "w1", name: "W", schedule: "weekly", dueDay: 1, archived: false }],
+    medicationDoses: doses.map((dose) =>
+      dose.date === addDays("2026-09-07", -14) ? { ...dose, taken: false } : dose),
+  });
+  assert.equal(medicationStatuses(broken, "2026-09-13", 180)[0].streak, 1, "one week before the miss");
+});
+
+test("deleting the migrated legacy medication makes it stay deleted", () => {
+  // Every record written before medications had names carries one tick a day,
+  // and normalizeHealthState migrates it again on every load. Deleting the
+  // medication left the ticks behind, so it and all its doses came back the
+  // next time the record was opened — "Delete for good" lasted until a reload.
+  const reload = (state) => normalizeHealthState(JSON.parse(JSON.stringify(state)));
+  let state = reload({
+    dailyEntries: [
+      { date: "2026-01-02", medicationTaken: true },
+      { date: "2026-01-03", medicationTaken: false },
+    ],
+  });
+  assert.deepEqual(state.medications.map((entry) => entry.name), ["Medication"]);
+  assert.equal(state.medicationDoses.length, 2);
+
+  state = reload(removeMedication(state, "medication"));
+  assert.deepEqual(state.medications, []);
+  assert.deepEqual(state.medicationDoses, []);
+  assert.deepEqual(reload(state).medications, [], "and stays gone on the reload after that");
+
+  // Deleting a medication the person named does not touch the legacy tick.
+  const named = reload({
+    medications: [{ id: "m1", name: "Sertraline", schedule: "daily", dueDay: null, archived: false }],
+    medicationDoses: [{ medicationId: "m1", date: "2026-01-02", taken: true }],
+    dailyEntries: [{ date: "2026-01-02", medicationTaken: true }],
+  });
+  const after = reload(removeMedication(named, "m1"));
+  assert.deepEqual(after.medications.map((entry) => entry.name), ["Medication"]);
+  assert.ok(after.dailyEntries.some((entry) => entry.medicationTaken !== null));
+});
