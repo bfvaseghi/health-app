@@ -14,12 +14,15 @@ What the native app adds on top of the web version:
   ZIP, JSON and CSV exports from Data & goals land in Files, AirDrop, Mail and
   so on instead of vanishing into a web view.
 - **Summary → Print** opens the system print panel.
-- Native confirm and alert dialogs, and a status bar that follows the page's
-  theme (System, Light or Dark, chosen under Appearance).
-- **A native "you're offline" page** with automatic retry when the site cannot
-  be reached.
-- **A storage mirror with daily snapshots** of the browser-side copy of your
-  record, as insurance for WebKit's own storage.
+- A status bar that follows the page's theme (System, Light or Dark, chosen
+  under Appearance), and native dialogs should the page ever call `alert()` or
+  `confirm()` (today it uses its own in-page confirmations).
+- **A native "Baseline needs a connection" page** when the site cannot be
+  loaded, with a **Try again** button; the app also retries by itself the next
+  time you bring it to the foreground.
+- **A storage mirror** of the browser-side copy of your record, as insurance
+  for WebKit's own storage. It runs only on Baseline's own origin: the sign-in
+  hosts the flow passes through never see it.
 
 ## What you need
 
@@ -113,12 +116,21 @@ the app uses only the system's TLS, which is exempt.
   taps on a sign-in page ("Continue with…") stay in the app so the callback
   lands in the app's own cookies. `target=_blank` links to the site itself
   open in the same view.
-- **Offline.** If the document itself cannot be loaded for a network reason
-  (no connection, DNS, a timeout), the shell shows its own "Baseline needs a
-  connection" page in the page's colours, with a **Try again** button, and
-  reloads by itself the next time the app comes to the foreground. A sign-in
-  host failing mid-flow shows WebKit's usual error instead, and you can swipe
-  back.
+- **Offline.** If the site's own document cannot be loaded, the shell shows
+  its own page in the page's colours with a **Try again** button: "Baseline
+  needs a connection" for a network failure (no connection, DNS, a timeout),
+  "Baseline could not load" for anything else (a captive portal's
+  certificate, a wrong clock), so a failed first load never leaves a blank
+  screen. The app retries by itself the next time it comes to the foreground.
+  A failed sign-in callback is retried from the site's root rather than by
+  replaying the one-time callback URL. A sign-in host failing mid-flow leaves
+  the previous page in place, and you can swipe back.
+- **One origin only.** The bridge below runs in every document the view
+  shows, including the sign-in hosts the flow redirects through, but it hands
+  the storage mirror, the restore data, notifications and app messages only
+  to Baseline's own origin; the native side checks the sending frame's origin
+  again before accepting any of those messages. On other origins the page gets
+  share, print and download support and nothing else.
 - **Files the web view cannot show** (a ZIP served by the site, such as
   **Download code**) are fetched as a download and handed to the share sheet,
   or the Mac save panel, the same way the page's own exports are.
@@ -142,8 +154,10 @@ The record itself is on the server. What is on the device:
   page merges that copy with the server on every load, exactly as in Safari.
 - As insurance for that copy, the shell mirrors every `localStorage` write to
   **`Library/Application Support/WebShell/com.bardia.baseline/web-storage.json`**
-  inside the app's container, and keeps **14 rolling daily snapshots** next to
-  it as `web-storage-YYYY-MM-DD.json`. On the Mac the Catalyst build is not
+  inside the app's container. This app keeps **no dated snapshots** of it: the
+  record lives on the server, which keeps its own "Earlier versions", and the
+  site's **Erase all data** must not leave old copies of the erased record on
+  the device. On the Mac the Catalyst build is not
   sandboxed, so the same folder is
   `~/Library/Application Support/WebShell/maccatalyst.com.bardia.baseline/`
   (the Catalyst build's bundle identifier carries the `maccatalyst.` prefix;

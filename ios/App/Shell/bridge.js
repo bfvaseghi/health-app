@@ -32,6 +32,31 @@
     handler = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.shell || null;
   } catch (e) { handler = null; }
 
+  // Whose document this is. In remote mode this script runs in every document
+  // the main frame shows, and a sign-in flow bounces through other hosts; only
+  // the app's own origin may see the restore data, feed the storage mirror,
+  // schedule notifications or send app messages. A custom scheme is served by
+  // the app alone, so the scheme decides there; over http(s) the host does.
+  var onHome = (function () {
+    var scheme = typeof boot.scheme === "string" ? boot.scheme.toLowerCase() : "";
+    var homeHost = typeof boot.homeHost === "string" ? boot.homeHost.toLowerCase() : "";
+    if (!scheme && !homeHost) return true; // a boot script without origin data: single-origin app
+    var protocol = "", hostname = "";
+    try {
+      protocol = String(location.protocol || "").toLowerCase();
+      hostname = String(location.hostname || "").toLowerCase();
+    } catch (e) { return false; }
+    if (scheme && scheme !== "http" && scheme !== "https") return protocol === scheme + ":";
+    return !!homeHost && hostname === homeHost;
+  })();
+  if (!onHome) {
+    // A foreign document must not be able to read the boot object: it carries
+    // the restore dictionary, i.e. the user's data.
+    boot = { platform: boot.platform };
+    try { delete window.__shellBoot; } catch (e) { /* non-configurable: fall through */ }
+    try { if (window.__shellBoot) window.__shellBoot = null; } catch (e) { /* ignore */ }
+  }
+
   function post(message) {
     if (!handler) return false;
     try { handler.postMessage(message); return true; } catch (e) { return false; }
@@ -78,6 +103,7 @@
   /* ------------------------------------------------------------ storage -- */
 
   (function storageMirror() {
+    if (!onHome) return;
     var ls;
     try { ls = window.localStorage; } catch (e) { return; }
     if (!ls) return;
@@ -103,6 +129,9 @@
       }
       try { if (launchId) sessionStorage.setItem("__shell.restoredLaunch", launchId); } catch (e) { /* ignore */ }
     }
+    // Consumed: nothing on the page needs the restore data after this, so it
+    // does not stay readable on window.
+    try { delete boot.restore; } catch (e) { /* ignore */ }
 
     var proto = Storage.prototype;
     var setItem = proto.setItem, removeItem = proto.removeItem, clear = proto.clear;
@@ -383,7 +412,7 @@
     // WKWebView has no Notification API. When the app opted in, offer one that
     // is backed by local notifications, so pages that feature-detect it keep
     // their reminder UI.
-    if (handler && boot.notifications && typeof window.Notification !== "function") {
+    if (handler && onHome && boot.notifications && typeof window.Notification !== "function") {
       var ShellNotification = function (title, options) {
         options = options || {};
         this.title = String(title);
@@ -415,7 +444,11 @@
 
   // What an app may feature-detect if it wants to be shell-aware. Everything
   // above works without the app knowing; this is for opt-in extras such as
-  // reminders that must fire while the app is closed.
+  // reminders that must fire while the app is closed. Only the app's own
+  // origin gets it: a foreign document (a sign-in host in remote mode) can
+  // still share, print and download, but has no way to reach native storage,
+  // notifications or the app's own message handler.
+  if (!onHome) return;
   window.nativeShell = {
     version: 1,
     platform: shell.platform,

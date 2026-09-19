@@ -9,7 +9,7 @@ name: Xcode build
 on:
   workflow_dispatch:
   push:
-    branches: [claude/xcode-apps-ui-retention-ep2v4v]
+    branches: [main, claude/xcode-apps-ui-retention-ep2v4v]
     paths:
       - "ios/**"
       - .github/workflows/xcode-build.yml

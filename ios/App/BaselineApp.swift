@@ -29,8 +29,19 @@ final class BaselineAppDelegate: ShellAppDelegate {
         // redirects through; a failed load shows the native offline page.
         config.remoteURL = URL(string: "https://baseline.bardia-faghihvaseghi.chatgpt.site/")
         // A Safari-style agent plus the app's name, so the sign-in flow sees
-        // an ordinary mobile browser and the server can tell the app apart.
+        // an ordinary browser and the server can tell the app apart. The Mac
+        // build's agent already says Macintosh, so it takes Safari's desktop
+        // tail; "Mobile" there would be a contradiction.
+        #if targetEnvironment(macCatalyst)
+        config.userAgentSuffix = "Version/17.0 Safari/605.1.15 Baseline/1.0"
+        #else
         config.userAgentSuffix = "Version/17.0 Mobile/15E148 Safari/604.1 Baseline/1.0"
+        #endif
+        // No dated snapshots of the browser-side copy: the record is on the
+        // server, which keeps its own "Earlier versions", and the site's
+        // "Erase all data" must not leave fourteen copies of the erased
+        // record on the device. The live mirror (one file) stays.
+        config.snapshotDays = 0
         // The page sets viewport-fit=cover (app/layout.tsx) and .mobile-head
         // pads its top with env(safe-area-inset-top) (app/field-record.css,
         // app/globals.css), so it draws under the status bar itself.

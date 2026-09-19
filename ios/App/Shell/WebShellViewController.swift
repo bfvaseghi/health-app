@@ -114,6 +114,11 @@ final class WebShellViewController: UIViewController {
             "notifications": config.notificationsEnabled,
             "notificationPermission": bridge.cachedNotificationPermission,
             "extendsUnderStatusBar": config.extendsUnderStatusBar,
+            // The app's own origin. The bridge withholds the mirror, the
+            // restore data, notifications and app messages from any other
+            // document the main frame shows (a sign-in host in remote mode).
+            "scheme": config.originURL.scheme ?? config.scheme,
+            "homeHost": config.homeHost,
             // Changes whenever the boot script is rebuilt, so the page applies
             // the restore dictionary once per launch and not on every reload.
             "launchId": UUID().uuidString,
@@ -190,15 +195,29 @@ final class WebShellViewController: UIViewController {
     private var lastFailedURL: URL?
 
     /// A remote site that cannot be reached shows a native page instead of
-    /// WebKit's error sheet, and the app tries again by itself when it comes
-    /// back to the foreground or the page's own button is tapped.
-    private func showOfflinePage(for url: URL, error: Error) {
-        lastFailedURL = url
+    /// WebKit's error sheet (or, for a first load, a blank view with no way
+    /// out). The app tries again when it comes back to the foreground or the
+    /// page's own button is tapped.
+    private func showOfflinePage(for url: URL, error: Error, offline: Bool) {
+        // A URL with a query is retried from the site's root: one-time
+        // sign-in callbacks (`/callback?code=…`) live in the query, and
+        // replaying one fails, whereas the root re-enters sign-in cleanly.
+        let retryURL = url.query == nil ? url : config.originURL
+        lastFailedURL = retryURL
         showingOfflinePage = true
         let light = ColorParsing.hexString(config.lightBackground)
         let dark = ColorParsing.hexString(config.darkBackground)
         let name = config.appName.replacingOccurrences(of: "<", with: "&lt;")
         let detail = error.localizedDescription.replacingOccurrences(of: "<", with: "&lt;")
+        let heading = offline ? "\(name) needs a connection" : "\(name) could not load"
+        let advice = offline
+            ? "The app could not reach its site. Tap Try again, or come back to the app once you are online."
+            : "The site did not load this time. Tap Try again, or come back to the app in a moment."
+        // The retry URL goes into a script as JSON, never into an attribute:
+        // a quote or an entity in the URL must not break out of the handler.
+        let retryJSON = (try? JSONSerialization.data(withJSONObject: [retryURL.absoluteString], options: []))
+            .flatMap { String(data: $0, encoding: .utf8) }?
+            .replacingOccurrences(of: "</", with: "<\\/") ?? "[\"\"]"
         let html = """
         <!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
         <style>
@@ -211,10 +230,11 @@ final class WebShellViewController: UIViewController {
         @media (prefers-color-scheme: dark) { button { background: #f2f2f7; color: #1c1c1e; } }
         small { display: block; margin-top: 24px; opacity: .5; font-size: 12px; }
         </style>
-        <div><h1>\(name) needs a connection</h1>
-        <p>The app could not reach its site. It will try again when you are back online.</p>
-        <button onclick="location.href = '\(url.absoluteString)'">Try again</button>
+        <div><h1>\(heading)</h1>
+        <p>\(advice)</p>
+        <button id="retry">Try again</button>
         <small>\(detail)</small></div>
+        <script>document.getElementById("retry").onclick = function () { location.href = \(retryJSON)[0]; };</script>
         """
         webView.loadHTMLString(html, baseURL: nil)
     }
@@ -367,20 +387,26 @@ extension WebShellViewController: WKNavigationDelegate {
         openExternally(url)
     }
 
-    /// The document itself could not be loaded because the network is not
-    /// there (offline, DNS, a timeout). Only the app's own site gets the
-    /// offline page, and only for network failures: a file WebKit cannot show
-    /// becomes a download instead (below), and a sign-in host failing mid-flow
-    /// shows WebKit's own error so the user can go back.
+    /// The document itself could not be loaded. Only the app's own site gets
+    /// the native page, and only for URL-loading failures: a file WebKit
+    /// cannot show becomes a download instead (below, which ends the
+    /// provisional load with a WebKit-domain error), a cancelled load is not
+    /// a failure, and a sign-in host failing mid-flow leaves the previous
+    /// document in place so the user can go back. Every other failure of the
+    /// site's own document gets the page: a first load that fails for a
+    /// reason outside the offline list (a captive portal's certificate, a
+    /// wrong clock, a bad response) would otherwise sit on the launch colour
+    /// with no way out but a force-quit.
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         guard config.remoteURL != nil else { return }
         let nsError = error as NSError
-        guard nsError.domain == NSURLErrorDomain, WebShellViewController.offlineErrorCodes.contains(nsError.code) else { return }
+        guard nsError.domain == NSURLErrorDomain, nsError.code != NSURLErrorCancelled else { return }
         let failed = (nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL) ?? config.originURL
         guard isHomeURL(failed) else { return }
-        showOfflinePage(for: failed, error: error)
+        showOfflinePage(for: failed, error: error, offline: WebShellViewController.offlineErrorCodes.contains(nsError.code))
     }
 
+    /// Failures that mean "no network", worded as such on the native page.
     private static let offlineErrorCodes: Set<Int> = [
         NSURLErrorNotConnectedToInternet, NSURLErrorTimedOut, NSURLErrorCannotFindHost,
         NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost, NSURLErrorDNSLookupFailed,
@@ -428,7 +454,11 @@ extension WebShellViewController: WKUIDelegate {
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if let url = navigationAction.request.url {
-            if isHomeURL(url) { webView.load(navigationAction.request) } else { openExternally(url) }
+            // Same rule as taps: a popup to the app itself, or one opened by
+            // a foreign document mid sign-in, stays in this view; a popup
+            // from the app to a foreign site opens outside.
+            let currentIsHome = webView.url.map(isHomeURL) ?? true
+            if isHomeURL(url) || !currentIsHome { webView.load(navigationAction.request) } else { openExternally(url) }
         }
         return nil
     }

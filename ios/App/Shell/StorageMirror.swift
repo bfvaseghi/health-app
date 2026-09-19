@@ -34,11 +34,19 @@ final class StorageMirror {
         snapshotDays = max(0, config.snapshotDays)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         // An app that moved its mirror (into an App Group, for a widget) keeps
-        // the data it wrote at the default location before the move.
+        // the data it wrote at the default location before the move, and then
+        // removes the old folder: it held the journal and its dated snapshots
+        // in plain text, where no later purge or erase would reach them.
         let previous = ShellConfig.defaultStorageDirectory()
-        if previous != directory, !FileManager.default.fileExists(atPath: fileURL.path),
-           FileManager.default.fileExists(atPath: previous.appendingPathComponent(fileName).path) {
-            try? FileManager.default.copyItem(at: previous.appendingPathComponent(fileName), to: fileURL)
+        let fm = FileManager.default
+        if previous != directory, !directory.path.hasPrefix(previous.path + "/"), fm.fileExists(atPath: previous.path) {
+            let old = previous.appendingPathComponent(fileName)
+            if !fm.fileExists(atPath: fileURL.path), fm.fileExists(atPath: old.path) {
+                try? fm.copyItem(at: old, to: fileURL)
+            }
+            if fm.fileExists(atPath: fileURL.path) || !fm.fileExists(atPath: old.path) {
+                try? fm.removeItem(at: previous)
+            }
         }
         load()
         if !FileManager.default.fileExists(atPath: fileURL.path), let importer = config.legacyImport {

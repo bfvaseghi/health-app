@@ -38,11 +38,35 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
 
     // MARK: Dispatch
 
+    /// True when the message came from the app's own document in the main
+    /// frame. In bundle mode only the scheme handler serves the app's scheme
+    /// and the navigation policy keeps foreign documents out of the main
+    /// frame, so the scheme decides; in remote mode the host does.
+    private func isHomeFrame(_ frame: WKFrameInfo) -> Bool {
+        guard frame.isMainFrame else { return false }
+        let home = config.homeHost.lowercased()
+        let origin = frame.securityOrigin
+        let requestURL = frame.request.url
+        if config.remoteURL == nil {
+            let scheme = config.scheme.lowercased()
+            return origin.protocol.lowercased() == scheme
+                || origin.host.lowercased() == home
+                || requestURL?.scheme?.lowercased() == scheme
+        }
+        return origin.host.lowercased() == home || requestURL?.host?.lowercased() == home
+    }
+
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.name == NativeBridge.handlerName,
               let body = message.body as? [String: Any],
               let type = body["type"] as? String else { return }
         let requestID = body["id"] as? Int
+        // bridge.js withholds these from foreign documents already; this is
+        // the native half of the same rule, so a sign-in host in remote mode
+        // can never write the mirror, schedule notifications or reach the
+        // app's own handler even if a page found the message handler.
+        let privileged: Set<String> = ["storage", "storageSnapshot", "notifications", "app"]
+        if privileged.contains(type), !isHomeFrame(message.frameInfo) { return }
         switch type {
         case "storage":
             StorageMirror.shared.apply(op: body["op"] as? String ?? "",
