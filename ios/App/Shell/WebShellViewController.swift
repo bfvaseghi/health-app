@@ -473,6 +473,8 @@ extension WebShellViewController: WKDownloadDelegate {
 
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
         pendingDownloads.removeValue(forKey: ObjectIdentifier(download))
+        let nsError = error as NSError
+        if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled { return }
         presentDialog(message: "The download could not be completed. \(error.localizedDescription)", kind: .alert) { _, _ in }
     }
 }

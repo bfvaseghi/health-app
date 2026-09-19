@@ -43,13 +43,20 @@ enum WidgetFeed {
 
     /// The App Group directory an app should hand to `ShellConfig.storageDirectory`
     /// so its mirror, snapshots and widget feed live where the widget can read
-    /// them. Falls back to the default location when the group is unavailable
-    /// (the capability not yet enabled), so the app still works; the widget
-    /// then shows its placeholder until the group does.
+    /// them. Falls back to the shell's default location when the group is
+    /// unavailable (the capability not yet enabled), so the app still works;
+    /// the widget then shows its placeholder until the group does.
+    ///
+    /// This file is the only shell file a widget extension compiles, so the
+    /// fallback is spelled out here rather than taken from ShellConfig (which
+    /// pulls in the whole shell): `Application Support/WebShell/<bundle id>/`.
     static func storageDirectory(appGroup: String, subdirectory: String = "WebShell") -> URL {
         if let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) {
             return container.appendingPathComponent(subdirectory, isDirectory: true)
         }
-        return ShellConfig.defaultStorageDirectory()
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return base.appendingPathComponent("WebShell", isDirectory: true)
+            .appendingPathComponent(Bundle.main.bundleIdentifier ?? "app", isDirectory: true)
     }
 }
