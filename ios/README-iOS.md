@@ -109,13 +109,19 @@ the app uses only the system's TLS, which is exempt.
   the ChatGPT session cookie and the page's `localStorage` live.
 - **Navigation policy.** Anything on the site's own host, and anything the
   page is *redirected* through (the sign-in flow crosses other hosts), stays in
-  the app. A link you *tap* to a foreign host opens in Safari. `target=_blank`
-  links to the site itself open in the same view.
-- **Offline.** If the document itself cannot be loaded (no network, DNS, a
-  timeout), the shell shows its own "Baseline needs a connection" page in the
-  page's colours, with a **Try again** button, and reloads by itself the next
-  time the app comes to the foreground. A sign-in host failing mid-flow shows
-  WebKit's usual error instead, and you can swipe back.
+  the app. A link you *tap* from the site to a foreign host opens in Safari;
+  taps on a sign-in page ("Continue with…") stay in the app so the callback
+  lands in the app's own cookies. `target=_blank` links to the site itself
+  open in the same view.
+- **Offline.** If the document itself cannot be loaded for a network reason
+  (no connection, DNS, a timeout), the shell shows its own "Baseline needs a
+  connection" page in the page's colours, with a **Try again** button, and
+  reloads by itself the next time the app comes to the foreground. A sign-in
+  host failing mid-flow shows WebKit's usual error instead, and you can swipe
+  back.
+- **Files the web view cannot show** (a ZIP served by the site, such as
+  **Download code**) are fetched as a download and handed to the share sheet,
+  or the Mac save panel, the same way the page's own exports are.
 - `App/Shell/bridge.js` is injected before the page's own scripts. It mirrors
   every `localStorage` write to native storage, and turns `<a download>` clicks
   on blob: URLs (`downloadBlob` in `app/ui/format.ts`, which every export uses),
@@ -152,9 +158,8 @@ The mirror is a copy of the browser-side cache, not a backup of the record.
 **Download archive** in Data & goals is the backup, and it goes through the
 share sheet. The `source/baseline-source.zip` inside that archive still comes
 from the site itself — the app bundle carries no source. **Download code**
-next to it is a plain link to that same ZIP on the site rather than an export
-the page builds, so it is one for a browser; in the app, take the archive,
-which already contains the source.
+next to it is a plain link to that ZIP on the site; the shell downloads it and
+offers the same share sheet.
 
 Deleting the app deletes the cookie, the local copy and the mirror. The record
 on the server is untouched; sign in again and it is back.

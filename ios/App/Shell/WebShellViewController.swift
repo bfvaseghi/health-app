@@ -10,6 +10,7 @@ final class WebShellViewController: UIViewController {
     private var chromeIsDark = false
     private var lastReportedBackground: UIColor?
     private var exportPickerDelegate: ExportPickerDelegate?
+    private var pendingDownloads: [ObjectIdentifier: URL] = [:]
 
     init(config: ShellConfig) {
         self.config = config
@@ -339,7 +340,10 @@ extension WebShellViewController: WKNavigationDelegate {
             // Only a link the user tapped to a foreign host leaves the app.
             let http = scheme == "http" || scheme == "https"
             let foreign = (url.host?.lowercased() ?? "") != config.homeHost
-            if http && !(foreign && navigationAction.navigationType == .linkActivated) {
+            // A tap on a sign-in page ("Continue with…") must stay here, or the
+            // callback would land in Safari's cookies and never sign the app in.
+            let currentIsHome = (webView.url?.host?.lowercased() ?? config.homeHost) == config.homeHost
+            if http && !(foreign && currentIsHome && navigationAction.navigationType == .linkActivated) {
                 if navigationAction.targetFrame == nil {
                     webView.load(navigationAction.request)
                     return decisionHandler(.cancel)
@@ -363,16 +367,50 @@ extension WebShellViewController: WKNavigationDelegate {
         openExternally(url)
     }
 
-    /// The document itself could not be loaded (no network, DNS, a timeout).
-    /// Only the app's own site gets the offline page; a sign-in host failing
-    /// mid-flow shows WebKit's own error and the user can go back.
+    /// The document itself could not be loaded because the network is not
+    /// there (offline, DNS, a timeout). Only the app's own site gets the
+    /// offline page, and only for network failures: a file WebKit cannot show
+    /// becomes a download instead (below), and a sign-in host failing mid-flow
+    /// shows WebKit's own error so the user can go back.
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
         guard config.remoteURL != nil else { return }
         let nsError = error as NSError
-        if nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled { return }
+        guard nsError.domain == NSURLErrorDomain, WebShellViewController.offlineErrorCodes.contains(nsError.code) else { return }
         let failed = (nsError.userInfo[NSURLErrorFailingURLErrorKey] as? URL) ?? config.originURL
         guard isHomeURL(failed) else { return }
         showOfflinePage(for: failed, error: error)
+    }
+
+    private static let offlineErrorCodes: Set<Int> = [
+        NSURLErrorNotConnectedToInternet, NSURLErrorTimedOut, NSURLErrorCannotFindHost,
+        NSURLErrorCannotConnectToHost, NSURLErrorNetworkConnectionLost, NSURLErrorDNSLookupFailed,
+        NSURLErrorInternationalRoamingOff, NSURLErrorDataNotAllowed, NSURLErrorSecureConnectionFailed
+    ]
+
+    /// A real document is on screen again: the offline page is gone, so the
+    /// next foregrounding must not reload over the user's work.
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        if let url = webView.url, isHomeURL(url) { showingOfflinePage = false }
+    }
+
+    /// A response WebKit cannot display (a ZIP, a CSV served as an
+    /// attachment) is fetched as a download and handed to the share sheet or
+    /// the Mac save panel, like a blob export from the page.
+    func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,
+                 decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
+        if navigationResponse.isForMainFrame, !navigationResponse.canShowMIMEType {
+            decisionHandler(.download)
+        } else {
+            decisionHandler(.allow)
+        }
+    }
+
+    func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        download.delegate = self
+    }
+
+    func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        download.delegate = self
     }
 
     /// iOS reclaims the WebContent process under memory pressure, which
@@ -390,8 +428,7 @@ extension WebShellViewController: WKUIDelegate {
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if let url = navigationAction.request.url {
-            let scheme = url.scheme?.lowercased() ?? ""
-            if scheme == config.scheme.lowercased() { webView.load(navigationAction.request) } else { openExternally(url) }
+            if isHomeURL(url) { webView.load(navigationAction.request) } else { openExternally(url) }
         }
         return nil
     }
@@ -411,6 +448,32 @@ extension WebShellViewController: WKUIDelegate {
         presentDialog(message: prompt, kind: .prompt, defaultText: defaultText) { ok, text in
             completionHandler(ok ? (text ?? "") : nil)
         }
+    }
+}
+
+// MARK: - Downloads (files WebKit cannot show)
+
+extension WebShellViewController: WKDownloadDelegate {
+    func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String,
+                  completionHandler: @escaping (URL?) -> Void) {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("Exports", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let name = suggestedFilename.replacingOccurrences(of: "/", with: "-")
+        let url = directory.appendingPathComponent(name.isEmpty ? "download" : name)
+        // WebKit refuses a destination that already exists.
+        try? FileManager.default.removeItem(at: url)
+        pendingDownloads[ObjectIdentifier(download)] = url
+        completionHandler(url)
+    }
+
+    func downloadDidFinish(_ download: WKDownload) {
+        guard let url = pendingDownloads.removeValue(forKey: ObjectIdentifier(download)) else { return }
+        presentExport(fileURL: url) { _ in }
+    }
+
+    func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
+        pendingDownloads.removeValue(forKey: ObjectIdentifier(download))
+        presentDialog(message: "The download could not be completed. \(error.localizedDescription)", kind: .alert) { _, _ in }
     }
 }
 
