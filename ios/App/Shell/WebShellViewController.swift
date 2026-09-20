@@ -11,6 +11,9 @@ final class WebShellViewController: UIViewController {
     private var lastReportedBackground: UIColor?
     private var exportPickerDelegate: ExportPickerDelegate?
     private var pendingDownloads: [ObjectIdentifier: URL] = [:]
+    /// A deep link that arrived before the web view existed (a cold launch
+    /// from a widget); applied in place of the entry load.
+    private var pendingDeepLink: URL?
 
     init(config: ShellConfig) {
         self.config = config
@@ -45,7 +48,56 @@ final class WebShellViewController: UIViewController {
             self.chromeIsDark = self.traitCollection.userInterfaceStyle == .dark
             self.setNeedsStatusBarAppearanceUpdate()
         }
-        loadEntry()
+        if let link = pendingDeepLink, let target = deepLinkTarget(link) {
+            pendingDeepLink = nil
+            showingOfflinePage = false
+            webView.load(URLRequest(url: target))
+        } else {
+            loadEntry()
+        }
+    }
+
+    // MARK: Deep links (widget taps, links in the app's own scheme)
+
+    /// A URL in the app's scheme, registered under CFBundleURLTypes: a widget's
+    /// `widgetURL` or a `Link`. `forge://localhost/#/today` is the page itself
+    /// in bundle mode; in remote mode `baseline://localhost/path#x` maps onto
+    /// the site (`https://host/path#x`). When the same document is already on
+    /// screen and only the fragment differs, the hash changes in place, so the
+    /// page's own router sees it and nothing reloads.
+    func open(deepLink url: URL) {
+        guard let target = deepLinkTarget(url) else { return }
+        guard isViewLoaded else { pendingDeepLink = url; return }
+        if !showingOfflinePage, let current = webView.url, isHomeURL(current),
+           Self.sameDocument(current, target), let fragment = target.fragment,
+           let json = (try? JSONSerialization.data(withJSONObject: [fragment], options: []))
+               .flatMap({ String(data: $0, encoding: .utf8) }) {
+            webView.evaluateJavaScript("location.hash = \(json)[0];", completionHandler: nil)
+        } else {
+            showingOfflinePage = false
+            webView.load(URLRequest(url: target))
+        }
+    }
+
+    private func deepLinkTarget(_ url: URL) -> URL? {
+        guard url.scheme?.lowercased() == config.scheme.lowercased() else { return nil }
+        guard config.remoteURL != nil else { return url }
+        guard var parts = URLComponents(url: config.originURL, resolvingAgainstBaseURL: false) else { return nil }
+        if !url.path.isEmpty && url.path != "/" { parts.path = url.path }
+        parts.query = url.query
+        parts.fragment = url.fragment
+        return parts.url
+    }
+
+    /// Same scheme, host, path and query: only the fragment may differ.
+    private static func sameDocument(_ a: URL, _ b: URL) -> Bool {
+        guard var x = URLComponents(url: a, resolvingAgainstBaseURL: false),
+              var y = URLComponents(url: b, resolvingAgainstBaseURL: false) else { return false }
+        x.fragment = nil; y.fragment = nil
+        return x.scheme?.lowercased() == y.scheme?.lowercased()
+            && x.host?.lowercased() == y.host?.lowercased()
+            && (x.path.isEmpty ? "/" : x.path) == (y.path.isEmpty ? "/" : y.path)
+            && x.query == y.query
     }
 
     override var preferredStatusBarStyle: UIStatusBarStyle {

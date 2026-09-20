@@ -61,9 +61,12 @@ final class ShellSceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.backgroundColor = UIColor { traits in
             traits.userInterfaceStyle == .dark ? config.darkBackground : config.lightBackground
         }
-        window.rootViewController = WebShellViewController(config: config)
+        let shell = WebShellViewController(config: config)
+        window.rootViewController = shell
         self.window = window
         window.makeKeyAndVisible()
+        // Launched from a widget tap or a link in the app's own scheme.
+        if let url = connectionOptions.urlContexts.first?.url { shell.open(deepLink: url) }
 
         #if targetEnvironment(macCatalyst)
         windowScene.sizeRestrictions?.minimumSize = CGSize(width: 420, height: 600)
@@ -76,6 +79,13 @@ final class ShellSceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         (window?.rootViewController as? WebShellViewController)?.retryIfOffline()
+    }
+
+    /// A widget tap or a link while the app is running: the same URL rules as
+    /// at launch. The app registers its scheme under CFBundleURLTypes.
+    func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        guard let url = URLContexts.first?.url else { return }
+        (window?.rootViewController as? WebShellViewController)?.open(deepLink: url)
     }
 
     func sceneDidEnterBackground(_ scene: UIScene) {
