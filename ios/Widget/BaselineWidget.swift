@@ -270,6 +270,12 @@ enum Copy {
         return "\(twelve):\(minute < 10 ? "0" : "")\(minute) \(hour >= 12 ? "PM" : "AM")"
     }
 
+    /// The clock without its AM/PM ("11:30"), for a bedtime–wake pair that has
+    /// to share one 150 pt line with "Last night": the pair reads without it.
+    static func clockShort(_ value: String?) -> String? {
+        clock(value).map { String($0.dropLast(3)) }
+    }
+
     /// sinceLabel (app/training/recommend.ts): "today", "yesterday", "9 days ago", "never".
     static func sinceLabel(_ days: Int?) -> String {
         guard let days else { return "never" }
@@ -390,10 +396,15 @@ enum CellState { case on, half, miss, open, notDue }
 
 struct LedgerRow {
     let label: String
-    let value: String
+    /// The value in its preferred phrasing first, then shorter forms of the
+    /// same fact; the row prints the longest that fits its column, so a value
+    /// is never truncated (the last form is short by construction).
+    let values: [String]
     let isMiss: Bool
     let cells: [CellState]
     let accessibilityLabel: String
+
+    var value: String { values.first ?? "—" }
 }
 
 struct DayFacts {
@@ -454,13 +465,19 @@ struct DayFacts {
 
     var staleDays: Int? { feed.builtOn.flatMap { DayMath.daysBetween($0, todayKey) } }
 
-    func staleNote(_ style: StaleStyle) -> String {
+    func staleNote(_ style: StaleStyle) -> String { staleNotes(style).first ?? "" }
+
+    /// The note in the family's wording first, then each shorter wording down
+    /// to `Opened 3 days ago`: the line prints the longest that fits.
+    func staleNotes(_ style: StaleStyle) -> [String] {
         let since = Copy.sinceLabel(staleDays)
+        let short = "Opened \(since)"
+        let sentence = "Last opened \(since) · open Baseline to update."
         switch style {
-        case .short, .lock: return "Opened \(since)"
-        case .inline: return "Baseline · opened \(since)"
-        case .medium: return "Last opened \(since) · open Baseline to update."
-        case .large: return "Last opened \(since) · open Baseline to bring the record up to date."
+        case .short, .lock: return [short]
+        case .inline: return ["Baseline · opened \(since)"]
+        case .medium: return [sentence, short]
+        case .large: return ["Last opened \(since) · open Baseline to bring the record up to date.", sentence, short]
         }
     }
 
@@ -530,6 +547,7 @@ struct DayFacts {
             spoken = "Meds, \(takenCount) of \(Copy.count(dueCount, "dose", "doses")) taken today"
                 + (missedCount > 0 ? ", \(missedCount) missed" : "")
         }
+        let values = [value]
         let cells = windowKeys.map { key -> CellState in
             let due = meds.filter { isDue($0, on: key) }
             if due.isEmpty { return .notDue }
@@ -539,25 +557,29 @@ struct DayFacts {
             if answers.allSatisfy({ $0 == true }) { return .on }
             return .open
         }
-        return LedgerRow(label: "Meds", value: value, isMiss: !isStale && missedCount > 0, cells: cells, accessibilityLabel: spoken)
+        return LedgerRow(label: "Meds", values: values, isMiss: !isStale && missedCount > 0, cells: cells, accessibilityLabel: spoken)
     }
 
+    /// `750 mL of 2.5 L`; where that does not fit, `0.75 of 2.5 L`, then the
+    /// day's figure alone (the "what's left" line still carries the target).
     private var waterRow: LedgerRow {
-        let value: String
+        let values: [String]
         let spoken: String
         if isStale {
-            value = "—"
+            values = ["—"]
             spoken = "Water, not updated today"
         } else if let ml = today?.wa {
             if let target = waterTarget {
-                value = "\(Copy.litres(ml)) of \(Copy.litres(target))"
+                values = ["\(Copy.litres(ml)) of \(Copy.litres(target))",
+                          "\(Copy.trimmed((ml / 1000 * 100).rounded() / 100)) of \(Copy.litres(target))",
+                          Copy.litres(ml)]
                 spoken = "Water, \(Copy.spokenLitres(ml)) of \(Copy.spokenLitres(target))"
             } else {
-                value = Copy.litres(ml)
+                values = [Copy.litres(ml)]
                 spoken = "Water, \(Copy.spokenLitres(ml))"
             }
         } else {
-            value = "Not logged"
+            values = ["Not logged"]
             spoken = "Water, not logged today"
         }
         let cells = windowKeys.map { key -> CellState in
@@ -566,27 +588,28 @@ struct DayFacts {
             guard let target = waterTarget else { return .on }
             return ml >= target ? .on : .half
         }
-        return LedgerRow(label: "Water", value: value, isMiss: false, cells: cells, accessibilityLabel: spoken)
+        return LedgerRow(label: "Water", values: values, isMiss: false, cells: cells, accessibilityLabel: spoken)
     }
 
+    /// `120 of 180 g`; where that does not fit, the day's grams alone.
     private var proteinRow: LedgerRow? {
         let logged = windowKeys.contains { day($0)?.p != nil }
         guard proteinTarget != nil || logged else { return nil }
-        let value: String
+        let values: [String]
         let spoken: String
         if isStale {
-            value = "—"
+            values = ["—"]
             spoken = "Protein, not updated today"
         } else if let grams = today?.p {
             if let target = proteinTarget {
-                value = "\(Copy.grams(grams)) of \(Copy.grams(target)) g"
+                values = ["\(Copy.grams(grams)) of \(Copy.grams(target)) g", "\(Copy.grams(grams)) g"]
                 spoken = "Protein, \(Copy.grams(grams)) of \(Copy.grams(target)) grams"
             } else {
-                value = "\(Copy.grams(grams)) g"
+                values = ["\(Copy.grams(grams)) g"]
                 spoken = "Protein, \(Copy.grams(grams)) grams"
             }
         } else {
-            value = "Not logged"
+            values = ["Not logged"]
             spoken = "Protein, not logged today"
         }
         let cells = windowKeys.map { key -> CellState in
@@ -595,7 +618,7 @@ struct DayFacts {
             guard let target = proteinTarget else { return .on }
             return grams >= target ? .on : .half
         }
-        return LedgerRow(label: "Protein", value: value, isMiss: false, cells: cells, accessibilityLabel: spoken)
+        return LedgerRow(label: "Protein", values: values, isMiss: false, cells: cells, accessibilityLabel: spoken)
     }
 
     /// `thisWeek` is trusted only while the feed's week is this week; after
@@ -618,7 +641,7 @@ struct DayFacts {
         }
         let workoutDays = Set(training.days ?? [])
         let cells = windowKeys.map { key -> CellState in workoutDays.contains(key) ? .on : .open }
-        return LedgerRow(label: "Training", value: value, isMiss: false, cells: cells, accessibilityLabel: spoken)
+        return LedgerRow(label: "Training", values: [value], isMiss: false, cells: cells, accessibilityLabel: spoken)
     }
 
     private var meditationRow: LedgerRow {
@@ -631,7 +654,7 @@ struct DayFacts {
             let minutes = day(key)?.med ?? 0
             return minutes >= 10 ? .on : minutes > 0 ? .half : .open
         }
-        return LedgerRow(label: "Meditation", value: value, isMiss: false, cells: cells, accessibilityLabel: spoken)
+        return LedgerRow(label: "Meditation", values: [value], isMiss: false, cells: cells, accessibilityLabel: spoken)
     }
 
     private var journalRow: LedgerRow {
@@ -642,7 +665,7 @@ struct DayFacts {
             if isStale && key == todayKey { return .open }
             return day(key)?.j == true ? .on : .open
         }
-        return LedgerRow(label: "Journal", value: value, isMiss: false, cells: cells, accessibilityLabel: spoken)
+        return LedgerRow(label: "Journal", values: [value], isMiss: false, cells: cells, accessibilityLabel: spoken)
     }
 
     // MARK: The "what's left" line (§6.4: first true rule wins, one fact only)
@@ -674,6 +697,16 @@ struct DayFacts {
     var lastEntry: String? {
         guard let latest = feed.latest, DayMath.isKey(latest) else { return nil }
         return "last entry \(Copy.sinceLabel(DayMath.daysBetween(latest, todayKey)))"
+    }
+
+    /// The large card's footer: the "what's left" fact with the last entry
+    /// appended, or without it where the line would not fit; the stale note
+    /// in its three lengths when stale.
+    var footerLines: [String] {
+        if isStale { return staleNotes(.large) }
+        let left = whatsLeft(short: false)
+        guard let last = lastEntry else { return [left] }
+        return ["\(left) · \(last)", left]
     }
 
     // MARK: Heroes (§6.5: sleep, else weight, else meds, else a dash)
@@ -708,45 +741,53 @@ struct DayFacts {
 
     /// "Last night" for a night that ended this morning, else "Latest · Sep 19"
     /// (app/ui/sleep-view.tsx); medium adds the clock times, large the goal.
-    func heroCaption(_ hero: Hero, family: WidgetFamily) -> String {
+    /// Longest wording first: the full formatClock pair, then the pair without
+    /// its AM/PM (`11:30–7:00`, which is what a 150 pt column holds), then the
+    /// lead alone. A time is never cut mid-figure.
+    func heroCaptions(_ hero: Hero, family: WidgetFamily) -> [String] {
         switch hero {
         case .sleep(let night):
             let key = night.d ?? ""
-            var caption = key == todayKey ? "Last night" : "Latest · \(DayMath.shortDate(key))"
-            let times = Copy.clock(night.bed).flatMap { bed in Copy.clock(night.wake).map { "\(bed) – \($0)" } }
+            let lead = key == todayKey ? "Last night" : "Latest · \(DayMath.shortDate(key))"
             let goal = "goal \(Copy.hoursLabel(sleepGoal))"
-            switch family {
-            case .systemSmall: break
-            case .systemLarge: caption += " · \(times ?? goal)" + (times == nil ? "" : " · \(goal)")
-            default: caption += " · \(times ?? goal)"
+            if family == .systemSmall { return [lead] }
+            guard let bed = Copy.clock(night.bed), let wake = Copy.clock(night.wake),
+                  let bedShort = Copy.clockShort(night.bed), let wakeShort = Copy.clockShort(night.wake) else {
+                return ["\(lead) · \(goal)", lead]
             }
-            return caption
+            let full = "\(lead) · \(bed) – \(wake)"
+            let compact = "\(lead) · \(bedShort)–\(wakeShort)"
+            if family == .systemLarge { return ["\(full) · \(goal)", "\(compact) · \(goal)", compact, lead] }
+            return [full, compact, lead]
         case .weight(let weight):
-            return "Weight · \(DayMath.shortDate(weight.d ?? ""))"
+            return ["Weight · \(DayMath.shortDate(weight.d ?? ""))"]
         case .meds:
-            return dueCount == 0 && !isStale ? "No doses due" : "Doses today"
+            return [dueCount == 0 && !isStale ? "No doses due" : "Doses today"]
         case .none:
-            return "Nothing recorded yet"
+            return ["Nothing recorded yet"]
         }
     }
 
     /// The large card's weight column: the latest reading and its change over
-    /// the last 14 days, in the words of buildHealthReport.
-    var weightCaption: String {
-        guard let weight = latestWeight, let latestLb = weight.w else { return "Weight not recorded" }
+    /// the last 14 days, in the words of buildHealthReport; then the same fact
+    /// as `−1.0 lb / 14 d`, with and without the word the unit already says.
+    var weightCaptions: [String] {
+        guard let weight = latestWeight, let latestLb = weight.w else { return ["Weight not recorded"] }
         let from = DayMath.addDays(todayKey, -13)
         let recent = (feed.weights ?? []).filter { reading in
             guard let d = reading.d, DayMath.isKey(d), reading.w != nil else { return false }
             return d >= from && d <= todayKey
         }
-        var caption = "Weight · \(DayMath.shortDate(weight.d ?? ""))"
+        let date = DayMath.shortDate(weight.d ?? "")
+        let stamp = "Weight · \(date)"
         if recent.count >= 2, let earliest = recent.min(by: { ($0.d ?? "") < ($1.d ?? "") })?.w {
             let change = latestLb - earliest
-            caption += " · \(change < 0 ? "−" : "+")\(Copy.pounds(abs(change))) lb over 14 days"
+            let delta = "\(change < 0 ? "−" : "+")\(Copy.pounds(abs(change))) lb"
+            return ["\(stamp) · \(delta) over 14 days", "\(stamp) · \(delta) / 14 d", "\(date) · \(delta) / 14 d", stamp]
         } else if recent.count == 1 {
-            caption += " · 1 reading"
+            return ["\(stamp) · 1 reading", stamp]
         }
-        return caption
+        return [stamp]
     }
 
     var weightSpoken: String {
@@ -817,19 +858,23 @@ struct DayFacts {
     }
 
     /// Rectangular line 3: doses and water, or the stale note; nothing in a state.
-    var rectangularDetail: String? {
-        if state != nil { return nil }
-        if isStale { return staleNote(.lock) }
-        var parts: [String] = []
-        if medsApply {
-            parts.append(dueCount == 0 ? "No doses due" : "\(takenCount) of \(Copy.count(dueCount, "dose", "doses"))")
-        }
+    var rectangularDetail: String? { rectangularDetails.first }
+
+    /// Line 3 in every length: `1 of 2 doses · 750 mL of 2.5 L`, then the
+    /// water without its target, then the doses alone; the widest that fits
+    /// the Lock Screen's line is printed.
+    var rectangularDetails: [String] {
+        if state != nil { return [] }
+        if isStale { return [staleNote(.lock)] }
+        let water: [String]
         if let ml = today?.wa {
-            parts.append(waterTarget.map { "\(Copy.litres(ml)) of \(Copy.litres($0))" } ?? Copy.litres(ml))
+            water = waterTarget.map { ["\(Copy.litres(ml)) of \(Copy.litres($0))", Copy.litres(ml)] } ?? [Copy.litres(ml)]
         } else {
-            parts.append("Water not logged")
+            water = ["Water not logged"]
         }
-        return parts.joined(separator: " · ")
+        guard medsApply else { return water }
+        let doses = dueCount == 0 ? "No doses due" : "\(takenCount) of \(Copy.count(dueCount, "dose", "doses"))"
+        return water.map { "\(doses) · \($0)" } + [doses]
     }
 
     /// "Baseline · 1 dose left · 7h 24m"; the facts drop from the right as
@@ -1017,8 +1062,11 @@ struct SleepSparkline: View {
         return inset + (size.height - 2 * inset) * CGFloat(1 - (value - low) / span)
     }
 
+    /// The goal is drawn only against recorded nights; with none in the
+    /// window there is nothing to measure it against, and the line stays blank.
     private func goalPath(in size: CGSize) -> Path {
         var path = Path()
+        guard slots.contains(where: { $0 != nil }) else { return path }
         path.move(to: CGPoint(x: inset, y: y(goal, size)))
         path.addLine(to: CGPoint(x: size.width - inset, y: y(goal, size)))
         return path
@@ -1093,18 +1141,50 @@ struct StateBody: View {
     }
 }
 
+/// One line of one fact in the longest of its wordings that fits the width
+/// it is given (ViewThatFits, longest first). Nothing here ever shows an
+/// ellipsis: the last wording is short by construction, and a time or a
+/// figure is dropped whole rather than cut. Up to four wordings.
+struct FittingText: View {
+    let candidates: [String]
+    let font: Font
+    let color: Color
+    var tabular = false
+
+    private var list: [String] { candidates.isEmpty ? ["—"] : candidates }
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            line(0)
+            if list.count > 1 { line(1) }
+            if list.count > 2 { line(2) }
+            if list.count > 3 { line(3) }
+        }
+    }
+
+    private func line(_ index: Int) -> some View {
+        Text(list[min(index, list.count - 1)])
+            .font(tabular ? font.monospacedDigit() : font)
+            .foregroundStyle(color)
+            .lineLimit(1)
+    }
+}
+
 /// One ledger line: label left, value right (warn when the value is a miss).
+/// Only the 8 pt spacer separates them, so a 130 pt column keeps
+/// `Water   750 mL of 2.5 L` whole; the value column prints the longest of
+/// its wordings that fits. Both faces are the same 12 pt line, so centring
+/// puts them on one baseline.
 struct LedgerLine: View {
     let row: LedgerRow
     let height: CGFloat
     let p: Palette
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .center, spacing: 0) {
             Text(row.label).font(Fonts.ui(12, .medium)).foregroundStyle(p.ink).lineLimit(1).truncationMode(.tail)
             Spacer(minLength: 8)
-            Text(row.value).font(Fonts.ui(12, .semibold)).monospacedDigit()
-                .foregroundStyle(row.isMiss ? p.warn : p.ink).lineLimit(1)
+            FittingText(candidates: row.values, font: Fonts.ui(12, .semibold), color: row.isMiss ? p.warn : p.ink, tabular: true)
                 .privacySensitive()
         }
         .frame(height: height)
@@ -1159,8 +1239,8 @@ struct RecordSmallView: View {
         let hero = facts.hero
         return VStack(alignment: .leading, spacing: 0) {
             HeroFigure(figure: facts.heroFigure(hero), unit: facts.heroUnit(hero), p: p)
-            Text(facts.heroCaption(hero, family: .systemSmall))
-                .font(Fonts.ui(11, .medium)).foregroundStyle(p.muted).lineLimit(1).padding(.top, 2)
+            FittingText(candidates: facts.heroCaptions(hero, family: .systemSmall), font: Fonts.ui(11, .medium), color: p.muted)
+                .padding(.top, 2)
         }
         .privacySensitive()
         .accessibilityElement(children: .ignore)
@@ -1217,14 +1297,13 @@ struct RecordMediumView: View {
         let hero = facts.hero
         return VStack(alignment: .leading, spacing: 0) {
             HeroFigure(figure: facts.heroFigure(hero), unit: facts.heroUnit(hero), p: p)
-            Text(facts.heroCaption(hero, family: .systemMedium))
-                .font(Fonts.ui(11, .medium)).foregroundStyle(p.muted).lineLimit(1).truncationMode(.tail).padding(.top, 2)
+            FittingText(candidates: facts.heroCaptions(hero, family: .systemMedium), font: Fonts.ui(11, .medium), color: p.muted)
+                .padding(.top, 2)
             SleepSparkline(slots: facts.nightSlots, goal: facts.sleepGoal, p: p)
                 .frame(width: 150, height: 22).padding(.top, 6)
-            Text(facts.isStale ? facts.staleNote(.medium) : facts.whatsLeft(short: false))
-                .font(Fonts.ui(11, .medium))
-                .foregroundStyle(facts.isStale ? p.warn : p.muted)
-                .lineLimit(1).truncationMode(.tail).padding(.top, 6)
+            FittingText(candidates: facts.isStale ? facts.staleNotes(.medium) : [facts.whatsLeft(short: false)],
+                        font: Fonts.ui(11, .medium), color: facts.isStale ? p.warn : p.muted)
+                .padding(.top, 6)
         }
         .privacySensitive()
         .accessibilityElement(children: .ignore)
@@ -1275,8 +1354,8 @@ struct RecordLargeView: View {
         return HStack(alignment: .top, spacing: 8) {
             VStack(alignment: .leading, spacing: 0) {
                 HeroFigure(figure: facts.heroFigure(left), unit: facts.heroUnit(left), p: p)
-                Text(facts.heroCaption(left, family: .systemLarge))
-                    .font(Fonts.ui(11, .medium)).foregroundStyle(p.muted).lineLimit(1).truncationMode(.tail).padding(.top, 2)
+                FittingText(candidates: facts.heroCaptions(left, family: .systemLarge), font: Fonts.ui(11, .medium), color: p.muted)
+                    .padding(.top, 2)
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .privacySensitive()
@@ -1285,8 +1364,8 @@ struct RecordLargeView: View {
             VStack(alignment: .leading, spacing: 0) {
                 HeroFigure(figure: facts.latestWeight?.w.map(Copy.pounds) ?? "—",
                            unit: facts.latestWeight?.w == nil ? nil : "lb", p: p)
-                Text(facts.weightCaption)
-                    .font(Fonts.ui(11, .medium)).foregroundStyle(p.muted).lineLimit(1).truncationMode(.tail).padding(.top, 2)
+                FittingText(candidates: facts.weightCaptions, font: Fonts.ui(11, .medium), color: p.muted)
+                    .padding(.top, 2)
             }
             .frame(maxWidth: .infinity, alignment: .topLeading)
             .privacySensitive()
@@ -1307,8 +1386,7 @@ struct RecordLargeView: View {
                     DayStrip(cells: row.cells, p: p)
                         .frame(maxWidth: .infinity).frame(height: 12)
                         .privacySensitive()
-                    Text(row.value).font(Fonts.ui(12, .semibold)).monospacedDigit()
-                        .foregroundStyle(row.isMiss ? p.warn : p.ink).lineLimit(1)
+                    FittingText(candidates: row.values, font: Fonts.ui(12, .semibold), color: row.isMiss ? p.warn : p.ink, tabular: true)
                         .frame(width: 88, alignment: .trailing)
                         .privacySensitive()
                 }
@@ -1320,18 +1398,7 @@ struct RecordLargeView: View {
     }
 
     private func footer(_ facts: DayFacts, _ p: Palette) -> some View {
-        let text: String
-        if facts.isStale {
-            text = facts.staleNote(.large)
-        } else if let last = facts.lastEntry {
-            text = "\(facts.whatsLeft(short: false)) · \(last)"
-        } else {
-            text = facts.whatsLeft(short: false)
-        }
-        return Text(text)
-            .font(Fonts.ui(11, .medium))
-            .foregroundStyle(facts.isStale ? p.warn : p.muted)
-            .lineLimit(1).truncationMode(.tail)
+        FittingText(candidates: facts.footerLines, font: Fonts.ui(11, .medium), color: facts.isStale ? p.warn : p.muted)
             .frame(maxWidth: .infinity, alignment: .leading)
             .frame(height: 14)
             .privacySensitive(!facts.isStale)
@@ -1382,9 +1449,8 @@ struct RectangularView: View {
                 Text(facts.rectangularHeadline).font(.system(size: 15, weight: .semibold)).monospacedDigit()
                     .foregroundStyle(Color.primary).lineLimit(1).truncationMode(.tail)
                     .privacySensitive(facts.state == nil)
-                if let detail = facts.rectangularDetail {
-                    Text(detail).font(.system(size: 12, weight: .medium)).monospacedDigit()
-                        .foregroundStyle(Color.primary).lineLimit(1).truncationMode(.tail)
+                if !facts.rectangularDetails.isEmpty {
+                    FittingText(candidates: facts.rectangularDetails, font: .system(size: 12, weight: .medium), color: Color.primary, tabular: true)
                         .privacySensitive(!facts.isStale)
                 }
             }
