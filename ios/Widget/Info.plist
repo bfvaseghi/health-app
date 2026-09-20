@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Merged with the keys Xcode generates from INFOPLIST_KEY_* build settings. -->
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.widgetkit-extension</string>
+	</dict>
+	<!-- The site's two families (SIL OFL 1.1, see Widget/Fonts/*-OFL.txt). -->
+	<key>UIAppFonts</key>
+	<array>
+		<string>InstrumentSerif-Regular.ttf</string>
+		<string>HankenGrotesk-Medium.ttf</string>
+		<string>HankenGrotesk-SemiBold.ttf</string>
+		<string>HankenGrotesk-Bold.ttf</string>
+	</array>
+</dict>
+</plist>

@@ -21,9 +21,10 @@ targets:
     type: application
     platform: iOS
     sources:
-      # Swift sources: the app's own @main file plus the vendored shell.
-      # Baseline runs the shell in remote mode (the live site, not a bundled
-      # copy), so there is no App/Web folder and no folder reference for one.
+      # Swift sources: the app's own @main file, the widget feed script and
+      # the vendored shell. Baseline runs the shell in remote mode (the live
+      # site, not a bundled copy), so there is no App/Web folder and no
+      # folder reference for one.
       - path: App
         excludes:
           - "Assets.xcassets"
@@ -46,4 +47,81 @@ targets:
         SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
         DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: YES
         ENABLE_USER_SCRIPT_SANDBOXING: YES
+    # The storage mirror and the widget feed live in this App Group so the
+    # widget extension can read them. XcodeGen writes the .entitlements file.
+    entitlements:
+      path: App/Baseline.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.bardia.baseline
+    dependencies:
+      - target: BaselineWidgetExtension
+        embed: true
     scheme: {}
+  # The Home Screen widget: the record card, fed by the page through
+  # window.nativeShell.widgetFeed(). It compiles only the one shell file it
+  # reads the feed with; WidgetFeed.swift is self-contained (Foundation +
+  # WidgetKit), and no other shell file would compile in the extension. The
+  # site's two typefaces ship as resources (SIL OFL 1.1).
+  BaselineWidgetExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Widget/BaselineWidget.swift
+      - App/Shell/WidgetFeed.swift
+      - path: Widget/Fonts
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bardia.baseline.widget
+        # Consumes the checked-in plist rather than overwriting it, which an
+        # `info:` block here would do on every generate.
+        INFOPLIST_FILE: Widget/Info.plist
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Baseline record
+        INFOPLIST_KEY_NSHumanReadableCopyright: ""
+        TARGETED_DEVICE_FAMILY: "1,2"
+        SUPPORTS_MACCATALYST: YES
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        # Matches the app: the Catalyst build's id gains the maccatalyst.
+        # prefix, and an extension's id must extend its containing app's.
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: YES
+        SKIP_INSTALL: YES
+    entitlements:
+      path: Widget/BaselineWidget.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.bardia.baseline
+  # Renders the widget to PNG at every size (Tests/WidgetPreview), so it can
+  # be looked at without a device: the "Widget previews" workflow runs this
+  # scheme on an iPhone simulator and uploads the files. Compiles the widget's
+  # sources only, with WIDGET_PREVIEW defined (no @main, plus the catalog of
+  # scenes to draw). Never part of the app.
+  BaselineWidgetPreviewTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Widget/BaselineWidget.swift
+      - App/Shell/WidgetFeed.swift
+      - path: Widget/Fonts
+        buildPhase: resources
+      - path: Tests/WidgetPreview
+        excludes:
+          - "*.py"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.bardia.baseline.widget-previews
+        GENERATE_INFOPLIST_FILE: YES
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) WIDGET_PREVIEW"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        # Inert here (the test bundle is never built for Catalyst); kept so
+        # the setting reads the same on every target.
+        DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER: YES
+schemes:
+  BaselineWidgetPreviews:
+    build:
+      targets:
+        BaselineWidgetPreviewTests: all
+    test:
+      targets:
+        - BaselineWidgetPreviewTests

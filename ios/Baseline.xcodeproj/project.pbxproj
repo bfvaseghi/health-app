@@ -7,30 +7,85 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		033451170245C728B8FE758F /* HankenGrotesk-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9376F38C6BD8BB383BB8C7C2 /* HankenGrotesk-SemiBold.ttf */; };
+		12B9EC13A9412F47B0AA8141 /* InstrumentSerif-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 645CA9DD6A200FE09B0A5765 /* InstrumentSerif-OFL.txt */; };
+		13E079EB4BBF124D6C5506CF /* HankenGrotesk-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 68B531F057836002D73C96EF /* HankenGrotesk-OFL.txt */; };
+		27E48C4E71B5B8A41DBE5FC3 /* HankenGrotesk-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 49752553F76051421D4DA517 /* HankenGrotesk-Bold.ttf */; };
+		2A9BD83E8D98AAC31A24006A /* BaselineWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F99F98163A20A4E8BC0E4E69 /* BaselineWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		2CA94BF892151688EC021EDB /* WebShellViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FC8A061B2B5A9B62967ADEA /* WebShellViewController.swift */; };
 		3656032D5753C00F61FF5784 /* BundleSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 842D029C78C8DC36C0C6B836 /* BundleSchemeHandler.swift */; };
 		3B771187154E47CAFFBB9BE3 /* ShellAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B6A95F409B0E7D0B4A792D8 /* ShellAppDelegate.swift */; };
 		435BAB217E87B56B1A24E8EC /* WidgetFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69BDDD3BD84BAAC610BE9C81 /* WidgetFeed.swift */; };
 		5135A860AE0336E7A18B48DA /* bridge.js in Resources */ = {isa = PBXBuildFile; fileRef = FC153C490105280592AFABD8 /* bridge.js */; };
+		583743D3977F9CA29DC1E263 /* BaselineFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEABC510806F50EB9C2D7CA8 /* BaselineFeed.swift */; };
+		6CAE97F208A8D9F92D1B29ED /* WidgetFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69BDDD3BD84BAAC610BE9C81 /* WidgetFeed.swift */; };
 		8629C718C02648F3DC905FBF /* StorageMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F949CBDD7B6322F0C37034 /* StorageMirror.swift */; };
+		86A4A0D1665720175FFEAA47 /* InstrumentSerif-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 645CA9DD6A200FE09B0A5765 /* InstrumentSerif-OFL.txt */; };
+		92DEA8E73ACD868E54B64D0B /* HankenGrotesk-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 49752553F76051421D4DA517 /* HankenGrotesk-Bold.ttf */; };
+		99C133B6E0F02B2BFF111592 /* HankenGrotesk-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 68B531F057836002D73C96EF /* HankenGrotesk-OFL.txt */; };
 		99D9C6E1F443401C14770F8E /* NativeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6674D77979392C159437CB0A /* NativeBridge.swift */; };
+		A264181248F20E3EA46481FE /* HankenGrotesk-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D0DCAF779568C149491DA5A9 /* HankenGrotesk-Medium.ttf */; };
+		A42D6181D5E990996914CB11 /* InstrumentSerif-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 302BF678160D75ABB1001B33 /* InstrumentSerif-Regular.ttf */; };
+		B51991A6E54BED2BAEE1EDAC /* WidgetFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69BDDD3BD84BAAC610BE9C81 /* WidgetFeed.swift */; };
 		B7E4870B7C5C5E2BF00E06A4 /* BaselineApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C2A66B80245DF64317CD005 /* BaselineApp.swift */; };
 		BD779654C46C0296070B8B7A /* ShellConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = D7D3CB8E73542965A5803879 /* ShellConfig.swift */; };
+		BF3CC6680E4C2FBFC9A2461A /* BaselineWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DE926C3E7C5CD99D4D28785 /* BaselineWidget.swift */; };
+		C75AD64E0FD564D707059FCC /* WidgetPreviewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 138F7287C2AF8515E6BFDA2D /* WidgetPreviewTests.swift */; };
+		D2AB801F430E5314A8C13509 /* HankenGrotesk-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = D0DCAF779568C149491DA5A9 /* HankenGrotesk-Medium.ttf */; };
+		DEF4ACBE163741CD55B930D8 /* BaselineWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DE926C3E7C5CD99D4D28785 /* BaselineWidget.swift */; };
 		E80FFC9121FD7D29E20FDA45 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = A6ECA7F442A69CA0B1719765 /* PrivacyInfo.xcprivacy */; };
 		EDC52796E22A66607A8C8F4F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FC4E18635272431DAAAB504A /* Assets.xcassets */; };
+		FB86020A3DD4D179CE9D6D17 /* InstrumentSerif-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 302BF678160D75ABB1001B33 /* InstrumentSerif-Regular.ttf */; };
+		FCD5F435DC1E28A93467CF76 /* HankenGrotesk-SemiBold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 9376F38C6BD8BB383BB8C7C2 /* HankenGrotesk-SemiBold.ttf */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		A4A2A8A7595917086F69344A /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = ECBDE9C9F1149470E25D1FAC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = DE000AB17D878FEA6D1C850D;
+			remoteInfo = BaselineWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		7AB2F40439486DD0BB00D049 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				2A9BD83E8D98AAC31A24006A /* BaselineWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		138F7287C2AF8515E6BFDA2D /* WidgetPreviewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetPreviewTests.swift; sourceTree = "<group>"; };
+		2DE926C3E7C5CD99D4D28785 /* BaselineWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BaselineWidget.swift; sourceTree = "<group>"; };
+		302BF678160D75ABB1001B33 /* InstrumentSerif-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "InstrumentSerif-Regular.ttf"; sourceTree = "<group>"; };
 		3B6A95F409B0E7D0B4A792D8 /* ShellAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellAppDelegate.swift; sourceTree = "<group>"; };
+		49752553F76051421D4DA517 /* HankenGrotesk-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "HankenGrotesk-Bold.ttf"; sourceTree = "<group>"; };
 		4FC8A061B2B5A9B62967ADEA /* WebShellViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebShellViewController.swift; sourceTree = "<group>"; };
+		6148BA36F5979476A96A4538 /* Baseline.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Baseline.entitlements; sourceTree = "<group>"; };
+		645CA9DD6A200FE09B0A5765 /* InstrumentSerif-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "InstrumentSerif-OFL.txt"; sourceTree = "<group>"; };
 		6674D77979392C159437CB0A /* NativeBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativeBridge.swift; sourceTree = "<group>"; };
+		68B531F057836002D73C96EF /* HankenGrotesk-OFL.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "HankenGrotesk-OFL.txt"; sourceTree = "<group>"; };
 		69BDDD3BD84BAAC610BE9C81 /* WidgetFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetFeed.swift; sourceTree = "<group>"; };
 		7C2A66B80245DF64317CD005 /* BaselineApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BaselineApp.swift; sourceTree = "<group>"; };
 		842D029C78C8DC36C0C6B836 /* BundleSchemeHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BundleSchemeHandler.swift; sourceTree = "<group>"; };
+		88DB47AAAA52C8A1F7878D8C /* BaselineWidgetPreviewTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = BaselineWidgetPreviewTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		917EC6C734FA7FDEF274FFAD /* Baseline.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Baseline.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		9376F38C6BD8BB383BB8C7C2 /* HankenGrotesk-SemiBold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "HankenGrotesk-SemiBold.ttf"; sourceTree = "<group>"; };
 		A6ECA7F442A69CA0B1719765 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		BEABC510806F50EB9C2D7CA8 /* BaselineFeed.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BaselineFeed.swift; sourceTree = "<group>"; };
+		D0DCAF779568C149491DA5A9 /* HankenGrotesk-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "HankenGrotesk-Medium.ttf"; sourceTree = "<group>"; };
 		D7D3CB8E73542965A5803879 /* ShellConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellConfig.swift; sourceTree = "<group>"; };
 		E8F949CBDD7B6322F0C37034 /* StorageMirror.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StorageMirror.swift; sourceTree = "<group>"; };
+		F99F98163A20A4E8BC0E4E69 /* BaselineWidgetExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = BaselineWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		FC153C490105280592AFABD8 /* bridge.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = bridge.js; sourceTree = "<group>"; };
 		FC4E18635272431DAAAB504A /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -55,6 +110,8 @@
 			isa = PBXGroup;
 			children = (
 				917EC6C734FA7FDEF274FFAD /* Baseline.app */,
+				F99F98163A20A4E8BC0E4E69 /* BaselineWidgetExtension.appex */,
+				88DB47AAAA52C8A1F7878D8C /* BaselineWidgetPreviewTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -63,15 +120,57 @@
 			isa = PBXGroup;
 			children = (
 				D1455D6CBFB2B680C8D7BFE5 /* App */,
+				7282C7BC55BA73D6923BAED6 /* Tests */,
+				8ED282AF6869E85D2393503C /* Widget */,
 				395E0E8B872B7232D1875563 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		7282C7BC55BA73D6923BAED6 /* Tests */ = {
+			isa = PBXGroup;
+			children = (
+				8426E5F677543B48E8187241 /* WidgetPreview */,
+			);
+			path = Tests;
+			sourceTree = "<group>";
+		};
+		80D367F66EFE17301DB540F3 /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				49752553F76051421D4DA517 /* HankenGrotesk-Bold.ttf */,
+				D0DCAF779568C149491DA5A9 /* HankenGrotesk-Medium.ttf */,
+				68B531F057836002D73C96EF /* HankenGrotesk-OFL.txt */,
+				9376F38C6BD8BB383BB8C7C2 /* HankenGrotesk-SemiBold.ttf */,
+				645CA9DD6A200FE09B0A5765 /* InstrumentSerif-OFL.txt */,
+				302BF678160D75ABB1001B33 /* InstrumentSerif-Regular.ttf */,
+			);
+			path = Fonts;
+			sourceTree = "<group>";
+		};
+		8426E5F677543B48E8187241 /* WidgetPreview */ = {
+			isa = PBXGroup;
+			children = (
+				138F7287C2AF8515E6BFDA2D /* WidgetPreviewTests.swift */,
+			);
+			path = WidgetPreview;
+			sourceTree = "<group>";
+		};
+		8ED282AF6869E85D2393503C /* Widget */ = {
+			isa = PBXGroup;
+			children = (
+				2DE926C3E7C5CD99D4D28785 /* BaselineWidget.swift */,
+				80D367F66EFE17301DB540F3 /* Fonts */,
+			);
+			path = Widget;
 			sourceTree = "<group>";
 		};
 		D1455D6CBFB2B680C8D7BFE5 /* App */ = {
 			isa = PBXGroup;
 			children = (
 				FC4E18635272431DAAAB504A /* Assets.xcassets */,
+				6148BA36F5979476A96A4538 /* Baseline.entitlements */,
 				7C2A66B80245DF64317CD005 /* BaselineApp.swift */,
+				BEABC510806F50EB9C2D7CA8 /* BaselineFeed.swift */,
 				A6ECA7F442A69CA0B1719765 /* PrivacyInfo.xcprivacy */,
 				0B209390129D5EC4CE3D20D9 /* Shell */,
 			);
@@ -81,16 +180,36 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		44D14C70B723832A52F395FC /* BaselineWidgetPreviewTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9C586DF20310E90C5875D404 /* Build configuration list for PBXNativeTarget "BaselineWidgetPreviewTests" */;
+			buildPhases = (
+				427768A49AFC3C616758157B /* Sources */,
+				0488AE9F4A693A6C0B2B6B38 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BaselineWidgetPreviewTests;
+			packageProductDependencies = (
+			);
+			productName = BaselineWidgetPreviewTests;
+			productReference = 88DB47AAAA52C8A1F7878D8C /* BaselineWidgetPreviewTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		872B718151798DDC9EDF70E0 /* Baseline */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = A07E89BA0FB92F9FCA5264E1 /* Build configuration list for PBXNativeTarget "Baseline" */;
 			buildPhases = (
 				5BA0779C5FB69F0F3F614743 /* Sources */,
 				2B94C440CBC67DD84BB35D10 /* Resources */,
+				7AB2F40439486DD0BB00D049 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				781895078B3CC450C6A57C06 /* PBXTargetDependency */,
 			);
 			name = Baseline;
 			packageProductDependencies = (
@@ -98,6 +217,24 @@
 			productName = Baseline;
 			productReference = 917EC6C734FA7FDEF274FFAD /* Baseline.app */;
 			productType = "com.apple.product-type.application";
+		};
+		DE000AB17D878FEA6D1C850D /* BaselineWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 4ECCF7BA9ACA72A64251B3C6 /* Build configuration list for PBXNativeTarget "BaselineWidgetExtension" */;
+			buildPhases = (
+				7788C19F88290C0B321D402B /* Sources */,
+				6AEDF82540829047A0DDD0B4 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BaselineWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = BaselineWidgetExtension;
+			productReference = F99F98163A20A4E8BC0E4E69 /* BaselineWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -108,7 +245,13 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					44D14C70B723832A52F395FC = {
+						ProvisioningStyle = Automatic;
+					};
 					872B718151798DDC9EDF70E0 = {
+						ProvisioningStyle = Automatic;
+					};
+					DE000AB17D878FEA6D1C850D = {
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -128,11 +271,26 @@
 			projectRoot = "";
 			targets = (
 				872B718151798DDC9EDF70E0 /* Baseline */,
+				DE000AB17D878FEA6D1C850D /* BaselineWidgetExtension */,
+				44D14C70B723832A52F395FC /* BaselineWidgetPreviewTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		0488AE9F4A693A6C0B2B6B38 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				92DEA8E73ACD868E54B64D0B /* HankenGrotesk-Bold.ttf in Resources */,
+				D2AB801F430E5314A8C13509 /* HankenGrotesk-Medium.ttf in Resources */,
+				13E079EB4BBF124D6C5506CF /* HankenGrotesk-OFL.txt in Resources */,
+				033451170245C728B8FE758F /* HankenGrotesk-SemiBold.ttf in Resources */,
+				86A4A0D1665720175FFEAA47 /* InstrumentSerif-OFL.txt in Resources */,
+				FB86020A3DD4D179CE9D6D17 /* InstrumentSerif-Regular.ttf in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		2B94C440CBC67DD84BB35D10 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -143,14 +301,38 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		6AEDF82540829047A0DDD0B4 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				27E48C4E71B5B8A41DBE5FC3 /* HankenGrotesk-Bold.ttf in Resources */,
+				A264181248F20E3EA46481FE /* HankenGrotesk-Medium.ttf in Resources */,
+				99C133B6E0F02B2BFF111592 /* HankenGrotesk-OFL.txt in Resources */,
+				FCD5F435DC1E28A93467CF76 /* HankenGrotesk-SemiBold.ttf in Resources */,
+				12B9EC13A9412F47B0AA8141 /* InstrumentSerif-OFL.txt in Resources */,
+				A42D6181D5E990996914CB11 /* InstrumentSerif-Regular.ttf in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		427768A49AFC3C616758157B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DEF4ACBE163741CD55B930D8 /* BaselineWidget.swift in Sources */,
+				B51991A6E54BED2BAEE1EDAC /* WidgetFeed.swift in Sources */,
+				C75AD64E0FD564D707059FCC /* WidgetPreviewTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5BA0779C5FB69F0F3F614743 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 				B7E4870B7C5C5E2BF00E06A4 /* BaselineApp.swift in Sources */,
+				583743D3977F9CA29DC1E263 /* BaselineFeed.swift in Sources */,
 				3656032D5753C00F61FF5784 /* BundleSchemeHandler.swift in Sources */,
 				99D9C6E1F443401C14770F8E /* NativeBridge.swift in Sources */,
 				3B771187154E47CAFFBB9BE3 /* ShellAppDelegate.swift in Sources */,
@@ -161,9 +343,49 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		7788C19F88290C0B321D402B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BF3CC6680E4C2FBFC9A2461A /* BaselineWidget.swift in Sources */,
+				6CAE97F208A8D9F92D1B29ED /* WidgetFeed.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		781895078B3CC450C6A57C06 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = DE000AB17D878FEA6D1C850D /* BaselineWidgetExtension */;
+			targetProxy = A4A2A8A7595917086F69344A /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		0D6FACB1AECF720D94226A5E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Widget/BaselineWidget.entitlements;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Widget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Baseline record";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bardia.baseline.widget;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTS_MACCATALYST = YES;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		8C153D89A7CD276FAEBDCA10 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -291,10 +513,47 @@
 			};
 			name = Debug;
 		};
+		BC8BE997CA5CE84D93B8791F /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.bardia.baseline.widget-previews";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) WIDGET_PREVIEW";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		C72BEAE4D1B81F12680777AF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.bardia.baseline.widget-previews";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) WIDGET_PREVIEW";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		CF0526DD635D64A7B1C119FF /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/Baseline.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -316,10 +575,34 @@
 			};
 			name = Debug;
 		};
+		EE5A68D02ABD186904E5B0BC /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = Widget/BaselineWidget.entitlements;
+				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Widget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Baseline record";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.bardia.baseline.widget;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SUPPORTS_MACCATALYST = YES;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
 		F68E3464978FB1C061F8D589 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/Baseline.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				DERIVE_MACCATALYST_PRODUCT_BUNDLE_IDENTIFIER = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = YES;
@@ -344,6 +627,24 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		4ECCF7BA9ACA72A64251B3C6 /* Build configuration list for PBXNativeTarget "BaselineWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EE5A68D02ABD186904E5B0BC /* Debug */,
+				0D6FACB1AECF720D94226A5E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		9C586DF20310E90C5875D404 /* Build configuration list for PBXNativeTarget "BaselineWidgetPreviewTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BC8BE997CA5CE84D93B8791F /* Debug */,
+				C72BEAE4D1B81F12680777AF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		A07E89BA0FB92F9FCA5264E1 /* Build configuration list for PBXNativeTarget "Baseline" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

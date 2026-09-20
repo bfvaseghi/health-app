@@ -9,8 +9,15 @@ import UIKit
 /// cannot do by itself (share-sheet downloads, the print panel, native
 /// dialogs, a status bar that follows the page's theme, a native offline page
 /// and the localStorage mirror). No App/Web folder ships with this app.
+///
+/// The Home Screen widget (Widget/BaselineWidget.swift) reads a small feed the
+/// page builds from its own browser-side copy of the record; the script that
+/// builds it is `BaselineFeedScript` (App/BaselineFeed.swift).
 @main
 final class BaselineAppDelegate: ShellAppDelegate {
+    /// Shared with the widget extension; both targets carry the entitlement.
+    static let appGroup = "group.com.bardia.baseline"
+
     override func makeConfig() -> ShellConfig {
         var config = ShellConfig(
             appName: "Baseline",
@@ -42,6 +49,15 @@ final class BaselineAppDelegate: ShellAppDelegate {
         // "Erase all data" must not leave fourteen copies of the erased
         // record on the device. The live mirror (one file) stays.
         config.snapshotDays = 0
+        // The mirror and the widget feed live in the App Group container,
+        // where the widget extension can read the feed. Falls back to the
+        // shell's default folder when the group is not set up yet; the widget
+        // then shows its placeholder until it is.
+        config.storageDirectory = WidgetFeed.storageDirectory(appGroup: Self.appGroup)
+        // The widget feed builder, injected after bridge.js on every document
+        // the main frame shows; it does nothing where window.nativeShell is
+        // absent (the sign-in hosts), and never throws into the page.
+        config.extraBootScript = BaselineFeedScript.source
         // The page sets viewport-fit=cover (app/layout.tsx) and .mobile-head
         // pads its top with env(safe-area-inset-top) (app/field-record.css,
         // app/globals.css), so it draws under the status bar itself.

@@ -20,10 +20,15 @@ enum WidgetFeed {
 
     /// Atomic write, then a timeline reload. Called on the main thread with a
     /// small payload, so the write is synchronous on purpose: the reload must
-    /// not race ahead of the file.
+    /// not race ahead of the file. A feed identical to the one on disk is
+    /// neither written nor reloaded: pages post on start and after every
+    /// save, and WidgetKit rations reloads to a few dozen a day.
     static func save(_ json: String, in directory: URL) {
+        guard let data = json.data(using: .utf8) else { return }
+        let target = url(in: directory)
+        if let existing = try? Data(contentsOf: target), existing == data { return }
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        try? json.data(using: .utf8)?.write(to: url(in: directory), options: .atomic)
+        try? data.write(to: target, options: .atomic)
         #if canImport(WidgetKit)
         WidgetCenter.shared.reloadAllTimelines()
         #endif
