@@ -13,11 +13,12 @@ import CoreText
 // holds (numbers, dates, category words), stamped with the day the page built
 // it; a missing value is a dash, a day the app has not seen is said to be that.
 
-// MARK: - Feed model (what App/BaselineFeed.swift's script posts)
+// MARK: - Feed model (what App/BaselineFeed.swift's script posts; both widgets read it)
 //
 // Every field is optional on purpose: one absent or renamed key must not throw
 // away the whole decode and leave the widget claiming there is no record while
-// a full feed sits on disk. Nothing in here is free text.
+// a full feed sits on disk. The only text in here is the training block's
+// workout and exercise names, as Strong spells them; never a note.
 
 struct BaselineFeed: Decodable {
     var v: Int?
@@ -76,6 +77,44 @@ struct BaselineFeed: Decodable {
         var streakWeeks: Int?
         var importedAt: String?
         var days: [String]?         // dates with a workout, last 14 days
+        var planned: Int?           // the week's sessions from the plan (Today's "2 of 4"); nil without one
+        var usual: Double?          // sessions per trained week over six weeks (trainingHabit)
+        var weeks: [Week]?          // eight weeks ending this week, oldest first
+        var sessions: [Session]?    // the last three, newest first
+        var lifts: [Lift]?          // up to four staples with their best-ever set
+    }
+
+    struct Week: Decodable {
+        var s: String?              // the Monday
+        var n: Int?                 // sessions
+        var vol: Double?            // lb lifted
+    }
+
+    /// One session as the Workouts list prints it. `label` is the workout's
+    /// name as Strong spells it, the only text besides exercise names.
+    struct Session: Decodable {
+        var d: String?
+        var label: String?
+        var lifts: Int?             // exercises
+        var sets: Int?
+        var vol: Double?            // lb; 0 for a bodyweight session
+        var min: Int?               // duration, when Strong recorded one
+        var top: TopSet?            // the best set by Epley, or by reps
+    }
+
+    struct TopSet: Decodable {
+        var lift: String?
+        var w: Double?              // lb; absent for a bodyweight or assisted set
+        var reps: Double?
+    }
+
+    struct Lift: Decodable {
+        var lift: String?
+        var w: Double?
+        var reps: Double?
+        var max: Double?            // estimated one-rep max (Epley)
+        var d: String?              // the day of that set
+        var pr: Bool?               // a record of the last 30 days (recentPersonalRecords)
     }
 }
 
@@ -114,17 +153,51 @@ extension BaselineFeed {
             Day(d: day(13), w: nil, p: 150, wa: 2500, med: 10, j: false),
         ]
         let weights = days.compactMap { entry in entry.w.map { Weight(d: entry.d, w: $0) } }
-        let monday = DayMath.mondayOfWeek(today)
-        let workouts = [day(2), day(4), day(7), day(9), day(11)].filter { $0 <= today }
         return BaselineFeed(
             v: 1, app: "baseline", builtAt: nil, builtOn: today, status: "ok",
             goals: Goals(sleepHours: 9, waterTargetMl: 2500, proteinTargetG: 180, trackMedication: true),
             meds: [Med(schedule: "daily", dueDay: nil, doses: a), Med(schedule: "daily", dueDay: nil, doses: b)],
             days: days, nights: nights, latestNight: nights.first, weights: weights,
-            training: Training(lastWorkout: workouts.first, thisWeek: workouts.filter { $0 >= monday }.count,
-                               weekStart: monday, streakWeeks: 3, importedAt: workouts.first, days: workouts),
+            training: sampleTraining(today: today, back: [2, 4, 7, 9, 11]),
             latest: today
         )
+    }
+
+    /// A lifting record for the sample: workouts on the given days back, the
+    /// last three as sessions, a plan of four, a run of weeks, four staples.
+    /// Round, fictional figures; the names are Strong's plain ones.
+    static func sampleTraining(today: String, back: [Int], planned: Int? = 4, usual: Double? = 3.5,
+                               olderWeeks: [Int] = [3, 2, 0, 3, 4, 3]) -> Training {
+        func day(_ back: Int) -> String { DayMath.addDays(today, -back) }
+        let monday = DayMath.mondayOfWeek(today)
+        let workouts = back.map(day).filter { $0 <= today }.sorted(by: >)
+        let labels = ["Push", "Pull", "Legs"]
+        let tops = [TopSet(lift: "Bench Press", w: 185, reps: 5), TopSet(lift: "Deadlift", w: 315, reps: 3), TopSet(lift: "Squat", w: 275, reps: 5)]
+        let sessions = workouts.prefix(3).enumerated().map { index, date in
+            Session(d: date, label: labels[index], lifts: [6, 6, 5][index], sets: [18, 20, 16][index],
+                    vol: [12450, 14200, 18600][index], min: [62, 58, 65][index], top: tops[index])
+        }
+        // Eight weeks ending this week: the two most recent counted from the
+        // workouts above, the six before them fixed.
+        var weeks: [Week] = []
+        for index in 0..<8 {
+            let start = DayMath.addDays(monday, -7 * (7 - index))
+            let end = DayMath.addDays(start, 6)
+            let count = index >= 6 ? workouts.filter { $0 >= start && $0 <= end }.count : olderWeeks[index]
+            weeks.append(Week(s: start, n: count, vol: Double(count) * 4150))
+        }
+        var streak = 0
+        for week in weeks.reversed() { if (week.n ?? 0) > 0 { streak += 1 } else { break } }
+        let lifts = [
+            Lift(lift: "Bench Press", w: 185, reps: 5, max: 215.8, d: workouts.first, pr: true),
+            Lift(lift: "Squat", w: 275, reps: 5, max: 320.8, d: workouts.dropFirst(2).first, pr: false),
+            Lift(lift: "Deadlift", w: 315, reps: 3, max: 346.5, d: workouts.dropFirst().first, pr: false),
+            Lift(lift: "Overhead Press", w: 115, reps: 5, max: 134.2, d: workouts.dropFirst(3).first, pr: false),
+        ]
+        return Training(lastWorkout: workouts.first, thisWeek: workouts.filter { $0 >= monday }.count,
+                        weekStart: monday, streakWeeks: streak, importedAt: workouts.first,
+                        days: workouts.filter { $0 >= DayMath.addDays(today, -13) },
+                        planned: planned, usual: usual, weeks: weeks, sessions: Array(sessions), lifts: lifts)
     }
 }
 
@@ -291,6 +364,41 @@ enum Copy {
     static func grams(_ value: Double) -> String { "\(Int(value.rounded()))" }
 
     static func pounds(_ value: Double) -> String { String(format: "%.1f", value) }
+
+    /// "12,450" — toLocaleString("en-US") on a rounded figure (format.ts, Volume).
+    static func grouped(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 0
+        formatter.usesGroupingSeparator = true
+        return formatter.string(from: NSNumber(value: value.rounded())) ?? "\(Int(value.rounded()))"
+    }
+
+    /// A set as the Strength view prints it: "185 lb × 5"; a bodyweight set
+    /// is its reps, "12 reps"; nil when the set carries neither.
+    static func setLabel(w: Double?, reps: Double?) -> String? {
+        let load = w.flatMap { $0 > 0 ? trimmed($0) : nil }
+        let count = reps.flatMap { $0 > 0 ? Int($0.rounded()) : nil }
+        switch (load, count) {
+        case let (load?, count?): return "\(load) lb × \(count)"
+        case let (load?, nil): return "\(load) lb"
+        case let (nil, count?): return "\(count) reps"
+        default: return nil
+        }
+    }
+
+    /// "185 pounds for 5 reps", for spoken labels.
+    static func spokenSet(w: Double?, reps: Double?) -> String? {
+        let load = w.flatMap { $0 > 0 ? "\(trimmed($0)) pounds" : nil }
+        let count = reps.flatMap { $0 > 0 ? "\(Int($0.rounded())) reps" : nil }
+        switch (load, count) {
+        case let (load?, count?): return "\(load) for \(count)"
+        case let (load?, nil): return load
+        case let (nil, count?): return count
+        default: return nil
+        }
+    }
 
     static func capitalized(_ text: String) -> String {
         guard let first = text.first else { return text }
@@ -740,23 +848,24 @@ struct DayFacts {
     }
 
     /// "Last night" for a night that ended this morning, else "Latest · Sep 19"
-    /// (app/ui/sleep-view.tsx); medium adds the clock times, large the goal.
-    /// Longest wording first: the full formatClock pair, then the pair without
-    /// its AM/PM (`11:30–7:00`, which is what a 150 pt column holds), then the
-    /// lead alone. A time is never cut mid-figure.
+    /// (app/ui/sleep-view.tsx); every family adds the clock times where they
+    /// fit, large the goal. Longest wording first: the full formatClock pair,
+    /// then the pair without its AM/PM (`11:30–7:00`, which is what a 130 or
+    /// 150 pt column holds), then the lead alone. A time is never cut
+    /// mid-figure.
     func heroCaptions(_ hero: Hero, family: WidgetFamily) -> [String] {
         switch hero {
         case .sleep(let night):
             let key = night.d ?? ""
             let lead = key == todayKey ? "Last night" : "Latest · \(DayMath.shortDate(key))"
             let goal = "goal \(Copy.hoursLabel(sleepGoal))"
-            if family == .systemSmall { return [lead] }
             guard let bed = Copy.clock(night.bed), let wake = Copy.clock(night.wake),
                   let bedShort = Copy.clockShort(night.bed), let wakeShort = Copy.clockShort(night.wake) else {
-                return ["\(lead) · \(goal)", lead]
+                return family == .systemSmall ? [lead] : ["\(lead) · \(goal)", lead]
             }
             let full = "\(lead) · \(bed) – \(wake)"
             let compact = "\(lead) · \(bedShort)–\(wakeShort)"
+            if family == .systemSmall { return [compact, lead] }
             if family == .systemLarge { return ["\(full) · \(goal)", "\(compact) · \(goal)", compact, lead] }
             return [full, compact, lead]
         case .weight(let weight):
@@ -769,8 +878,9 @@ struct DayFacts {
     }
 
     /// The large card's weight column: the latest reading and its change over
-    /// the last 14 days, in the words of buildHealthReport; then the same fact
-    /// as `−1.0 lb / 14 d`, with and without the word the unit already says.
+    /// the last 14 days, in the words of buildHealthReport; then the same
+    /// fact without the word the unit already says, then with the span
+    /// shortened (`over 14 d`), and last as `−1.0 lb / 14 d`.
     var weightCaptions: [String] {
         guard let weight = latestWeight, let latestLb = weight.w else { return ["Weight not recorded"] }
         let from = DayMath.addDays(todayKey, -13)
@@ -783,7 +893,7 @@ struct DayFacts {
         if recent.count >= 2, let earliest = recent.min(by: { ($0.d ?? "") < ($1.d ?? "") })?.w {
             let change = latestLb - earliest
             let delta = "\(change < 0 ? "−" : "+")\(Copy.pounds(abs(change))) lb"
-            return ["\(stamp) · \(delta) over 14 days", "\(stamp) · \(delta) / 14 d", "\(date) · \(delta) / 14 d", stamp]
+            return ["\(stamp) · \(delta) over 14 days", "\(date) · \(delta) over 14 days", "\(date) · \(delta) over 14 d", "\(date) · \(delta) / 14 d", stamp]
         } else if recent.count == 1 {
             return ["\(stamp) · 1 reading", stamp]
         }
@@ -831,6 +941,11 @@ struct DayFacts {
         guard !hours.isEmpty else { return nil }
         return hours.reduce(0, +) / Double(hours.count)
     }
+
+    /// Whether the 14-night line has anything to draw; without a night the
+    /// line is left out and the card closes the gap rather than keeping a
+    /// blank band where it would have been.
+    var hasNights: Bool { nightSlots.contains { $0 != nil } }
 
     // MARK: Lock Screen
 
@@ -994,20 +1109,23 @@ struct BarsShape: Shape {
     }
 }
 
-/// Header: the mark and the word `baseline` on the left, the date line on the right.
+/// Header: the mark and the card's word on the left (`baseline` for the
+/// record card, `training` for the training card: the same mark and face,
+/// so both are Baseline's), the date line on the right.
 struct Header: View {
     let date: String
     let p: Palette
+    var word = "baseline"
     var body: some View {
         HStack(alignment: .center, spacing: 5) {
             BrandMark(p: p).frame(width: 14, height: 14)
-            Text("baseline").font(Fonts.ui(12, .bold)).tracking(-0.2).foregroundStyle(p.ink).lineLimit(1)
+            Text(word).font(Fonts.ui(12, .bold)).tracking(-0.2).foregroundStyle(p.ink).lineLimit(1)
             Spacer(minLength: 8)
             Text(date).font(Fonts.mono(11, .medium)).tracking(0.8).foregroundStyle(p.muted).lineLimit(1)
         }
         .frame(height: 14)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("Baseline, \(date)"))
+        .accessibilityLabel(Text("Baseline \(word == "baseline" ? "" : word + " ")\(date)"))
     }
 }
 
@@ -1049,8 +1167,13 @@ struct SleepSparkline: View {
         .accessibilityHidden(true)
     }
 
-    private var low: Double { min(4, slots.compactMap { $0 }.min() ?? 4) }
-    private var high: Double { max(goal + 0.5, slots.compactMap { $0 }.max() ?? goal + 0.5) }
+    /// The range hugs the nights: an hour under the shortest night (or the
+    /// goal, whichever is lower) to half an hour over the longest (or the
+    /// goal). A floor at 4 h squashed a week of 7–8 h nights into a flat
+    /// band; this way the line shows its direction, and the goal still sits
+    /// above it when the nights fall short.
+    private var low: Double { max(0, min(goal, slots.compactMap { $0 }.min() ?? goal) - 1) }
+    private var high: Double { max(goal, slots.compactMap { $0 }.max() ?? goal) + 0.5 }
     private let inset: CGFloat = 1.5
 
     private func x(_ index: Int, _ size: CGSize) -> CGFloat {
@@ -1123,28 +1246,36 @@ struct DayStrip: View {
     }
 }
 
-/// A whole-widget state below the rule: the title, and on medium and large
-/// the line, in the app's own words.
+/// A whole-widget state below the rule, composed the way the app's own
+/// `.empty` block is: the title in the reading face (the serif is for what
+/// is read rather than scanned) and, on medium and large, the line under it
+/// in the app's own words, the pair centred in the space the body would
+/// have taken. The header and the rule stay, so the card is still Baseline.
 struct StateBody: View {
-    let state: DayFacts.State
-    let showLine: Bool
+    let title: String
+    let line: String?
     let p: Palette
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(state.title).font(Fonts.ui(13, .semibold)).foregroundStyle(p.ink).lineLimit(1)
-            if showLine {
-                Text(state.line).font(Fonts.ui(11, .medium)).foregroundStyle(p.muted).lineLimit(2)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(Fonts.serif(22)).foregroundStyle(p.ink).lineLimit(2)
+            if let line {
+                Text(line).font(Fonts.ui(11, .medium)).foregroundStyle(p.muted).lineLimit(2)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        // Laid out before the card's trailing spacer, so it takes the whole
+        // body rather than half of it.
+        .layoutPriority(1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(line.map { "\(title). \($0)" } ?? title))
     }
 }
 
 /// One line of one fact in the longest of its wordings that fits the width
 /// it is given (ViewThatFits, longest first). Nothing here ever shows an
 /// ellipsis: the last wording is short by construction, and a time or a
-/// figure is dropped whole rather than cut. Up to four wordings.
+/// figure is dropped whole rather than cut. Up to five wordings.
 struct FittingText: View {
     let candidates: [String]
     let font: Font
@@ -1159,6 +1290,7 @@ struct FittingText: View {
             if list.count > 1 { line(1) }
             if list.count > 2 { line(2) }
             if list.count > 3 { line(3) }
+            if list.count > 4 { line(4) }
         }
     }
 
@@ -1224,7 +1356,7 @@ struct RecordSmallView: View {
             Header(date: DayMath.dateLine(entry.date, long: false), p: p)
             Rule(p: p).padding(.top, 6).padding(.bottom, 8)
             if let state = facts.state {
-                StateBody(state: state, showLine: false, p: p)
+                StateBody(title: state.title, line: nil, p: p)
             } else {
                 hero(facts, p)
                 ledger(facts, p).padding(.top, 8)
@@ -1279,13 +1411,17 @@ struct RecordMediumView: View {
             Header(date: DayMath.dateLine(entry.date, long: true), p: p)
             Rule(p: p).padding(.top, 6).padding(.bottom, 8)
             if let state = facts.state {
-                StateBody(state: state, showLine: true, p: p)
+                StateBody(title: state.title, line: state.line, p: p)
             } else {
+                // The two columns end on one line: the hero column is 96 pt
+                // (figure, caption, the 14-night line, and the what's-left line
+                // at its foot), the four 23 pt rows with their hairlines 95.
                 HStack(alignment: .top, spacing: 12) {
-                    hero(facts, p).frame(width: 150, alignment: .topLeading)
+                    hero(facts, p).frame(width: 150, height: 96, alignment: .topLeading)
                     Rectangle().fill(p.line).frame(width: 1)
                     ledger(facts, p).frame(maxWidth: .infinity, alignment: .topLeading)
                 }
+                .frame(height: 96)
             }
             Spacer(minLength: 0)
         }
@@ -1299,11 +1435,13 @@ struct RecordMediumView: View {
             HeroFigure(figure: facts.heroFigure(hero), unit: facts.heroUnit(hero), p: p)
             FittingText(candidates: facts.heroCaptions(hero, family: .systemMedium), font: Fonts.ui(11, .medium), color: p.muted)
                 .padding(.top, 2)
-            SleepSparkline(slots: facts.nightSlots, goal: facts.sleepGoal, p: p)
-                .frame(width: 150, height: 22).padding(.top, 6)
+            if facts.hasNights {
+                SleepSparkline(slots: facts.nightSlots, goal: facts.sleepGoal, p: p)
+                    .frame(width: 150, height: 22).padding(.top, 6)
+            }
+            Spacer(minLength: 6)
             FittingText(candidates: facts.isStale ? facts.staleNotes(.medium) : [facts.whatsLeft(short: false)],
                         font: Fonts.ui(11, .medium), color: facts.isStale ? p.warn : p.muted)
-                .padding(.top, 6)
         }
         .privacySensitive()
         .accessibilityElement(children: .ignore)
@@ -1315,7 +1453,7 @@ struct RecordMediumView: View {
         return VStack(spacing: 0) {
             ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
                 if index > 0 { Rectangle().fill(p.line).frame(height: 1) }
-                LedgerLine(row: row, height: 20, p: p)
+                LedgerLine(row: row, height: 23, p: p)
             }
         }
     }
@@ -1334,16 +1472,22 @@ struct RecordLargeView: View {
             Header(date: DayMath.dateLine(entry.date, long: true), p: p)
             Rule(p: p).padding(.top, 6).padding(.bottom, 8)
             if let state = facts.state {
-                StateBody(state: state, showLine: true, p: p)
+                StateBody(title: state.title, line: state.line, p: p)
             } else {
                 heroes(facts, p).frame(height: 48)
-                SleepSparkline(slots: facts.nightSlots, goal: facts.sleepGoal, p: p)
-                    .frame(maxWidth: .infinity).frame(height: 24).padding(.top, 8)
-                    .privacySensitive()
-                ledger(facts, p).padding(.top, 10)
-                footer(facts, p).padding(.top, 8)
+                if facts.hasNights {
+                    SleepSparkline(slots: facts.nightSlots, goal: facts.sleepGoal, p: p)
+                        .frame(maxWidth: .infinity).frame(height: 26).padding(.top, 8)
+                        .privacySensitive()
+                }
+                // The ledger takes the height between the line and the footer
+                // (rows grow from 26 to 34 pt to fill it: 29 with six rows under
+                // the line on an iPhone), and the footer sits on the last line
+                // of the page rather than wherever the rows happened to end.
+                ledger(facts, p).padding(.top, 8).layoutPriority(1)
+                Spacer(minLength: 8)
+                footer(facts, p)
             }
-            Spacer(minLength: 0)
         }
         .padding(16)
         .containerBackground(p.paper, for: .widget)
@@ -1390,7 +1534,7 @@ struct RecordLargeView: View {
                         .frame(width: 88, alignment: .trailing)
                         .privacySensitive()
                 }
-                .frame(height: 28)
+                .frame(minHeight: 26, maxHeight: 34)
                 .accessibilityElement(children: .ignore)
                 .accessibilityLabel(Text(row.accessibilityLabel))
             }
@@ -1491,6 +1635,7 @@ struct BaselineWidget: Widget {
 struct BaselineWidgetBundle: WidgetBundle {
     var body: some Widget {
         BaselineWidget()
+        BaselineTrainingWidget()
     }
 }
 
@@ -1581,7 +1726,12 @@ enum WidgetPreviewCatalog {
         { AnyView(BaselineWidgetView(entry: BaselineEntry(date: date, feed: feed), family: $0)) }
     }
 
-    static let scenes: [(name: String, view: (WidgetFamily) -> AnyView)] = [
+    /// The record card's scenes, then the training card's (`training-…`,
+    /// in Widget/BaselineTrainingWidget.swift). The renderer draws every
+    /// scene at every family.
+    static let scenes: [(name: String, view: (WidgetFamily) -> AnyView)] = recordScenes + TrainingPreviewCatalog.scenes
+
+    static let recordScenes: [(name: String, view: (WidgetFamily) -> AnyView)] = [
         ("morning", scene(morning, at(8, 30))),
         ("evening-complete", scene(eveningComplete, at(21, 10))),
         ("missed-dose", scene(missedDose, at(13, 0))),

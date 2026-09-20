@@ -1,12 +1,14 @@
 import Foundation
 
-/// The Home Screen widget's feed builder: JavaScript the shell injects into
+/// The Home Screen widgets' feed builder: JavaScript the shell injects into
 /// the live site at document start, after `bridge.js`, as
 /// `ShellConfig.extraBootScript` (main frame only). It reads the page's own
 /// browser-side copy of the record (`localStorage["bardia-health-v1"]`),
-/// reduces it to numbers, dates, `HH:MM` times and category words, and hands
-/// the result to `window.nativeShell.widgetFeed(feed)`; the shell writes it as
-/// `widget-feed.json` in the App Group and reloads the widget.
+/// reduces it to numbers, dates, `HH:MM` times, category words and — for the
+/// training card only — the workout and exercise names as Strong spells
+/// them, and hands the result to `window.nativeShell.widgetFeed(feed)`; the
+/// shell writes it as `widget-feed.json` in the App Group and reloads both
+/// widgets. Notes, journal text, medication and lab names never leave the page.
 ///
 /// Compiled into the app target only. Kept as a Swift string rather than a
 /// bundled resource so the app-side type check and the JavaScript tests can
@@ -18,7 +20,7 @@ import Foundation
 /// absent (a foreign origin, or a plain browser), or throw into the page.
 enum BaselineFeedScript {
     static let source = #"""
-/* Baseline widget feed. Home origin only; numbers, dates and category words. */
+/* Baseline widget feed. Home origin only; numbers, dates, category words and Strong's lift names. */
 (function () {
   "use strict";
   try {
@@ -53,6 +55,32 @@ enum BaselineFeedScript {
     function list(v) { return Array.isArray(v) ? v : []; }
     function obj(v) { return v && typeof v === "object" && !Array.isArray(v) ? v : null; }
     function newestFirst(a, b) { return a.d < b.d ? 1 : a.d > b.d ? -1 : 0; }
+    // Whole weeks between two Mondays (weeksBetween in app/training/coach.ts).
+    function weeksBetween(a, b) { return Math.round((utc(b) - utc(a)) / (7 * DAY_MS)); }
+
+    /* --------------------------------------------------------- lifting -- */
+
+    // A name as Strong spells it, capped; the superset asterisk is a note
+    // about the sitting, not part of the name (normalizeWorkoutSet).
+    function liftName(v) { return typeof v === "string" ? v.replace(/^\*+\s*/, "").trim().slice(0, 40) : ""; }
+    // The load of a set: only a loaded set carries one (assisted and
+    // bodyweight sets keep null, as the page normalises them).
+    function load(st) {
+      if (st.loadMode === "assisted" || st.loadMode === "bodyweight") return null;
+      var w = num(st.weightLb);
+      return w !== null && w > 0 ? w : null;
+    }
+    // Epley (estimateOneRepMax): past fifteen reps it declines to guess.
+    function e1rm(w, r) { return w !== null && r !== null && w > 0 && r > 0 && r <= 15 ? Math.round(w * (1 + r / 30) * 10) / 10 : null; }
+    // betterSet: by estimated max, or by reps when nothing is loaded.
+    function better(a, b) {
+      if (!b) return true;
+      var x = e1rm(a.w, a.reps), y = e1rm(b.w, b.reps);
+      if (x !== null || y !== null) return (x || 0) > (y || 0);
+      return (a.reps || 0) > (b.reps || 0);
+    }
+    // compareWorkoutStarts: imported timestamps compare alike with "T" or " ".
+    function laterStart(a, b) { var x = a.replace("T", " "), y = b.replace("T", " "); return x < y ? 1 : x > y ? -1 : 0; }
 
     function stamp() {
       return { v: 1, app: "baseline", builtAt: new Date().toISOString(), builtOn: todayLocal() };
@@ -178,15 +206,39 @@ enum BaselineFeedScript {
       feed.nights = nights;
       feed.latestNight = nightKeys.length ? night(nightKeys[0]) : null;
 
-      // Training: sessions are distinct startedAt values; dates only.
+      // Training: sessions are distinct startedAt values. Dates, counts and
+      // loads, plus the workout and exercise names as Strong spells them
+      // (capped at 40 characters); never a note.
       var sets = list(state.workoutSets);
       var sessions = {}, workoutDates = {}, lastWorkout = null;
+      // Per session (buildWorkoutSessions) and per exercise
+      // (buildExerciseSummaries): what the Workouts list prints.
+      var byStart = {}, byLift = {}, setsToDate = 0;
       for (var t = 0; t < sets.length; t++) {
         var st = obj(sets[t]);
         if (!st || !isDate(st.date) || st.date > today) continue;
-        sessions[typeof st.startedAt === "string" && st.startedAt ? st.startedAt : st.date] = st.date;
+        var startKey = typeof st.startedAt === "string" && st.startedAt ? st.startedAt : st.date;
+        sessions[startKey] = st.date;
         workoutDates[st.date] = true;
         if (lastWorkout === null || st.date > lastWorkout) lastWorkout = st.date;
+        setsToDate++;
+        var lift = liftName(st.exercise), w = load(st), r = num(st.reps);
+        var session = byStart[startKey];
+        if (!session) session = byStart[startKey] = { d: st.date, label: liftName(st.workoutName), lifts: {}, sets: 0, vol: 0, min: null, top: null };
+        session.sets++;
+        session.vol += (w || 0) * (r || 0);
+        if (session.min === null) { var dur = num(st.durationSeconds); if (dur !== null && dur > 0) session.min = Math.round(dur / 60); }
+        if (!lift) continue;
+        session.lifts[lift] = true;
+        var candidate = { lift: lift, w: w, reps: r, d: st.date, key: startKey };
+        if (better(candidate, session.top)) session.top = candidate;
+        var ex = byLift[lift];
+        if (!ex) ex = byLift[lift] = { sessions: {}, best: null, loaded: false, recent: 0 };
+        if (w !== null) ex.loaded = true;
+        var es = ex.sessions[startKey];
+        if (!es) es = ex.sessions[startKey] = { key: startKey, top: null };
+        if (better(candidate, es.top)) es.top = candidate;
+        if (better(candidate, ex.best)) ex.best = candidate;
       }
       if (lastWorkout !== null) {
         var ws = weekStart(today), thisWeek = 0, sk;
@@ -200,13 +252,106 @@ enum BaselineFeedScript {
         var recent = [];
         for (wd in workoutDates) { if (wd >= from14) recent.push(wd); }
         recent.sort().reverse();
+
+        // The last three sessions, newest first.
+        var startKeys = Object.keys(byStart).sort(laterStart);
+        var recentSessions = [];
+        for (var q = 0; q < startKeys.length && q < 3; q++) {
+          var ss = byStart[startKeys[q]];
+          var one = { d: ss.d, lifts: Object.keys(ss.lifts).length, sets: ss.sets, vol: Math.round(ss.vol) };
+          if (ss.label) one.label = ss.label;
+          if (ss.min !== null) one.min = ss.min;
+          if (ss.top) {
+            one.top = { lift: ss.top.lift };
+            if (ss.top.w !== null) one.top.w = ss.top.w;
+            if (ss.top.reps !== null) one.top.reps = ss.top.reps;
+          }
+          recentSessions.push(one);
+        }
+
+        // Eight weeks ending this week, oldest first: sessions and volume.
+        var weeks = [];
+        for (var wi = 7; wi >= 0; wi--) {
+          var s0 = addDays(ws, -7 * wi), s1 = addDays(s0, 6), n = 0, wvol = 0;
+          for (sk in byStart) { if (byStart[sk].d >= s0 && byStart[sk].d <= s1) { n++; wvol += byStart[sk].vol; } }
+          weeks.push({ s: s0, n: n, vol: Math.round(wvol) });
+        }
+
+        // The week's target, as Today prints "2 of 4": the block week's chosen
+        // days (currentBlockWeek, buildBlock: two or more, at most four, else
+        // two), once the record holds enough to plan from (ten sets).
+        var planned = null;
+        if (setsToDate >= 10) {
+          var chosen = list(g.trainingDays), weekIndex = 0;
+          var blockStart = typeof g.trainingBlockStart === "string" && isDate(g.trainingBlockStart) ? g.trainingBlockStart : null;
+          var trainedWeeks = Object.keys(trained).sort();
+          if (blockStart) {
+            weekIndex = ((weeksBetween(blockStart, ws) % 4) + 4) % 4;
+          } else if (trainedWeeks.length && weeksBetween(trainedWeeks[trainedWeeks.length - 1], ws) < 3) {
+            var anchor = trainedWeeks[0];
+            for (var a = 1; a < trainedWeeks.length; a++) { if (weeksBetween(trainedWeeks[a - 1], trainedWeeks[a]) >= 3) anchor = trainedWeeks[a]; }
+            weekIndex = ((weeksBetween(anchor, ws) % 4) + 4) % 4;
+          }
+          var picked = num(chosen[weekIndex]);
+          planned = picked !== null && picked >= 2 ? Math.min(4, Math.round(picked)) : 2;
+        }
+
+        // trainingHabit: sessions per trained week over the six weeks ending
+        // on the last training day, one decimal ("You train 3.5× a week").
+        var habitStart = addDays(lastWorkout, -41), habitSessions = 0, habitWeeks = {};
+        for (sk in byStart) { if (byStart[sk].d >= habitStart && byStart[sk].d <= lastWorkout) { habitSessions++; habitWeeks[weekStart(byStart[sk].d)] = true; } }
+        var usual = habitSessions ? Math.round(habitSessions / Math.max(1, Object.keys(habitWeeks).length) * 10) / 10 : null;
+
+        // The staples: up to four exercises by sessions in those eight weeks,
+        // each with its best-ever set (betterSet) and whether that set is a
+        // record of the last 30 days (recentPersonalRecords: a first attempt
+        // is not a record, there is nothing to beat).
+        var from30 = addDays(today, -29), from56 = addDays(ws, -49), liftKeys = Object.keys(byLift), li, lk;
+        for (li = 0; li < liftKeys.length; li++) {
+          var exr = byLift[liftKeys[li]];
+          for (lk in exr.sessions) { if (sessions[lk] >= from56) exr.recent++; }
+        }
+        liftKeys.sort(function (a, b) {
+          var x = byLift[a], y = byLift[b];
+          return y.recent - x.recent || (x.best.d < y.best.d ? 1 : x.best.d > y.best.d ? -1 : 0) || (a < b ? -1 : a > b ? 1 : 0);
+        });
+        var lifts = [];
+        for (li = 0; li < liftKeys.length && lifts.length < 4; li++) {
+          var exl = byLift[liftKeys[li]], best = exl.best;
+          if (!exl.recent || !best) continue;
+          var row = { lift: liftKeys[li], d: best.d };
+          if (best.w !== null) row.w = best.w;
+          if (best.reps !== null) row.reps = best.reps;
+          var max = e1rm(best.w, best.reps);
+          if (max !== null) row.max = max;
+          var record = false;
+          if (best.d >= from30 && best.d <= today && Object.keys(exl.sessions).length >= 2) {
+            var bodyweight = !exl.loaded, previous = null;
+            for (lk in exl.sessions) {
+              if (lk >= best.key) continue;
+              var topSet = exl.sessions[lk].top;
+              var rank = !topSet ? 0 : bodyweight ? (topSet.reps || 0) : (e1rm(topSet.w, topSet.reps) || 0);
+              if (previous === null || rank > previous) previous = rank;
+            }
+            var current = bodyweight ? (best.reps || 0) : (e1rm(best.w, best.reps) || 0);
+            record = previous !== null && current > previous;
+          }
+          row.pr = record;
+          lifts.push(row);
+        }
+
         feed.training = {
           lastWorkout: lastWorkout,
           thisWeek: thisWeek,
           weekStart: ws,
           streakWeeks: streak,
           importedAt: typeof state.importedAt === "string" && isDate(state.importedAt.slice(0, 10)) ? state.importedAt.slice(0, 10) : null,
-          days: recent
+          days: recent,
+          planned: planned,
+          usual: usual,
+          weeks: weeks,
+          sessions: recentSessions,
+          lifts: lifts
         };
       } else {
         feed.training = null;

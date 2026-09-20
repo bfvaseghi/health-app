@@ -14,6 +14,7 @@
 		2A9BD83E8D98AAC31A24006A /* BaselineWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = F99F98163A20A4E8BC0E4E69 /* BaselineWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		2CA94BF892151688EC021EDB /* WebShellViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FC8A061B2B5A9B62967ADEA /* WebShellViewController.swift */; };
 		3656032D5753C00F61FF5784 /* BundleSchemeHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 842D029C78C8DC36C0C6B836 /* BundleSchemeHandler.swift */; };
+		3904C03B3832C30ECAEFF91E /* BaselineTrainingWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4637A28D8DA5ED6594687532 /* BaselineTrainingWidget.swift */; };
 		3B771187154E47CAFFBB9BE3 /* ShellAppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B6A95F409B0E7D0B4A792D8 /* ShellAppDelegate.swift */; };
 		435BAB217E87B56B1A24E8EC /* WidgetFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69BDDD3BD84BAAC610BE9C81 /* WidgetFeed.swift */; };
 		5135A860AE0336E7A18B48DA /* bridge.js in Resources */ = {isa = PBXBuildFile; fileRef = FC153C490105280592AFABD8 /* bridge.js */; };
@@ -21,6 +22,7 @@
 		6CAE97F208A8D9F92D1B29ED /* WidgetFeed.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69BDDD3BD84BAAC610BE9C81 /* WidgetFeed.swift */; };
 		8629C718C02648F3DC905FBF /* StorageMirror.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8F949CBDD7B6322F0C37034 /* StorageMirror.swift */; };
 		86A4A0D1665720175FFEAA47 /* InstrumentSerif-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 645CA9DD6A200FE09B0A5765 /* InstrumentSerif-OFL.txt */; };
+		87827656226EC4E18CE7E723 /* BaselineTrainingWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4637A28D8DA5ED6594687532 /* BaselineTrainingWidget.swift */; };
 		92DEA8E73ACD868E54B64D0B /* HankenGrotesk-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 49752553F76051421D4DA517 /* HankenGrotesk-Bold.ttf */; };
 		99C133B6E0F02B2BFF111592 /* HankenGrotesk-OFL.txt in Resources */ = {isa = PBXBuildFile; fileRef = 68B531F057836002D73C96EF /* HankenGrotesk-OFL.txt */; };
 		99D9C6E1F443401C14770F8E /* NativeBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6674D77979392C159437CB0A /* NativeBridge.swift */; };
@@ -68,6 +70,7 @@
 		2DE926C3E7C5CD99D4D28785 /* BaselineWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BaselineWidget.swift; sourceTree = "<group>"; };
 		302BF678160D75ABB1001B33 /* InstrumentSerif-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "InstrumentSerif-Regular.ttf"; sourceTree = "<group>"; };
 		3B6A95F409B0E7D0B4A792D8 /* ShellAppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShellAppDelegate.swift; sourceTree = "<group>"; };
+		4637A28D8DA5ED6594687532 /* BaselineTrainingWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BaselineTrainingWidget.swift; sourceTree = "<group>"; };
 		49752553F76051421D4DA517 /* HankenGrotesk-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "HankenGrotesk-Bold.ttf"; sourceTree = "<group>"; };
 		4FC8A061B2B5A9B62967ADEA /* WebShellViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebShellViewController.swift; sourceTree = "<group>"; };
 		6148BA36F5979476A96A4538 /* Baseline.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Baseline.entitlements; sourceTree = "<group>"; };
@@ -158,6 +161,7 @@
 		8ED282AF6869E85D2393503C /* Widget */ = {
 			isa = PBXGroup;
 			children = (
+				4637A28D8DA5ED6594687532 /* BaselineTrainingWidget.swift */,
 				2DE926C3E7C5CD99D4D28785 /* BaselineWidget.swift */,
 				80D367F66EFE17301DB540F3 /* Fonts */,
 			);
@@ -321,6 +325,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3904C03B3832C30ECAEFF91E /* BaselineTrainingWidget.swift in Sources */,
 				DEF4ACBE163741CD55B930D8 /* BaselineWidget.swift in Sources */,
 				B51991A6E54BED2BAEE1EDAC /* WidgetFeed.swift in Sources */,
 				C75AD64E0FD564D707059FCC /* WidgetPreviewTests.swift in Sources */,
@@ -347,6 +352,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				87827656226EC4E18CE7E723 /* BaselineTrainingWidget.swift in Sources */,
 				BF3CC6680E4C2FBFC9A2461A /* BaselineWidget.swift in Sources */,
 				6CAE97F208A8D9F92D1B29ED /* WidgetFeed.swift in Sources */,
 			);
