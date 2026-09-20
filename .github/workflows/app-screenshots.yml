@@ -1,0 +1,64 @@
+name: App screenshots
+
+# Builds the app for the iOS Simulator, installs and launches it on a booted
+# iPhone simulator, and screenshots the running app in light and dark
+# appearance, so what the app really shows on a phone can be looked at
+# without a device. macOS minutes are billed at 10x on a private repository,
+# so this runs on demand and when the app itself (not the widget) changes.
+on:
+  workflow_dispatch:
+  push:
+    branches: [claude/xcode-apps-ui-retention-ep2v4v]
+    paths:
+      - "ios/App/**"
+      - "ios/project.yml"
+      - .github/workflows/app-screenshots.yml
+
+jobs:
+  screenshots:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pick a simulator
+        id: sim
+        run: |
+          sdk=$(xcrun --sdk iphonesimulator --show-sdk-version)
+          id=$(xcrun simctl list devices available --json | python3 ios/Tests/WidgetPreview/select_simulator.py --sdk-version "$sdk")
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          xcrun simctl list devices available | grep -F "$id"
+      - name: Build for the simulator
+        run: |
+          xcodebuild -project ios/Baseline.xcodeproj -scheme Baseline \
+            -sdk iphonesimulator -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}" \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build > build.log 2>&1 || { tail -n 80 build.log; exit 1; }
+          grep -E "error:|\*\* BUILD" build.log || true
+      - name: Launch and screenshot
+        run: |
+          id="${{ steps.sim.outputs.id }}"
+          app=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name "*.app" | head -n 1)
+          echo "app: $app"
+          bundle=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$app/Info.plist")
+          echo "bundle: $bundle"
+          xcrun simctl boot "$id" || true
+          xcrun simctl bootstatus "$id" -b
+          xcrun simctl ui "$id" appearance light
+          xcrun simctl install "$id" "$app"
+          mkdir -p out
+          xcrun simctl launch "$id" "$bundle"
+          sleep 8
+          xcrun simctl io "$id" screenshot out/baseline-app-light-8s.png
+          sleep 8
+          xcrun simctl io "$id" screenshot out/baseline-app-light-16s.png
+          xcrun simctl ui "$id" appearance dark
+          sleep 4
+          xcrun simctl io "$id" screenshot out/baseline-app-dark.png
+          # The app's own words, as the page reports them: the window title and any
+          # console line the shell printed, for the log.
+          xcrun simctl spawn "$id" log show --last 2m --predicate 'process == "Baseline"' --style compact 2>/dev/null | tail -n 40 || true
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-screenshots
+          path: out/*.png
+          if-no-files-found: error
