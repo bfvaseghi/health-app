@@ -81,7 +81,7 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         case "print":
             controller?.presentPrint()
         case "chrome":
-            controller?.applyChrome(background: body["background"] as? String ?? "", systemDark: body["systemDark"] as? Bool ?? false)
+            controller?.applyChrome(background: body["background"] as? String ?? "", top: body["top"] as? String, systemDark: body["systemDark"] as? Bool ?? false)
         case "haptic":
             playHaptic(body["kind"] as? String ?? "light")
         case "notifications":

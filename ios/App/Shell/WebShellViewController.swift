@@ -329,14 +329,22 @@ final class WebShellViewController: UIViewController {
     }
 
     /// The page reported its background; paint everything around it to match.
-    func applyChrome(background: String, systemDark: Bool) {
+    /// `top` is what the page draws under the status bar (a sticky masthead
+    /// can be a different colour from the body); the status bar text reads
+    /// against that when the page extends under it, and against the page
+    /// background otherwise, because that is what shows there then.
+    func applyChrome(background: String, top: String? = nil, systemDark: Bool) {
         guard let color = ColorParsing.color(fromCSS: background) else { return }
         lastReportedBackground = color
         view.backgroundColor = color
         webView.backgroundColor = color
         webView.scrollView.backgroundColor = color
         webView.underPageBackgroundColor = color
-        let dark = ColorParsing.relativeLuminance(of: color) < 0.4
+        var edge = color
+        if underStatusBar.isActive, let top, let topColor = ColorParsing.color(fromCSS: top) { edge = topColor }
+        // White and black text have equal contrast against a luminance of
+        // about 0.18; below it white reads better, above it black does.
+        let dark = ColorParsing.relativeLuminance(of: edge) < 0.18
         if dark != chromeIsDark {
             chromeIsDark = dark
             setNeedsStatusBarAppearanceUpdate()

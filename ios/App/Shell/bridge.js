@@ -324,17 +324,68 @@
     function isTransparent(color) {
       return !color || color === "transparent" || /^rgba\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*,\s*0(?:\.0+)?\s*\)$/.test(color);
     }
+    // What sits under the status bar: the first opaque element at the top
+    // centre of the viewport. A sticky masthead is often a different colour
+    // from the page (a deep green over ivory, say), and the status bar text
+    // has to read against *that*, not against the body.
+    // Translucent layers (a modal's scrim, a frosted bar) are composited over
+    // what lies beneath them, down to the first opaque element or the page,
+    // so the colour sent is the one actually seen.
+    function parseColor(color) {
+      var m = /^rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+)\s*)?\)$/.exec(color || "");
+      if (!m) return null;
+      return { r: +m[1], g: +m[2], b: +m[3], a: m[4] === undefined ? 1 : +m[4] };
+    }
+    function over(fg, bg) {
+      var a = fg.a + bg.a * (1 - fg.a);
+      if (a <= 0) return { r: 0, g: 0, b: 0, a: 0 };
+      var mix = function (f, b) { return (f * fg.a + b * bg.a * (1 - fg.a)) / a; };
+      return { r: mix(fg.r, bg.r), g: mix(fg.g, bg.g), b: mix(fg.b, bg.b), a: a };
+    }
+    function topEdgeBackground(pageBackground) {
+      try {
+        if (!document.elementsFromPoint) return "";
+        var x = Math.max(1, Math.floor(window.innerWidth / 2));
+        var stack = document.elementsFromPoint(x, 1);
+        var layers = [];
+        var base = null;
+        for (var i = 0; i < stack.length; i++) {
+          var color = backgroundOf(stack[i]);
+          if (isTransparent(color)) continue;
+          var parsed = parseColor(color);
+          if (!parsed) return layers.length ? "" : color;
+          if (parsed.a >= 1) { base = parsed; break; }
+          layers.push(parsed);
+        }
+        if (!base) base = parseColor(pageBackground);
+        if (!base) return layers.length ? "" : (pageBackground || "");
+        var seen = base;
+        for (var j = layers.length - 1; j >= 0; j--) seen = over(layers[j], seen);
+        return "rgb(" + Math.round(seen.r) + ", " + Math.round(seen.g) + ", " + Math.round(seen.b) + ")";
+      } catch (e) { /* ignore */ }
+      return "";
+    }
     function report() {
       var background = backgroundOf(document.body);
       if (isTransparent(background)) background = backgroundOf(document.documentElement);
+      var top = topEdgeBackground(background);
+      if (isTransparent(top)) top = background;
       var systemDark = false;
       try { systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches; } catch (e) { /* ignore */ }
-      var signature = background + "|" + systemDark;
+      var signature = background + "|" + top + "|" + systemDark;
       if (signature === last) return;
       last = signature;
-      post({ type: "chrome", background: background, systemDark: systemDark });
+      post({ type: "chrome", background: background, top: top, systemDark: systemDark });
     }
     shell.reportChrome = report;
+    // Scrolling changes what is under the status bar on a page without a
+    // sticky masthead; one hit test per frame, and only a new answer is sent.
+    var reportQueued = false;
+    function reportSoon() {
+      if (reportQueued) return;
+      reportQueued = true;
+      requestAnimationFrame(function () { reportQueued = false; report(); });
+    }
 
     function observe() {
       report();
@@ -342,6 +393,11 @@
         var observer = new MutationObserver(function () { report(); });
         observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme"] });
         if (document.body) observer.observe(document.body, { attributes: true, attributeFilter: ["class", "style", "data-theme"] });
+      } catch (e) { /* ignore */ }
+      try {
+        document.addEventListener("scroll", reportSoon, { passive: true, capture: true });
+        window.addEventListener("resize", reportSoon);
+        window.addEventListener("load", function () { setTimeout(report, 50); });
       } catch (e) { /* ignore */ }
       try {
         var media = window.matchMedia("(prefers-color-scheme: dark)");
