@@ -337,3 +337,36 @@ rejects it: `brew install xcodegen`, then `cd ios && xcodegen generate` —
 `project.yml` rebuilds an equivalent project (same three targets — the app, the
 widget extension and the preview-render tests — the same names, signing,
 entitlements and Catalyst support).
+
+## Install without Xcode
+
+Every push to `main` that touches the app (and the **Actions → iOS build
+(IPA) → Run workflow** button) archives the app for a real iPhone and
+publishes it as a GitHub Release on this repository, named `ios-<date>`, with
+`Baseline-unsigned.ipa` attached. It is unsigned on purpose: sign it with your
+own Apple ID and it installs on your phone.
+
+- **Sideloadly** (Mac or Windows): install it from sideloadly.io, plug in the
+  iPhone, drop the `.ipa` on the window, enter your Apple ID, press **Start**.
+  With a paid Apple Developer account the app and its widget stay installed;
+  with a free Apple ID iOS re-signs every 7 days (open Sideloadly again to
+  renew) and the widget may not be allowed, since free accounts cannot use
+  App Groups.
+- **AltStore**: the same idea, refreshed automatically from a computer on the
+  same Wi-Fi.
+- First install: **Settings → General → VPN & Device Management** → trust
+  your Apple ID.
+
+## TestFlight from GitHub Actions
+
+With the paid account, **Actions → TestFlight → Run workflow** signs the app
+in the cloud and uploads it to TestFlight, so it installs from the TestFlight
+app with no cable. Once only, add four repository secrets (Settings → Secrets
+and variables → Actions): `APPLE_TEAM_ID` (developer.apple.com → Membership),
+`ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_P8` (App Store Connect → Users and
+Access → Integrations → App Store Connect API: create a key with the App
+Manager role, download the `.p8`, paste its text), and create the app record
+in App Store Connect (My Apps → **+** → New App, bundle ID `com.bardia.baseline`). The
+workflow registers the bundle identifiers and creates the provisioning
+profiles itself. Each upload appears in TestFlight within a few minutes; add
+yourself as an internal tester once.

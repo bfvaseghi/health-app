@@ -14,6 +14,28 @@ final class WebShellViewController: UIViewController {
     /// A deep link that arrived before the web view existed (a cold launch
     /// from a widget); applied in place of the entry load.
     private var pendingDeepLink: URL?
+    /// The web view's top edge: under the status bar for the app's own page,
+    /// which pads for it, or below it for any other document.
+    private var underStatusBar: NSLayoutConstraint!
+    private var belowStatusBar: NSLayoutConstraint!
+
+    /// Only the app's own page declares viewport-fit=cover and pads with
+    /// env(safe-area-inset-top). In remote mode the main frame also shows a
+    /// sign-in host's page, which does not, so that document sits below the
+    /// status bar on the app's background colour instead of under the clock.
+    private func updateTopEdge(for url: URL?) {
+        guard config.extendsUnderStatusBar, config.remoteURL != nil else { return }
+        let home = url.map(isHomeURL) ?? true
+        guard home != underStatusBar.isActive else { return }
+        if home {
+            belowStatusBar.isActive = false
+            underStatusBar.isActive = true
+        } else {
+            underStatusBar.isActive = false
+            belowStatusBar.isActive = true
+        }
+        view.layoutIfNeeded()
+    }
 
     init(config: ShellConfig) {
         self.config = config
@@ -33,9 +55,10 @@ final class WebShellViewController: UIViewController {
         webView = makeWebView()
         view.addSubview(webView)
         webView.translatesAutoresizingMaskIntoConstraints = false
-        let top = config.extendsUnderStatusBar ? view.topAnchor : view.safeAreaLayoutGuide.topAnchor
+        underStatusBar = webView.topAnchor.constraint(equalTo: view.topAnchor)
+        belowStatusBar = webView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor)
         NSLayoutConstraint.activate([
-            webView.topAnchor.constraint(equalTo: top),
+            config.extendsUnderStatusBar ? underStatusBar : belowStatusBar,
             webView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             webView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             webView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
@@ -469,6 +492,7 @@ extension WebShellViewController: WKNavigationDelegate {
     /// next foregrounding must not reload over the user's work.
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         if let url = webView.url, isHomeURL(url) { showingOfflinePage = false }
+        updateTopEdge(for: webView.url)
     }
 
     /// A response WebKit cannot display (a ZIP, a CSV served as an
