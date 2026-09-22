@@ -47,6 +47,10 @@ jobs:
           security create-keychain -p ci build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p ci build.keychain
+          # Without this the keychain relocks after five minutes and a long
+          # archive fails at the signing step with "User interaction is not
+          # allowed"; six hours outlives any build here.
+          security set-keychain-settings -lut 21600 build.keychain
           security import dist.p12 -k build.keychain -P "$DIST_CERT_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
           security set-key-partition-list -S apple-tool:,apple: -s -k ci build.keychain
           rm -f dist.p12
