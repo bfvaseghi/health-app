@@ -102,9 +102,13 @@ final class WebShellViewController: UIViewController {
         }
     }
 
+    /// Rebuilt from the configured origin rather than trusted as it arrives.
+    /// Anything on the device can open the app's scheme, and a URL carrying a
+    /// foreign host would otherwise be loaded as the main frame — where the
+    /// page's own origin gate no longer protects it. Only the path, query and
+    /// fragment survive; the scheme and host are always the app's own.
     private func deepLinkTarget(_ url: URL) -> URL? {
         guard url.scheme?.lowercased() == config.scheme.lowercased() else { return nil }
-        guard config.remoteURL != nil else { return url }
         guard var parts = URLComponents(url: config.originURL, resolvingAgainstBaseURL: false) else { return nil }
         if !url.path.isEmpty && url.path != "/" { parts.path = url.path }
         parts.query = url.query

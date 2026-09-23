@@ -62,11 +62,16 @@ final class ShellSceneDelegate: UIResponder, UIWindowSceneDelegate {
             traits.userInterfaceStyle == .dark ? config.darkBackground : config.lightBackground
         }
         let shell = WebShellViewController(config: config)
+        // Launched from a widget tap or a link in the app's own scheme. This
+        // has to happen before the window is shown: makeKeyAndVisible loads
+        // the view, and a loaded view has already started the entry page, so
+        // the link would arrive as a second navigation and the reader would
+        // watch the app open its home screen and then jump. Handed over now,
+        // it is parked and loaded in place of the entry page.
+        if let url = connectionOptions.urlContexts.first?.url { shell.open(deepLink: url) }
         window.rootViewController = shell
         self.window = window
         window.makeKeyAndVisible()
-        // Launched from a widget tap or a link in the app's own scheme.
-        if let url = connectionOptions.urlContexts.first?.url { shell.open(deepLink: url) }
 
         #if targetEnvironment(macCatalyst)
         windowScene.sizeRestrictions?.minimumSize = CGSize(width: 420, height: 600)

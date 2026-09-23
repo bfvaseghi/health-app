@@ -342,6 +342,51 @@
       var mix = function (f, b) { return (f * fg.a + b * bg.a * (1 - fg.a)) / a; };
       return { r: mix(fg.r, bg.r), g: mix(fg.g, bg.g), b: mix(fg.b, bg.b), a: a };
     }
+    // elementsFromPoint answers "what would a tap hit here", which is not the
+    // same question as "what is painted here". It leaves out an inert
+    // subtree, a pointer-events:none layer, and everything beneath an open
+    // <dialog> — all of which are still on screen. A page that makes its
+    // masthead inert while a modal is open therefore drops that masthead
+    // from the stack, and the scrim composites over the page behind it: a
+    // well-formed colour that is not the one under the status bar. When the
+    // hit test finds nothing opaque, look for the covering element directly.
+    var PAINT_SEARCH_LIMIT = 400;
+    function opaqueCoverAt(x, y) {
+      var found = null;
+      var visited = 0;
+      function walk(node) {
+        var children = node.children;
+        for (var i = 0; i < children.length && visited < PAINT_SEARCH_LIMIT; i++) {
+          var el = children[i];
+          visited++;
+          var rect;
+          try { rect = el.getBoundingClientRect(); } catch (e) { continue; }
+          if (rect.width <= 0 || rect.height <= 0) continue;
+          if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) continue;
+          var style;
+          try { style = getComputedStyle(el); } catch (e) { continue; }
+          if (style.visibility === "hidden" || style.display === "none" || style.opacity === "0") continue;
+          // Later in document order paints over earlier, so the last opaque
+          // cover found is the nearest thing to the topmost one.
+          var parsed = parseColor(style.backgroundColor);
+          if (parsed && parsed.a >= 1) found = { el: el, color: parsed };
+          walk(el);
+        }
+      }
+      if (document.body) walk(document.body);
+      return found;
+    }
+    /// Does `candidate` paint over `base`? True when it comes later in the
+    /// document or sits inside it, which is how the two reach the screen in
+    /// the absence of a z-index that says otherwise.
+    function paintsOver(candidate, base) {
+      if (!base) return true;
+      if (candidate === base) return false;
+      try {
+        var where = base.compareDocumentPosition(candidate);
+        return !!(where & Node.DOCUMENT_POSITION_FOLLOWING) || !!(where & Node.DOCUMENT_POSITION_CONTAINED_BY);
+      } catch (e) { return false; }
+    }
     function topEdgeBackground(pageBackground) {
       try {
         if (!document.elementsFromPoint) return "";
@@ -349,13 +394,32 @@
         var stack = document.elementsFromPoint(x, 1);
         var layers = [];
         var base = null;
+        var baseEl = null;
         for (var i = 0; i < stack.length; i++) {
           var color = backgroundOf(stack[i]);
           if (isTransparent(color)) continue;
           var parsed = parseColor(color);
           if (!parsed) return layers.length ? "" : color;
-          if (parsed.a >= 1) { base = parsed; break; }
+          if (parsed.a >= 1) { base = parsed; baseEl = stack[i]; break; }
           layers.push(parsed);
+        }
+        // The hit test's base is wrong whenever something painted over it was
+        // skipped — the usual case being a masthead the page made inert while
+        // a modal is open, leaving the body underneath as the apparent base.
+        // Searching the painted tree costs a layout, and this runs on scroll,
+        // so it is done only when the answer can actually be wrong: the hit
+        // test fell through to the page itself, and either something
+        // translucent covers the point or the page has marked part of itself
+        // unhittable. Anything else means the hit test found a real layer.
+        if (!baseEl || baseEl === document.body || baseEl === document.documentElement) {
+          var mayBeHidden = layers.length > 0;
+          if (!mayBeHidden) {
+            try { mayBeHidden = !!document.querySelector("[inert], dialog[open]"); } catch (e) { mayBeHidden = false; }
+          }
+          if (mayBeHidden) {
+            var cover = opaqueCoverAt(x, 1);
+            if (cover && paintsOver(cover.el, baseEl)) base = cover.color;
+          }
         }
         if (!base) base = parseColor(pageBackground);
         if (!base) return layers.length ? "" : (pageBackground || "");
@@ -392,7 +456,15 @@
       try {
         var observer = new MutationObserver(function () { report(); });
         observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "style", "data-theme"] });
-        if (document.body) observer.observe(document.body, { attributes: true, attributeFilter: ["class", "style", "data-theme"] });
+        if (document.body) {
+          observer.observe(document.body, { attributes: true, attributeFilter: ["class", "style", "data-theme"] });
+          // A modal often works by marking the page behind it inert, or by
+          // opening a <dialog>. Either changes what is drawn under the
+          // status bar without touching the two elements above, so watch
+          // those two attributes anywhere in the page. The filter keeps this
+          // cheap: nothing else in the subtree wakes it.
+          observer.observe(document.body, { attributes: true, subtree: true, attributeFilter: ["inert", "open"] });
+        }
       } catch (e) { /* ignore */ }
       try {
         document.addEventListener("scroll", reportSoon, { passive: true, capture: true });
@@ -516,6 +588,10 @@
     exportText: exportsApi.exportText,
     print: function () { post({ type: "print" }); },
     haptic: haptic,
+    /** Re-read what the page draws under the status bar and report it.
+     *  The shell watches for this on its own; a page only needs this when it
+     *  changes its chrome in a way no attribute or scroll reflects. */
+    reportChrome: function () { try { shell.reportChrome(); } catch (e) { /* ignore */ } },
     /** Hand the Home Screen widget what it should show (a JSON-serialisable object). */
     widgetFeed: function (feed) {
       var json;
