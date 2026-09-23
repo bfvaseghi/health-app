@@ -468,8 +468,14 @@ enum Fonts {
         .system(size: size, weight: weight, design: .monospaced)
     }
 
+    /// Font.custom(_:size:) scales with Dynamic Type; Font.custom(_:fixedSize:)
+    /// does not. The fallback taken when a face is missing is .system(size:),
+    /// which does not scale either, and the rows these faces sit in are
+    /// fixed-height. Scaling only the bundled face therefore moved one line
+    /// and not its neighbours, and overflowed a row that could not grow, so
+    /// the size is fixed here the way the rest of the widget's is.
     private static func custom(_ name: String, size: CGFloat) -> Font? {
-        isAvailable(name) ? Font.custom(name, size: size) : nil
+        isAvailable(name) ? Font.custom(name, fixedSize: size) : nil
     }
 
     private static func isAvailable(_ name: String) -> Bool {
