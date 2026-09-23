@@ -145,7 +145,10 @@ Both read the same data the app writes, so they always agree.
   Baseline.
 - With **Show Widget Previews While Locked** off, iOS blurs the health figures
   and leaves the header, the labels and the date readable.
-- Tapping either opens Baseline on Today.
+- Tapping either brings Baseline to the front. It does not jump to a
+  particular screen: Baseline's tabs are state inside the page rather than
+  addresses, so there is no Today to link to, and forcing one would mean
+  reloading the site and losing whatever you were part-way through.
 - They follow the system light/dark appearance (not the theme chosen inside
   the app), so they match the widgets around them.
 

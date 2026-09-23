@@ -56,6 +56,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="ios-$(date -u +%Y%m%d-%H%M)-${GITHUB_RUN_NUMBER}"
+          # Without --target the tag is cut at the default branch head,
+          # which by the time a 20-minute archive finishes may not be the
+          # commit in the .ipa. Pin it to what was actually built.
           gh release create "$tag" out/*.ipa \
+            --target "$GITHUB_SHA" \
             --title "Baseline for iPhone, $tag" \
             --notes "Unsigned iOS build of Baseline (app and widget) from ${GITHUB_SHA::7}. Sign and install it with your own Apple ID using Sideloadly or AltStore (see ios/README-iOS.md, \"Install without Xcode\"), or open ios/Baseline.xcodeproj in Xcode and press Run."
