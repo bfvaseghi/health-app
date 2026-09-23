@@ -8,7 +8,7 @@ name: Widget previews
 on:
   workflow_dispatch:
   push:
-    branches: [claude/xcode-apps-ui-retention-ep2v4v]
+    branches: [main, claude/xcode-apps-ui-retention-ep2v4v]
     paths:
       - "ios/Widget/**"
       - "ios/Tests/WidgetPreview/**"
@@ -31,13 +31,13 @@ jobs:
       - name: Render the widget
         run: |
           rm -rf previews.xcresult
+          status=0
           xcodebuild -project ios/Baseline.xcodeproj -scheme BaselineWidgetPreviews \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}" \
             -resultBundlePath "$GITHUB_WORKSPACE/previews.xcresult" \
             CODE_SIGNING_ALLOWED=NO \
             TEST_RUNNER_WIDGET_PREVIEW_DIR="$GITHUB_WORKSPACE/rendered" \
-            test > build.log 2>&1
-          status=$?
+            test > build.log 2>&1 || status=$?
           grep -E "WIDGET_PREVIEWS|error:|Test Case|\*\* TEST|Testing failed" build.log || true
           if [ "$status" -ne 0 ]; then echo "xcodebuild exited $status"; tail -n 60 build.log; exit "$status"; fi
       - name: Collect the files
@@ -68,6 +68,7 @@ jobs:
           fi
           ls -la out
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: widget-previews
           path: out/*.png

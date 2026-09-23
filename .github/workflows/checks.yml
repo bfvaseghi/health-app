@@ -1,0 +1,23 @@
+name: Checks
+
+# The repository's own model and UI suites, on Linux where minutes are cheap.
+# The render suite is deliberately left out: it needs a full site build.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, claude/xcode-apps-ui-retention-ep2v4v]
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install
+        run: npm run install:ci
+      - name: Model and UI suites
+        run: npm run test:model

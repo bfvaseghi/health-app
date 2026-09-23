@@ -27,6 +27,10 @@ jobs:
       ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
       DIST_CERT_P12: ${{ secrets.DIST_CERT_P12 }}
       DIST_CERT_PASSWORD: ${{ secrets.DIST_CERT_PASSWORD }}
+      # App Store Connect rejects a second binary carrying a build number it
+      # has already seen, and project.yml pins it to 1. The run number rises
+      # with every run, so each upload is a new build of the same version.
+      BUILD_NUMBER: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
       - name: Check the secrets
@@ -63,6 +67,7 @@ jobs:
             -authenticationKeyPath ~/.private_keys/AuthKey_$ASC_KEY_ID.p8 \
             -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID" \
             DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            CURRENT_PROJECT_VERSION="$BUILD_NUMBER" \
             archive > archive.log 2>&1 || { tail -n 120 archive.log; exit 1; }
           grep -E "error:|\*\* ARCHIVE" archive.log || true
       - name: Export for App Store Connect
@@ -87,9 +92,19 @@ jobs:
           ls -la build/export
       - name: Upload to TestFlight
         run: |
-          ipa=$(ls build/export/*.ipa | head -n 1)
-          xcrun altool --upload-app -f "$ipa" -t ios \
-            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" 2>&1 | tail -n 20
+          # The default shell is "bash -e" without pipefail, so piping altool
+          # into tail would report tail's success and hide a failed upload.
+          ipa=$(ls build/export/*.ipa 2>/dev/null | head -n 1)
+          if [ -z "$ipa" ]; then echo "::error::the export produced no .ipa"; exit 1; fi
+          if xcrun altool --upload-app -f "$ipa" -t ios \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" > upload.log 2>&1; then
+            tail -n 20 upload.log
+          else
+            status=$?
+            tail -n 40 upload.log
+            echo "::error::altool failed to upload the build (exit $status)"
+            exit "$status"
+          fi
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -97,4 +112,5 @@ jobs:
           path: |
             archive.log
             export.log
+            upload.log
           if-no-files-found: ignore

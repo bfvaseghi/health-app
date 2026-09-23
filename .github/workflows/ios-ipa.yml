@@ -16,6 +16,11 @@ on:
 permissions:
   contents: write
 
+# Two archives of the same branch would race for the same release tag.
+concurrency:
+  group: ios-ipa-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ipa:
     runs-on: macos-15
@@ -28,6 +33,7 @@ jobs:
             -sdk iphoneos -configuration Release -destination 'generic/platform=iOS' \
             -archivePath build/Baseline.xcarchive \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CURRENT_PROJECT_VERSION="${GITHUB_RUN_NUMBER}" \
             archive > archive.log 2>&1 || { tail -n 80 archive.log; exit 1; }
           grep -E "error:|\*\* ARCHIVE" archive.log || true
       - name: Package the IPA
@@ -49,7 +55,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="ios-$(date -u +%Y%m%d-%H%M)"
+          tag="ios-$(date -u +%Y%m%d-%H%M)-${GITHUB_RUN_NUMBER}"
           gh release create "$tag" out/*.ipa \
             --title "Baseline for iPhone, $tag" \
             --notes "Unsigned iOS build of Baseline (app and widget) from ${GITHUB_SHA::7}. Sign and install it with your own Apple ID using Sideloadly or AltStore (see ios/README-iOS.md, \"Install without Xcode\"), or open ios/Baseline.xcodeproj in Xcode and press Run."
