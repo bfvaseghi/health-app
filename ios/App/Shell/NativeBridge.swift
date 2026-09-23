@@ -61,12 +61,18 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
               let body = message.body as? [String: Any],
               let type = body["type"] as? String else { return }
         let requestID = body["id"] as? Int
-        // bridge.js withholds these from foreign documents already; this is
-        // the native half of the same rule, so a sign-in host in remote mode
-        // can never write the mirror, schedule notifications or reach the
-        // app's own handler even if a page found the message handler.
-        let privileged: Set<String> = ["storage", "storageSnapshot", "notifications", "app"]
-        if privileged.contains(type), !isHomeFrame(message.frameInfo) { return }
+        // bridge.js withholds its surface from foreign documents already;
+        // this is the native half of the same rule. It is deny-by-default
+        // rather than a list of the dangerous messages, because the message
+        // handler itself is reachable from any frame's script whether or not
+        // bridge.js gave that frame anything: a sign-in host in remote mode,
+        // or any sub-frame it embeds, could otherwise write the storage
+        // mirror, schedule notifications, repaint the app's chrome, or put a
+        // share sheet and a print panel on screen carrying content of its
+        // own choosing. Nothing legitimate posts from a foreign frame — on a
+        // foreign document bridge.js posts nothing at all — so a message
+        // from one is discarded whatever it says.
+        guard isHomeFrame(message.frameInfo) else { return }
         switch type {
         case "storage":
             StorageMirror.shared.apply(op: body["op"] as? String ?? "",
@@ -139,6 +145,11 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
         }
         controller.presentExport(fileURL: url) { [weak self] completed in
             self?.settle(requestID, ok: true, payload: ["completed": completed])
+            // The staged copy has served its purpose once the sheet closes.
+            // It holds whatever the page exported — a whole data backup, in
+            // these apps — so it does not sit in tmp waiting for the system
+            // to feel short of space.
+            try? FileManager.default.removeItem(at: url)
         }
     }
 
@@ -174,6 +185,9 @@ final class NativeBridge: NSObject, WKScriptMessageHandler {
             .replacingOccurrences(of: ":", with: "-")
             .replacingOccurrences(of: "\\", with: "-")
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("Exports", isDirectory: true)
+        // Anything an earlier export left behind (a share sheet the system
+        // tore down without calling back, a crash mid-sheet) goes now.
+        try? FileManager.default.removeItem(at: directory)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let url = directory.appendingPathComponent(safeName)
         do {
